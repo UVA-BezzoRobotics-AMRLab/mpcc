@@ -1,0 +1,41 @@
+{
+  "configurations": [
+    {
+      "browse": {
+        "databaseFilename": "${default}",
+        "limitSymbolsToIncludedHeaders": false
+      },
+      "includePath": [
+        "/home/bezzo/catkin_ws/devel/include/**",
+        "/home/bezzo/Projects/crazyswarm/ros_ws/devel/include/**",
+        "/opt/ros/noetic/include/**",
+        "/home/bezzo/catkin_ws/src/amrl_logging/include/**",
+        "/home/bezzo/catkin_ws/src/cbf_tracking/include/**",
+        "/home/bezzo/catkin_ws/src/distance_map/distance_map_core/include/**",
+        "/home/bezzo/catkin_ws/src/distance_map/distance_map_deadreck/include/**",
+        "/home/bezzo/catkin_ws/src/graph_rviz_plugin/include/**",
+        "/home/bezzo/catkin_ws/src/grid_map/grid_map_core/include/**",
+        "/home/bezzo/catkin_ws/src/grid_map/grid_map_costmap_2d/include/**",
+        "/home/bezzo/catkin_ws/src/grid_map/grid_map_cv/include/**",
+        "/home/bezzo/catkin_ws/src/grid_map/grid_map_demos/include/**",
+        "/home/bezzo/catkin_ws/src/grid_map/grid_map_filters/include/**",
+        "/home/bezzo/catkin_ws/src/grid_map/grid_map_loader/include/**",
+        "/home/bezzo/catkin_ws/src/grid_map/grid_map_octomap/include/**",
+        "/home/bezzo/catkin_ws/src/grid_map/grid_map_pcl/include/**",
+        "/home/bezzo/catkin_ws/src/grid_map/grid_map_ros/include/**",
+        "/home/bezzo/catkin_ws/src/grid_map/grid_map_rviz_plugin/include/**",
+        "/home/bezzo/catkin_ws/src/grid_map/grid_map_sdf/include/**",
+        "/home/bezzo/catkin_ws/src/grid_map/grid_map_visualization/include/**",
+        "/home/bezzo/Projects/crazyswarm/ros_ws/src/externalDependencies/libobjecttracker/include/**",
+        "/home/bezzo/catkin_ws/src/uav_mpc/include/**",
+        "/usr/include/**"
+      ],
+      "name": "ROS",
+      "intelliSenseMode": "gcc-x64",
+      "compilerPath": "/usr/bin/gcc",
+      "cStandard": "gnu11",
+      "cppStandard": "c++14"
+    }
+  ],
+  "version": 4
+}
