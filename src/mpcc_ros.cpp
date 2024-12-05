@@ -121,7 +121,6 @@ MPCCROS::MPCCROS(ros::NodeHandle &nh) : _nh("~")
 	_mpc_core->load_params(_mpc_params);
 	ROS_INFO("done loading params!");
 
-	_mapSub = nh.subscribe("/map", 1, &MPCCROS::mapcb, this);
 	_odomSub = nh.subscribe("/odometry/filtered", 1, &MPCCROS::odomcb, this);
 	_trajSub = nh.subscribe("/reference_trajectory", 1, &MPCCROS::trajectorycb, this);
 	_distMapSub = nh.subscribe("/distance_map_node/distance_field_obstacles", 1, &MPCCROS::distmapcb, this);
@@ -150,87 +149,6 @@ MPCCROS::~MPCCROS()
 	// delete _mpc;
 }
 
-void MPCCROS::visualizeTubes()
-{
-
-	Eigen::VectorXd state = _mpc_core->get_state();
-	double len_start = state(4);
-	double horizon = 1.0;
-
-	if (len_start > _ref_len)
-		return;
-
-	if (len_start + horizon > _ref_len)
-		horizon = _ref_len - len_start;
-
-	std::vector<SplineWrapper> tubes;
-	if(!utils::get_tubes(_ref, _ref_len, len_start, _grid_map, tubes))
-		return;
-
-	tk::spline d_above = tubes[0].spline;
-	tk::spline d_below = tubes[1].spline;
-
-	visualization_msgs::Marker tubemsg_a;
-	tubemsg_a.header.frame_id = _frame_id;
-	tubemsg_a.header.stamp = ros::Time::now();
-	tubemsg_a.ns = "tube_above";
-	tubemsg_a.id = 87;
-	tubemsg_a.action = visualization_msgs::Marker::ADD;
-	tubemsg_a.type = visualization_msgs::Marker::LINE_STRIP;
-	tubemsg_a.scale.x = .05;
-	tubemsg_a.pose.orientation.w = 1;
-
-	visualization_msgs::Marker tubemsg_b = tubemsg_a;
-	tubemsg_b.ns = "tube_below";
-	tubemsg_b.id = 88;
-
-	for (double s = len_start; s < len_start + 1; s += .05)
-	{
-
-		// get point and tangent to curve
-		double px = _ref[0].spline(s);
-		double py = _ref[1].spline(s);
-
-		double tx = _ref[0].spline.deriv(1, s);
-		double ty = _ref[1].spline.deriv(1, s);
-
-		std_msgs::ColorRGBA color_msg;
-		color_msg.r = 0.0;
-		color_msg.g = 1.0;
-		color_msg.b = 1.0;
-		color_msg.a = 1.0;
-
-		Eigen::Vector2d point(px, py);
-		Eigen::Vector2d normal(-ty, tx);
-		normal = normal / normal.norm();
-
-		double da = d_above(s);
-		double db = d_below(s);
-
-		geometry_msgs::Point tube_pt;
-		tube_pt.x = point(0) + normal(0) * da;
-		tube_pt.y = point(1) + normal(1) * da;
-		tube_pt.z = 1.0;
-		tubemsg_a.points.push_back(tube_pt);
-
-		geometry_msgs::Point tube_pt1;
-		tube_pt1.x = point(0) - normal(0) * db;
-		tube_pt1.y = point(1) - normal(1) * db;
-		tube_pt1.z = 1.0;
-		tubemsg_b.points.push_back(tube_pt1);
-
-		tubemsg_a.colors.push_back(color_msg);
-		tubemsg_b.colors.push_back(color_msg);
-	}
-
-	visualization_msgs::MarkerArray tube_ma;
-	tube_ma.markers.push_back(tubemsg_a);
-	tube_ma.markers.push_back(tubemsg_b);
-
-	_tubeVizPub.publish(tube_ma);
-}
-
-
 void MPCCROS::publishVel()
 {
 	constexpr double pub_vel_loop_rate_hz = 50;
@@ -255,10 +173,6 @@ void MPCCROS::alphacb(const std_msgs::Float64::ConstPtr &msg)
 	_mpc_core->load_params(_mpc_params);
 }
 
-void MPCCROS::mapcb(const nav_msgs::OccupancyGrid::ConstPtr &msg)
-{
-	grid_map::GridMapRosConverter::fromOccupancyGrid(*msg, "layer", _grid_map);
-}
 
 void MPCCROS::goalcb(const geometry_msgs::PoseStamped::ConstPtr &msg)
 {
@@ -401,8 +315,6 @@ void MPCCROS::cte_ctrl_loop()
 		std::vector<double> mpc_results = _mpc_core->solve();
 
 		ros::Time begin = ros::Time::now();
-		visualizeTubes();
-		ROS_INFO("tube generation time is: %.4f", (ros::Time::now() - begin).toSec());
 
 		velMsg.linear.x = mpc_results[0];
 		velMsg.angular.z = mpc_results[1];

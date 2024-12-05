@@ -17,14 +17,13 @@ find_package(catkin REQUIRED COMPONENTS
   std_msgs
   trajectory_msgs
   distance_map_core
-  grid_map_ros
   uvatraj_msgs
 )
 
 ## System dependencies are found with CMake's conventions
-find_package(ACADOS REQUIRED)
-find_package(BLASFEO REQUIRED)
-find_package(HPIPM REQUIRED)
+# find_package(ACADOS REQUIRED)
+# find_package(BLASFEO REQUIRED)
+# find_package(HPIPM REQUIRED)
 find_package(Eigen3 REQUIRED COMPONENT system)
 
 ## Uncomment this if the package has a setup.py. This macro ensures
@@ -128,9 +127,9 @@ catkin_package(
 include_directories(
   include
   ${catkin_INCLUDE_DIRS}
-  ${ACADOS_INCLUDE_DIRS}
-  ${HPIPM_INCLUDE_DIRS}
-  ${BLASFEO_INCLUDE_DIRS}
+  # ${ACADOS_INCLUDE_DIRS}
+  # ${HPIPM_INCLUDE_DIRS}
+  # ${BLASFEO_INCLUDE_DIRS}
   ${EIGEN3_INCLUDE_DIR}
 )
 
