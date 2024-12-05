@@ -31,6 +31,9 @@ MPCCROS::MPCCROS(ros::NodeHandle &nh) : _nh("~")
 	_requested_len = 0;
 	_ref = {};
 	_requested_ref = {};
+	_requested_ss = {};
+	_requested_xs = {};
+	_requested_ys = {};
 
 	_dist_grid_ptr =
 		std::make_shared<distmap::DistanceMap>(distmap::DistanceMap::Dimension(5, 5),
@@ -128,7 +131,7 @@ MPCCROS::MPCCROS(ros::NodeHandle &nh) : _nh("~")
 	_timer = nh.createTimer(ros::Duration(_dt), &MPCCROS::controlLoop, this);
 	// _velPubTimer = nh.createTimer(ros::Duration(1./_vel_pub_freq), &MPCCROS::publishVel, this);
 
-	_pathPub = nh.advertise<nav_msgs::Path>("/spline_path", 10);
+	_pathPub = nh.advertise<nav_msgs::Path>("/reference_path", 10);
 	_velPub = nh.advertise<geometry_msgs::Twist>("/cmd_vel", 10);
 	_trajPub = nh.advertise<nav_msgs::Path>("/mpc_prediction", 10);
 	_solveTimePub = nh.advertise<std_msgs::Float64>("/mpc_solve_time", 0);
@@ -137,6 +140,9 @@ MPCCROS::MPCCROS(ros::NodeHandle &nh) : _nh("~")
 	_tubeVizPub = nh.advertise<visualization_msgs::MarkerArray>("/tube_viz", 0);
 	_horizonPub = nh.advertise<trajectory_msgs::JointTrajectory>("/mpc_horizon", 0);
 	_refPub = nh.advertise<trajectory_msgs::JointTrajectoryPoint>("/current_reference", 10);
+
+	_modify_traj_srv = nh.advertiseService("/modify_trajectory", &MPCCROS::modifyTrajSrv, this);
+	_execute_traj_srv = nh.advertiseService("/execute_trajectory", &MPCCROS::executeTrajSrv, this);
 
 	timer_thread = std::thread(&MPCCROS::publishVel, this);
 }
@@ -216,7 +222,6 @@ void MPCCROS::odomcb(const nav_msgs::Odometry::ConstPtr &msg)
 // TODO: Support appending trajectories
 void MPCCROS::trajectorycb(const trajectory_msgs::JointTrajectory::ConstPtr &msg)
 {
-	trajectory = *msg;
 	_traj_reset = true;
 
 	int N = msg->points.size();
@@ -306,7 +311,7 @@ void MPCCROS::cte_ctrl_loop()
 		_traj_reset = false;
 	}
 
-	if (trajectory.points.size() != 0)
+	if (_ref.size() != 0)
 	{
 		// generate tubes
 		// std::vector<SplineWrapper> tubes;
@@ -319,13 +324,12 @@ void MPCCROS::cte_ctrl_loop()
 		velMsg.linear.x = mpc_results[0];
 		velMsg.angular.z = mpc_results[1];
 
-		publishReference();
 		publishMPCTrajectory();
 	}
 }
 
-bool MPCCROS::modifyTrajSrv(uvatraj_msgs::ModifyTraj::Request &req, 
-					   uvatraj_msgs::ModifyTraj::Response &res)
+bool MPCCROS::modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req, 
+					   uvatraj_msgs::ExecuteTraj::Response &res)
 {
 
 	// dummy time variable to parameterize initial spline
@@ -394,6 +398,15 @@ bool MPCCROS::modifyTrajSrv(uvatraj_msgs::ModifyTraj::Request &req,
 	_requested_ref.push_back(refx);
 	_requested_ref.push_back(refy);
 
+	_requested_ss = ss;
+	_requested_xs = xs;
+	_requested_ys = ys;
+
+	publishReference(_requested_ref, _requested_len);
+
+	ROS_ERROR("SPLINE RECEIVED OK!!!!!!!");
+	ROS_ERROR("******************REFERENCE GENERATED******************");
+
 	return true;
 }
 
@@ -402,6 +415,8 @@ bool MPCCROS::executeTrajSrv(std_srvs::Empty::Request &req, std_srvs::Empty::Res
 	_ref = _requested_ref;
 	_ref_len = _requested_len;
 	_traj_reset = true;
+
+	_mpc_core->set_trajectory(_requested_ss, _requested_xs, _requested_ys);
 
 	return true;
 }
@@ -443,7 +458,7 @@ void MPCCROS::controlLoop(const ros::TimerEvent &)
 			}
 
 			_horizonPub.publish(traj);
-			publishReference();
+			publishReference(_ref, _ref_len);
 
 			velMsg.linear.x = 0;
 			velMsg.angular.z = std::max(-_max_angvel, std::min(_max_angvel, _prop_gain * e));
@@ -454,10 +469,10 @@ void MPCCROS::controlLoop(const ros::TimerEvent &)
 	cte_ctrl_loop();
 }
 
-void MPCCROS::publishReference()
+void MPCCROS::publishReference(const std::vector<SplineWrapper>& ref, double ref_len)
 {
 
-	if (trajectory.points.size() == 0)
+	if (ref.size() == 0)
 		return;
 
 	nav_msgs::Path msg;
@@ -465,19 +480,14 @@ void MPCCROS::publishReference()
 	msg.header.frame_id = _frame_id;
 
 	bool published = false;
-	for (trajectory_msgs::JointTrajectoryPoint pt : trajectory.points)
+	for (double s = 0; s < ref_len; s+=.05)
 	{
-		if (!published)
-		{
-			published = true;
-			_refPub.publish(pt);
-		}
 		geometry_msgs::PoseStamped pose;
 		pose.header.stamp = ros::Time::now();
 		pose.header.frame_id = _frame_id;
 
-		pose.pose.position.x = pt.positions[0];
-		pose.pose.position.y = pt.positions[1];
+		pose.pose.position.x = ref[0].spline(s);
+		pose.pose.position.y = ref[1].spline(s);
 		pose.pose.position.z = 0;
 		pose.pose.orientation.x = 0;
 		pose.pose.orientation.y = 0;

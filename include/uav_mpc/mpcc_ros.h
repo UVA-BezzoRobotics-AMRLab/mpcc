@@ -10,7 +10,7 @@
 #include <geometry_msgs/Twist.h>
 #include <sensor_msgs/LaserScan.h>
 #include <geometry_msgs/PoseArray.h>
-#include <uvatraj_msgs/ModifyTraj.h>
+#include <uvatraj_msgs/ExecuteTraj.h>
 #include <geometry_msgs/PoseStamped.h>
 #include <geometry_msgs/TransformStamped.h>
 #include <trajectory_msgs/JointTrajectory.h>
@@ -53,6 +53,8 @@ private:
 
 	ros::ServiceServer _eStop_srv;
 	ros::ServiceServer _mode_srv;
+	ros::ServiceServer _modify_traj_srv;
+	ros::ServiceServer _execute_traj_srv;
 
 	ros::ServiceClient _sac_srv;
 
@@ -71,6 +73,9 @@ private:
 	std::vector<double> mpc_results;
 	std::vector<SplineWrapper> _ref;
 	std::vector<SplineWrapper> _requested_ref;
+	std::vector<double> _requested_ss;
+	std::vector<double> _requested_xs;
+	std::vector<double> _requested_ys;
 
 	// MPCBase* _mpc;
 	std::unique_ptr<MPCCore> _mpc_core;
@@ -112,11 +117,11 @@ private:
 	std::shared_ptr<distmap::DistanceMap> _dist_grid_ptr;
 
 	void publishMPCTrajectory();
-	void publishReference();
+	void publishReference(const std::vector<SplineWrapper>& ref, double ref_len);
 
 
-	bool modifyTrajSrv(uvatraj_msgs::ModifyTraj::Request &req, 
-					   uvatraj_msgs::ModifyTraj::Response &res);
+	bool modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req, 
+					   uvatraj_msgs::ExecuteTraj::Response &res);
 	
 	bool executeTrajSrv(std_srvs::Empty::Request &req, 
 						std_srvs::Empty::Response &res);
