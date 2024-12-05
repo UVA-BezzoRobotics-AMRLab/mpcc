@@ -10,6 +10,7 @@
 #include <geometry_msgs/Twist.h>
 #include <sensor_msgs/LaserScan.h>
 #include <geometry_msgs/PoseArray.h>
+#include <uvatraj_msgs/ModifyTraj.h>
 #include <geometry_msgs/PoseStamped.h>
 #include <geometry_msgs/TransformStamped.h>
 #include <trajectory_msgs/JointTrajectory.h>
@@ -71,6 +72,7 @@ private:
 	std::vector<Eigen::Vector3d> poses;
 	std::vector<double> mpc_results;
 	std::vector<SplineWrapper> _ref;
+	std::vector<SplineWrapper> _requested_ref;
 
 	// MPCBase* _mpc;
 	std::unique_ptr<MPCCore> _mpc_core;
@@ -87,6 +89,7 @@ private:
 	double _min_alpha;
 	double _max_alpha;
 	double _ref_len;
+	double _requested_len;
 
 	const int XI = 0;
 	const int YI = 1;
@@ -114,6 +117,13 @@ private:
 
 	void publishMPCTrajectory();
 	void publishReference();
+
+
+	bool modifyTrajSrv(uvatraj_msgs::ModifyTraj::Request &req, 
+					   uvatraj_msgs::ModifyTraj::Response &res);
+	
+	bool executeTrajSrv(std_srvs::Empty::Request &req, 
+						std_srvs::Empty::Response &res);
 
 
 	void cte_ctrl_loop();

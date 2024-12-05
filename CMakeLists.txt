@@ -18,6 +18,7 @@ find_package(catkin REQUIRED COMPONENTS
   trajectory_msgs
   distance_map_core
   grid_map_ros
+  uvatraj_msgs
 )
 
 ## System dependencies are found with CMake's conventions

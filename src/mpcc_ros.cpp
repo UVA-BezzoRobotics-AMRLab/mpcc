@@ -28,7 +28,9 @@ MPCCROS::MPCCROS(ros::NodeHandle &nh) : _nh("~")
 
 	_curr_vel = 0;
 	_ref_len = 0;
+	_requested_len = 0;
 	_ref = {};
+	_requested_ref = {};
 
 	_dist_grid_ptr =
 		std::make_shared<distmap::DistanceMap>(distmap::DistanceMap::Dimension(5, 5),
@@ -410,6 +412,88 @@ void MPCCROS::cte_ctrl_loop()
 	}
 }
 
+bool MPCCROS::modifyTrajSrv(uvatraj_msgs::ModifyTraj::Request &req, 
+					   uvatraj_msgs::ModifyTraj::Response &res)
+{
+
+	// dummy time variable to parameterize initial spline
+	double T = 1.0;
+	double dt = T / req.ctrl_pts.size();
+
+	std::vector<double> tt, xt, yt;
+
+	// create initial spline out of the points being sent
+	double t = 0;
+	for(int i = 0; i < req.ctrl_pts.size(); ++i)
+	{
+		tt.push_back(t);
+		xt.push_back(req.ctrl_pts[i].x);
+		yt.push_back(req.ctrl_pts[i].y);
+		t += dt;
+	}
+
+    tk::spline spline_x(tt, xt, tk::spline::cspline);
+    tk::spline spline_y(tt, yt, tk::spline::cspline);
+
+	std::vector<SplineWrapper> ref;
+	SplineWrapper sx_wrap;
+    sx_wrap.spline = spline_x;
+
+    SplineWrapper sy_wrap;
+    sy_wrap.spline = spline_y;
+
+	ref.push_back(sx_wrap);
+	ref.push_back(sy_wrap);
+
+	// get points of equal arc length along the trajectory...
+	std::vector<double> ss, xs, ys;
+
+	double M = 20;
+	ss.resize(M + 1);
+    xs.resize(M + 1);
+    ys.resize(M + 1);
+
+	double total_length = utils::compute_arclen(ref, 0, 1);
+	double ds = total_length / M;
+
+    for (int i = 0; i <= M; ++i)
+    {
+        double s = i * ds;
+
+        double ti = utils::binary_search(ref, s, 0, 1, 1e-3);
+
+        ss[i] = s;
+		xs[i] = ref[0].spline(ti);
+		ys[i] = ref[1].spline(ti);
+    }
+	   
+    _requested_ref.clear();
+	_requested_len = ss.back();
+
+	tk::spline refx_spline(ss, xs, tk::spline::cspline);
+	tk::spline refy_spline(ss, ys, tk::spline::cspline);
+
+    SplineWrapper refx;
+    refx.spline = refx_spline;
+
+    SplineWrapper refy;
+    refy.spline = refy_spline;
+
+	_requested_ref.push_back(refx);
+	_requested_ref.push_back(refy);
+
+	return true;
+}
+
+bool MPCCROS::executeTrajSrv(std_srvs::Empty::Request &req, std_srvs::Empty::Response &res)
+{
+	_ref = _requested_ref;
+	_ref_len = _requested_len;
+	_traj_reset = true;
+
+	return true;
+}
+
 void MPCCROS::controlLoop(const ros::TimerEvent &)
 {
 	// don't care about aligning if trajectory short
@@ -434,6 +518,7 @@ void MPCCROS::controlLoop(const ros::TimerEvent &)
 			trajectory_msgs::JointTrajectory traj;
 			traj.header.stamp = ros::Time::now();
 			traj.header.frame_id = _frame_id;
+
 			for (int i = 0; i < _mpc_steps; ++i)
 			{
 				trajectory_msgs::JointTrajectoryPoint pt;
