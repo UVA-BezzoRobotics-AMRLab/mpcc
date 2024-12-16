@@ -25,6 +25,7 @@ MPCCROS::MPCCROS(ros::NodeHandle &nh) : _nh("~")
 	_is_init = false;
 	_is_goal = false;
 	_traj_reset = false;
+	_is_executing = false;
 
 	_curr_vel = 0;
 	_ref_len = 0;
@@ -402,6 +403,20 @@ bool MPCCROS::modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req,
 	_requested_xs = xs;
 	_requested_ys = ys;
 
+	if (_is_executing)
+    {
+        _ref = _requested_ref;
+        _ref_len = _requested_len;
+        _traj_reset = true;
+
+        _mpc_core->set_trajectory(_requested_ss, _requested_xs, _requested_ys);
+        ROS_INFO("Trajectory modified and applied immediately (robot in motion).");
+    }
+    else
+    {
+        ROS_INFO("Trajectory modified but not applied. Call executeTrajSrv to start.");
+    }
+
 	publishReference(_requested_ref, _requested_len);
 
 	ROS_ERROR("SPLINE RECEIVED OK!!!!!!!");
@@ -412,11 +427,19 @@ bool MPCCROS::modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req,
 
 bool MPCCROS::executeTrajSrv(std_srvs::Empty::Request &req, std_srvs::Empty::Response &res)
 {
-	_ref = _requested_ref;
-	_ref_len = _requested_len;
-	_traj_reset = true;
-
-	_mpc_core->set_trajectory(_requested_ss, _requested_xs, _requested_ys);
+	if (!_is_executing){
+		_ref = _requested_ref;
+		_ref_len = _requested_len;
+		_traj_reset = true;
+		_is_executing = true; 
+		_mpc_core->set_trajectory(_requested_ss, _requested_xs, _requested_ys);
+		ROS_INFO("Executing the requested trajectory now. Robot will start moving.");
+    
+	} 
+	else {
+		ROS_WARN("Already executing a trajectory. No changes made.");
+	}
+	
 
 	return true;
 }
