@@ -101,6 +101,7 @@ private:
 	double _dt, _curr_vel, _curr_ang_vel, _vel_pub_freq;
 	bool _is_init, _is_goal, _teleop, _traj_reset, _use_vicon, _estop,
 		_is_at_goal, _use_cbf, _use_dynamic_alpha;
+	bool _is_executing;
 
 	Eigen::MatrixX4d _poly;
 	geometry_msgs::Twist velMsg;
