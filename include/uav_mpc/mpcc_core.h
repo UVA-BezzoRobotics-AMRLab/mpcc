@@ -32,6 +32,10 @@ public:
 
     std::vector<double> solve();
 
+    double getTrajectoryProgress() {
+        return get_progress();
+    }
+
 protected:
     double get_progress();
     double limit(double prev_v, double input, double max_rate);
