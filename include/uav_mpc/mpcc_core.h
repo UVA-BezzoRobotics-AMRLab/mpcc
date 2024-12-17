@@ -24,6 +24,9 @@ public:
     void set_dist_map(const std::shared_ptr<distmap::DistanceMap> &dist_map);
     void set_tubes(const std::vector<SplineWrapper>& tubes);
 
+
+    void updateReferencePoint(double s, double x, double y);
+
     Eigen::VectorXd get_state();
     std::vector<Eigen::VectorXd> get_horizon();
 
@@ -32,7 +35,7 @@ public:
 protected:
     double get_progress();
     double limit(double prev_v, double input, double max_rate);
-
+    std::vector<std::tuple<double, double, double>> _blend_points;
     double _dt;
     double _max_anga;
     double _max_linacc;

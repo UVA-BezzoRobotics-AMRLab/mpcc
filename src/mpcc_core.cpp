@@ -16,6 +16,8 @@ MPCCore::MPCCore()
     _state = Eigen::VectorXd::Zero(6);
 
     _is_set = false;
+
+    _blend_points.clear(); 
 }
 
 MPCCore::~MPCCore()
@@ -34,6 +36,8 @@ void MPCCore::load_params(const std::map<std::string, double> &params)
     _mpc->load_params(params);
     // _filter.load_params(params);
 }
+
+
 
 void MPCCore::set_odom(const Eigen::Vector3d &odom)
 {
@@ -196,4 +200,25 @@ double MPCCore::limit(double prev_v, double input, double max_rate)
     }
 
     return ret;
+}
+
+void MPCCore::updateReferencePoint(double s, double x, double y) {
+    //store all points in one vector array
+    _blend_points.push_back(std::make_tuple(s, x, y));
+    
+    // claude.ai - once we have enough points set use the set_trajectory function to set the traj
+    if (_blend_points.size() > 10) { 
+        std::vector<double> ss, xs, ys;
+        
+        // Extract points into separate vectors
+        for (const auto& point : _blend_points) {
+            ss.push_back(std::get<0>(point));
+            xs.push_back(std::get<1>(point));
+            ys.push_back(std::get<2>(point));
+        }
+        set_trajectory(ss, xs, ys);
+        
+        // Clear for the next cycle
+        _blend_points.clear();
+    }
 }

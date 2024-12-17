@@ -21,6 +21,10 @@
 MPCCROS::MPCCROS(ros::NodeHandle &nh) : _nh("~")
 {
 
+	_in_transition = false;
+    _transition_duration = 1.0;  
+    _old_ref_len = 0;
+
 	_estop = false;
 	_is_init = false;
 	_is_goal = false;
@@ -402,15 +406,24 @@ bool MPCCROS::modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req,
 	_requested_ss = ss;
 	_requested_xs = xs;
 	_requested_ys = ys;
-
-	if (_is_executing)
+ 	if (_is_executing)
     {
+        // Store old trajectory for blending
+        _old_ref = _ref;
+        _old_ref_len = _ref_len;
+        
+        // Store new trajectory
         _ref = _requested_ref;
         _ref_len = _requested_len;
-        _traj_reset = true;
-
+        
+        // Initialize transition
+        _transition_start_time = ros::Time::now().toSec();
+        _transition_duration = 1.0; 
+        _in_transition = true;
+        
+        
         _mpc_core->set_trajectory(_requested_ss, _requested_xs, _requested_ys);
-        ROS_INFO("Trajectory modified and applied immediately (robot in motion).");
+        ROS_INFO("Trajectory modification started - transitioning smoothly.");
     }
     else
     {
@@ -423,6 +436,34 @@ bool MPCCROS::modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req,
 	ROS_ERROR("******************REFERENCE GENERATED******************");
 
 	return true;
+}
+
+//claude.ai
+
+void MPCCROS::blendTrajectories(double blend_factor)
+{
+    // Use normalized coordinates from 0 to 1
+    double num_points = 10;
+    for (double t = 0; t <= 1.0; t += 1.0/num_points)
+    {
+        // Scale s coordinate for each trajectory
+        double s_old = t * _old_ref_len;
+        double s_new = t * _ref_len;
+        
+        // Get points from both trajectories
+        double old_x = _old_ref[0].spline(s_old);
+        double old_y = _old_ref[1].spline(s_old);
+        double new_x = _ref[0].spline(s_new);
+        double new_y = _ref[1].spline(s_new);
+        
+        // Linear interpolation between trajectories
+        double blended_x = old_x * (1 - blend_factor) + new_x * blend_factor;
+        double blended_y = old_y * (1 - blend_factor) + new_y * blend_factor;
+        
+        // Scale s coordinate for the blended trajectory
+        double s_blended = t * std::min(_old_ref_len, _ref_len);
+        _mpc_core->updateReferencePoint(s_blended, blended_x, blended_y);
+    }
 }
 
 bool MPCCROS::executeTrajSrv(std_srvs::Empty::Request &req, std_srvs::Empty::Response &res)
@@ -446,6 +487,23 @@ bool MPCCROS::executeTrajSrv(std_srvs::Empty::Request &req, std_srvs::Empty::Res
 
 void MPCCROS::controlLoop(const ros::TimerEvent &)
 {
+
+	if (_in_transition)
+    {
+        double current_time = ros::Time::now().toSec();
+        double elapsed_time = current_time - _transition_start_time;
+        
+        if (elapsed_time >= _transition_duration)
+        {
+            _in_transition = false;
+        }
+        else
+        {
+			//chatgpt
+            double blend_factor = 0.5 * (1 - cos(M_PI * elapsed_time / _transition_duration));
+            blendTrajectories(blend_factor);
+        }
+    }
 	// don't care about aligning if trajectory short
 	if (_ref_len > 1 && _traj_reset)
 	{

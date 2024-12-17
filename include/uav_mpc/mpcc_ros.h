@@ -140,4 +140,13 @@ private:
 	// void publishVel(const ros::TimerEvent&);
 	void publishVel();
 	void controlLoop(const ros::TimerEvent &);
+
+	//for smooth transitions between trajectories
+	double _transition_start_time;
+    double _transition_duration;
+    bool _in_transition;
+    std::vector<SplineWrapper> _old_ref;
+    double _old_ref_len;
+	
+    void blendTrajectories(double blend_factor);
 };
