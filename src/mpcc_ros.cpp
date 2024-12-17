@@ -199,6 +199,8 @@ void MPCCROS::goalcb(const geometry_msgs::PoseStamped::ConstPtr &msg)
 void MPCCROS::odomcb(const nav_msgs::Odometry::ConstPtr &msg)
 {
 
+	 ROS_DEBUG("Received odometry: x=%.2f, y=%.2f, yaw=%.2f", msg->pose.pose.position.x, msg->pose.pose.position.y, yaw);
+
 	tf::Quaternion q(
 		msg->pose.pose.orientation.x,
 		msg->pose.pose.orientation.y,
@@ -246,6 +248,14 @@ void MPCCROS::trajectorycb(const trajectory_msgs::JointTrajectory::ConstPtr &msg
 	xs.resize(N);
 	ys.resize(N);
 
+	if (msg->points.empty()) {
+        	ROS_WARN("Received empty trajectory, ignoring.");
+        	return;
+    	}
+
+    	ROS_INFO("Received new trajectory with %zu points.", msg->points.size());
+
+
 	for (int i = 0; i < N; ++i)
 	{
 		xs[i] = msg->points[i].positions[0];
@@ -289,6 +299,12 @@ void MPCCROS::trajectorycb(const trajectory_msgs::JointTrajectory::ConstPtr &msg
 	ROS_INFO("**********************************************************");
 	ROS_INFO("MPC received trajectory!");
 	ROS_INFO("**********************************************************");
+
+	if (_ref_len <= 0) {
+        	ROS_WARN("Reference trajectory length is non-positive. Check your trajectory input!");
+    	} else {
+        	ROS_INFO("Set reference trajectory. ref_len=%.2f", _ref_len);
+    	}
 }
 
 void MPCCROS::distmapcb(const distance_map_msgs::DistanceMap::ConstPtr &msg)
@@ -468,6 +484,28 @@ void MPCCROS::blendTrajectories(double blend_factor)
 
 bool MPCCROS::executeTrajSrv(std_srvs::Empty::Request &req, std_srvs::Empty::Response &res)
 {
+
+	ROS_INFO("Execute trajectory service called.");
+	    if (!_is_init) {
+	        ROS_WARN("Cannot execute trajectory: tracker not initialized (no odom?).");
+	        return false;
+	    }
+	
+	    if (_is_executing) {
+	        ROS_WARN("Already executing a trajectory. No changes made.");
+	        return false;
+	    }
+	
+	    if (_requested_ref.empty()) {
+	        ROS_WARN("No requested reference stored. Call modifyTrajSrv first or provide a trajectory.");
+	        return false;
+	    }
+	
+	    if (_requested_len <= 0) {
+	        ROS_WARN("Requested reference length <= 0. Trajectory is invalid.");
+	        return false;
+	    }
+
 	if (!_is_executing){
 		_ref = _requested_ref;
 		_ref_len = _requested_len;
@@ -490,34 +528,38 @@ bool MPCCROS::executeTrajSrv(std_srvs::Empty::Request &req, std_srvs::Empty::Res
 void MPCCROS::controlLoop(const ros::TimerEvent &)
 {
 
-	if (_in_transition)
-    {
+	 ROS_DEBUG("Entered control loop.");
+
+    if (!_is_init) {
+        ROS_DEBUG("Not initialized yet. Waiting for odom...");
+        return;
+    }
+
+    if (_in_transition) {
         double current_time = ros::Time::now().toSec();
         double elapsed_time = current_time - _transition_start_time;
-        
-        if (elapsed_time >= _transition_duration)
-        {
+        ROS_DEBUG("In transition: elapsed=%.2f/%.2f", elapsed_time, _transition_duration);
+
+        if (elapsed_time >= _transition_duration) {
             _in_transition = false;
-        }
-        else
-        {
-			//chatgpt
+            ROS_INFO("Transition complete.");
+        } else {
             double blend_factor = 0.5 * (1 - cos(M_PI * elapsed_time / _transition_duration));
+            ROS_DEBUG("Blend factor=%.3f", blend_factor);
             blendTrajectories(blend_factor);
         }
     }
 
-	if (_is_executing) {
-        
+    if (_is_executing) {
         double progress = _mpc_core->getTrajectoryProgress();
+        ROS_DEBUG("Trajectory progress: %.2f%%", progress * 100.0);
         if (progress >= 0.99) {  
             _is_executing = false;
-			_in_transition = false;
-			_traj_reset = false;  
-			velMsg.linear.x = 0;
-
-    		velMsg.angular.z = 0;
-            ROS_INFO("Trajectory execution complete");
+            _in_transition = false;
+            _traj_reset = false;
+            velMsg.linear.x = 0;
+            velMsg.angular.z = 0;
+            ROS_INFO("Trajectory execution complete. Stopping.");
         }
     }
 
