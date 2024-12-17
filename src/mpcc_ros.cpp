@@ -507,7 +507,7 @@ void MPCCROS::controlLoop(const ros::TimerEvent &)
 
 	if (_is_executing) {
         
-        double progress = _mpc_core->get_progress();
+        double progress = _mpc_core->getTrajectoryProgress();
         if (progress >= 0.99) {  
             _is_executing = false;
 			_in_transition = false;
