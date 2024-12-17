@@ -506,7 +506,7 @@ bool MPCCROS::executeTrajSrv(std_srvs::Empty::Request &req, std_srvs::Empty::Res
 	        return false;
 	    }
 
-	if (!_is_executing)
+	if (!_is_executing){
 		_ref = _requested_ref;
 		_ref_len = _requested_len;
 		_traj_reset = true;
