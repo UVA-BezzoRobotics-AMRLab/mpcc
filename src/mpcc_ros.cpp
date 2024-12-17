@@ -199,7 +199,7 @@ void MPCCROS::goalcb(const geometry_msgs::PoseStamped::ConstPtr &msg)
 void MPCCROS::odomcb(const nav_msgs::Odometry::ConstPtr &msg)
 {
 
-	 ROS_DEBUG("Received odometry: x=%.2f, y=%.2f, yaw=%.2f", msg->pose.pose.position.x, msg->pose.pose.position.y, yaw);
+	 ROS_DEBUG("Received odometry: x=%.2f, y=%.2f", msg->pose.pose.position.x, msg->pose.pose.position.y);
 
 	tf::Quaternion q(
 		msg->pose.pose.orientation.x,
