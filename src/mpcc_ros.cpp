@@ -504,6 +504,21 @@ void MPCCROS::controlLoop(const ros::TimerEvent &)
             blendTrajectories(blend_factor);
         }
     }
+
+	if (_is_executing) {
+        
+        double progress = _mpc_core->get_progress();
+        if (progress >= 0.99) {  
+            _is_executing = false;
+			_in_transition = false;
+			_traj_reset = false;  
+			velMsg.linear.x = 0;
+
+    		velMsg.angular.z = 0;
+            ROS_INFO("Trajectory execution complete");
+        }
+    }
+
 	// don't care about aligning if trajectory short
 	if (_ref_len > 1 && _traj_reset)
 	{
