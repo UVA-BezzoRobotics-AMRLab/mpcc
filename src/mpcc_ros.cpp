@@ -506,7 +506,7 @@ bool MPCCROS::executeTrajSrv(std_srvs::Empty::Request &req, std_srvs::Empty::Res
 	        return false;
 	    }
 
-	if (!_is_executing){
+	if (!_is_executing)
 		_ref = _requested_ref;
 		_ref_len = _requested_len;
 		_traj_reset = true;
@@ -550,18 +550,16 @@ void MPCCROS::controlLoop(const ros::TimerEvent &)
         }
     }
 
-    if (_is_executing) {
+    /*if (_is_executing) {
         double progress = _mpc_core->getTrajectoryProgress();
         ROS_DEBUG("Trajectory progress: %.2f%%", progress * 100.0);
         if (progress >= 0.99) {  
             _is_executing = false;
             _in_transition = false;
             _traj_reset = false;
-            velMsg.linear.x = 0;
-            velMsg.angular.z = 0;
             ROS_INFO("Trajectory execution complete. Stopping.");
         }
-    }
+    }*/
 
 	// don't care about aligning if trajectory short
 	if (_ref_len > 1 && _traj_reset)
