@@ -551,16 +551,16 @@ void MPCCROS::controlLoop(const ros::TimerEvent &)
     }
 
 	//bugs it out so that it send cmd_vel commands that are essentially 0, 2e^-16
-    /*if (_is_executing) {
+    if (_is_executing) {
         double progress = _mpc_core->getTrajectoryProgress();
-        ROS_DEBUG("Trajectory progress: %.2f%%", progress * 100.0);
+        ROS_WARN("Trajectory progress: %.2f%%", progress * 100.0);
         if (progress >= 0.99) {  
             _is_executing = false;
             _in_transition = false;
             _traj_reset = false;
-            ROS_INFO("Trajectory execution complete. Stopping.");
+            ROS_WARN("Trajectory execution complete. Stopping.");
         }
-    }*/
+    }
 
 	// don't care about aligning if trajectory short
 	if (_ref_len > 1 && _traj_reset)
