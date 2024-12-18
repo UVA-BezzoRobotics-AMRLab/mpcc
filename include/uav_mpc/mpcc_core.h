@@ -32,9 +32,7 @@ public:
 
     std::vector<double> solve();
 
-    double getTrajectoryProgress() {
-        return get_progress();
-    }
+    double getTrajectoryProgress();
 
 protected:
     double get_progress();

@@ -163,6 +163,10 @@ std::vector<double> MPCCore::solve()
     return {_curr_vel, _curr_ang_vel};
 }
 
+double MPCCore::getTrajectoryProgress() {
+        return get_progress();
+    }
+
 Eigen::VectorXd MPCCore::get_state()
 {
     return _mpc->get_state();
