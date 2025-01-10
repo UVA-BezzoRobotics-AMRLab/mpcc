@@ -6,6 +6,10 @@
 
 #include <uav_mpc/types.h>
 #include <uav_mpc/mpcc_impl.h>
+// #include <uav_mpc/mpcc_nlopt_impl.h>
+
+#include <distance_map_core/distance_map_converter_base.h>
+#include <distance_map_core/distance_map_converter_instantiater.h>
 
 
 class MPCCore
@@ -22,6 +26,7 @@ public:
     void set_trajectory(const Eigen::RowVectorXd &ss, const Eigen::RowVectorXd &xs, const Eigen::RowVectorXd &ys);
     void set_trajectory(const std::vector<double> &ss, const std::vector<double> &xs, const std::vector<double> &ys);
     void set_dist_map(const std::shared_ptr<distmap::DistanceMap> &dist_map);
+    // void set_segments(const std::vector<Segment_t> &segments);
     void set_tubes(const std::vector<SplineWrapper>& tubes);
 
     Eigen::VectorXd get_state();

@@ -153,16 +153,18 @@ void MPCCROS::visualizeTubes()
 
 	Eigen::VectorXd state = _mpc_core->get_state();
 	double len_start = state(4);
-	double horizon = 1.0;
+	double horizon = _max_linvel * _dt * _mpc_steps;
 
 	if (len_start > _ref_len)
 		return;
 
 	if (len_start + horizon > _ref_len)
 		horizon = _ref_len - len_start;
+	
+	ROS_INFO("horizon is %.2f", horizon);
 
 	std::vector<SplineWrapper> tubes;
-	if(!utils::get_tubes(_ref, _ref_len, len_start, _grid_map, tubes))
+	if(!utils::get_tubes(_ref, _ref_len, len_start, horizon, _grid_map, tubes))
 		return;
 
 	tk::spline d_above = tubes[0].spline;
@@ -182,7 +184,7 @@ void MPCCROS::visualizeTubes()
 	tubemsg_b.ns = "tube_below";
 	tubemsg_b.id = 88;
 
-	for (double s = len_start; s < len_start + 1; s += .05)
+	for (double s = len_start; s < len_start + horizon; s += .05)
 	{
 
 		// get point and tangent to curve
@@ -304,17 +306,23 @@ void MPCCROS::trajectorycb(const trajectory_msgs::JointTrajectory::ConstPtr &msg
 	_traj_reset = true;
 
 	int N = msg->points.size();
-	// Eigen::RowVectorXd ss, xs, ys;
-	// ss.resize(N);
-	// xs.resize(N);
-	// ys.resize(N);
 
-	// for (int i = 0; i < N; ++i)
-	// {
-	// 	xs(i) = msg->points[i].positions[0];
-	// 	ys(i) = msg->points[i].positions[1];
-	// 	ss(i) = msg->points[i].time_from_start.toSec();
-	// }
+	{
+		Eigen::RowVectorXd ss, xs, ys;
+		ss.resize(N);
+		xs.resize(N);
+		ys.resize(N);
+
+		for (int i = 0; i < N; ++i)
+		{
+			xs(i) = msg->points[i].positions[0];
+			ys(i) = msg->points[i].positions[1];
+			ss(i) = msg->points[i].time_from_start.toSec();
+		}
+		_mpc_core->set_trajectory(ss, xs, ys);
+	}
+
+
 	std::vector<double> ss, xs, ys;
 	ss.resize(N);
 	xs.resize(N);
@@ -328,13 +336,13 @@ void MPCCROS::trajectorycb(const trajectory_msgs::JointTrajectory::ConstPtr &msg
 
 	}
 
-	for (int i = 0; i < N-1; ++i)
-	{
-		if (ss[i] >= ss[i + 1]){
-			std::cerr << "NOT MONOTONIC IN S!!" << std::endl;
-			std::cerr << i << ": " << ss[i] << " --> " << i+1 << ": " << ss[i+1] << std::endl;
-		}
-	}
+	// for (int i = 0; i < N-1; ++i)
+	// {
+	// 	if (ss[i] >= ss[i + 1]){
+	// 		std::cerr << "NOT MONOTONIC IN S!!" << std::endl;
+	// 		std::cerr << i << ": " << ss[i] << " --> " << i+1 << ": " << ss[i+1] << std::endl;
+	// 	}
+	// }
 
     // tk::spline sx(ss, xs, tk::spline::cspline, false,
     //               tk::spline::first_deriv, 1.0,
@@ -345,6 +353,30 @@ void MPCCROS::trajectorycb(const trajectory_msgs::JointTrajectory::ConstPtr &msg
 
     tk::spline sx(ss, xs, tk::spline::cspline);
     tk::spline sy(ss, ys, tk::spline::cspline);
+
+	// std::vector<Segment_t> segments;
+	// double ds = .1;
+	// for(double s = 0; s < ss.back()-ds-1e-3; s += ds)
+	// {
+	// 	double s0 = s;
+	// 	double s1 = s + ds;
+
+	// 	double s_mid = (s0 + s1) / 2;
+
+	// 	double mx = sx.deriv(1, s_mid);
+	// 	double bx = sx(s_mid) - mx * s_mid;
+	// 	double my = sy.deriv(1, s_mid);
+	// 	double by = sy(s_mid) - my * s_mid;
+
+	// 	double dmx = sx.deriv(2, s_mid);
+	// 	double dbx = sx.deriv(1, s_mid) - dmx * s_mid;
+	// 	double dmy = sy.deriv(2, s_mid);
+	// 	double dby = sy.deriv(1, s_mid) - dmy * s_mid;
+
+	// 	segments.push_back({s0, s1, mx, bx, my, by, dmx, dbx, dmy, dby});
+	// }
+
+	// _mpc_core->set_segments(segments);
 
     _ref.clear();
 	_ref_len = ss.back();

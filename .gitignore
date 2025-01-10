@@ -2,3 +2,5 @@
 *.pyc
 __pycache__
 .vscode
+*.json
+c_generated_code/

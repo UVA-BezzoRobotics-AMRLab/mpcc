@@ -678,7 +678,7 @@ std::vector<double> MPCC::solve(const Eigen::VectorXd &state)
     std::cout << "anvel: " << solution.x[_angvel_start] << std::endl;
     std::cout << "s ddot: " << solution.x[_s_ddot_start] << std::endl;
 
-    _s_dot = solution.x[_s_dot_start];
+    _s_dot = solution.x[_s_dot_start + 1];
 
     std::vector<double> result;
     result.push_back(solution.x[_angvel_start]);

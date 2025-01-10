@@ -65,19 +65,60 @@ namespace utils{
     inline bool get_tubes(const std::vector<SplineWrapper> &traj, 
                           double traj_arc_len,
                           double len_start,
+                          double horizon,
                           const grid_map::GridMap& grid_map,
                           std::vector<SplineWrapper>& tubes)
     {
         tubes.clear();
         std::vector<double> ss, ds_above, ds_below;
 
-        double horizon = 1;
+        // double horizon = 1;
+        traj_arc_len -= .1;
         if (len_start > traj_arc_len)
             return false;
 
         if (len_start + horizon > traj_arc_len)
             horizon = traj_arc_len-len_start;
 
+        // iterate over curve to find maximum distance allowed
+        double max_dist = .7;
+        double max_curv = -1;
+        double max_curv_s = 0;
+        double tan_mag_s = 0;
+        for(double s = len_start; s <= len_start + horizon; s += .05)
+        {
+            double px = traj[0].spline(s);
+            double py = traj[1].spline(s);
+            
+            double tx = traj[0].spline.deriv(1, s);
+            double ty = traj[1].spline.deriv(1, s);
+
+            double nx = traj[0].spline.deriv(2, s);
+            double ny = traj[1].spline.deriv(2, s);
+
+            Eigen::Vector2d point(px, py);
+            Eigen::Vector2d normal(nx, ny);
+
+            double den = tx * tx + ty * ty;
+            double curvature = fabs(tx*ny - ty*nx) / (den * sqrt(den)); //normal.norm();
+
+            if (curvature > 1 / (2*max_dist))
+            {
+                max_dist = 1 / (2*curvature);
+            }
+
+            if (curvature > max_curv)
+            {
+                max_curv = curvature;
+                max_curv_s = s;
+                tan_mag_s = Eigen::Vector2d(tx, ty).norm();
+            }
+
+        }
+        
+        std::cout << "MAX CURV IS: " << max_curv << " AT " << max_curv_s << " / " << traj_arc_len << std::endl;
+        std::cout << "TAN MAG IS: " << tan_mag_s << std::endl;
+        std::cout << "MAX DIST IS: " << max_dist << std::endl;
         for(double s = len_start; s <= len_start + horizon; s += .05)
         {
             double px = traj[0].spline(s);
@@ -92,11 +133,11 @@ namespace utils{
 
             // now raycast in each normal direction
             double dist_above;
-            if (!raycast_grid(point, normal, grid_map, .7, dist_above))
+            if (!raycast_grid(point, normal, grid_map, max_dist, dist_above))
                 return false;
 
             double dist_below;
-            if (!raycast_grid(point, -1*normal, grid_map, .7, dist_below))
+            if (!raycast_grid(point, -1*normal, grid_map, max_dist, dist_below))
                 return false;
 
             // std::cout << "above for " << point.transpose() << " is " << dist_above << std::endl;

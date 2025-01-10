@@ -18,8 +18,8 @@ w_angvel_d: .7
 # max_angvel: 1.5
 
 # CBF params
-use_cbf: false
-cbf_alpha: .2
+use_cbf: true
+cbf_alpha: .5
 cbf_colinear: .05
 cbf_padding: .05
 

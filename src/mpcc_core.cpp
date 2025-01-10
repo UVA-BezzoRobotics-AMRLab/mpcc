@@ -50,6 +50,17 @@ void MPCCore::set_trajectory(const Eigen::RowVectorXd &ss, const Eigen::RowVecto
     const auto fitY = SplineFitting1D::Interpolate(ys, 3, ss);
     _splineY = std::make_unique<Spline1D>(fitY);
 
+    double tot_err = 0;
+    for(double s = 0; s < ss(ss.size()-1); s += .01)
+    {
+        Eigen::Vector2d tan(_splineX->derivatives(s, 1).coeff(1), 
+                            _splineY->derivatives(s, 1).coeff(1));
+
+        tot_err += fabs(1-tan.norm());
+    }
+
+    std::cout << "EIGEN ERROR IS: " << tot_err << std::endl;
+
     std::vector<Spline1D> ref;
     ref.push_back(*_splineX);
     ref.push_back(*_splineY);
@@ -69,6 +80,18 @@ void MPCCore::set_trajectory(const std::vector<double> &ss, const std::vector<do
 
     tk::spline sx(ss, xs, tk::spline::cspline);
     tk::spline sy(ss, ys, tk::spline::cspline);
+
+    double tot_err = 0;
+    for(double s = 0; s < ss.back(); s += .01)
+    {
+        Eigen::Vector2d tan(sx.deriv(1, s),
+                            sy.deriv(1, s));
+                            
+
+        tot_err += fabs(1-tan.norm());
+    }
+
+    std::cout << "TK ERROR IS: " << tot_err << std::endl;
 
     std::vector<SplineWrapper> ref;
     SplineWrapper sx_wrap;
@@ -111,8 +134,13 @@ double MPCCore::get_progress()
 void MPCCore::set_dist_map(const std::shared_ptr<distmap::DistanceMap> &dist_map)
 {
     _dist_grid_ptr = dist_map;
-    _mpc->set_dist_map(dist_map);
+    // _mpc->set_dist_map(dist_map);
 }
+
+// void MPCCore::set_segments(const std::vector<Segment_t> &segments)
+// {
+//     _mpc->set_segments(segments);
+// }
 
 std::vector<double> MPCCore::solve()
 {

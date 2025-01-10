@@ -1,5 +1,5 @@
 from acados_template import AcadosOcp, AcadosOcpSolver, AcadosSimSolver
-from mpcc_model import export_mpcc_ode_model
+from mpcc_model import export_mpcc_ode_model, export_mpcc_ode_model_spline_param
 import numpy as np
 import casadi as ca
 import scipy
@@ -45,90 +45,150 @@ def create_reference():
     cX = interpolate.CubicSpline(t, x, bc_type="clamped")
     cY = interpolate.CubicSpline(t, y, bc_type="clamped")
 
-    vX = cX.derivative(1)
-    vY = cY.derivative(1)
+    return reparam_curve(cX, cY, T)
 
-    aX = cX.derivative(2)
-    aY = cY.derivative(2)
 
-    # return the first 2 seconds of the reference as
-    # ref[i] = [x, y, v_x, v_y, a_x, a_y]
-    # sample every .1 seconds
-    num_samples = T * 10
-    ref = np.zeros((num_samples, 6))
-    for i in range(num_samples):
-        ref[i] = [
-            cX(i * 0.1),
-            cY(i * 0.1),
-            vX(i * 0.1),
-            vY(i * 0.1),
-            aX(i * 0.1),
-            aY(i * 0.1),
-        ]
+def compute_arclen(t0, tf, vx, vy):
+    dt = (tf - t0) / 10
+    ts = np.arange(t0, tf, dt)
 
-    return ref
+    s = 0
+    for t in ts:
+        s += np.sqrt(vx(t) * vx(t) + vy(t) * vy(t)) * dt
+
+    return s
+
+
+def binary_search(vx, vy, dl, start, end, tolerance=1e-3):
+    t_left = float(start)
+    t_right = float(end)
+
+    prev_s = 0
+    s = -1000
+
+    while np.abs(prev_s - s) > tolerance:
+        prev_s = s
+
+        t_mid = (t_left + t_right) / 2
+        s = compute_arclen(float(start), t_mid, vx, vy)
+
+        if s < dl:
+            t_left = t_mid
+        else:
+            t_right = t_mid
+
+    t_mid = round((t_left + t_right) / 2, 6)
+    return t_mid
+
+
+def reparam_curve(cx, cy, tot_t):
+    vx = cx.derivative(1)
+    vy = cy.derivative(1)
+
+    s = compute_arclen(0, tot_t, vx, vy)
+
+    M = 10
+    dl = s / float(M)
+
+    ss = []
+    xs = []
+    ys = []
+
+    for i in range(M + 1):
+        l = i * dl
+        ti = binary_search(vx, vy, l, 0, tot_t)
+        x = cx(ti)
+        y = cy(ti)
+
+        ss.append(l)
+        xs.append(x)
+        ys.append(y)
+
+    # sX = interpolate.CubicSpline(ss, xs)
+    # sY = interpolate.CubicSpline(ss, ys)
+
+    return ss, xs, ys
 
 
 def create_ocp():
 
     ocp = AcadosOcp()
+    ss, xs, ys = create_reference()
 
     # set model
-    model = export_mpcc_ode_model()
+    # model = export_mpcc_ode_model(list(ss), list(xs), list(ys))
+    model = export_mpcc_ode_model_spline_param()
     ocp.model = model
 
-    Tf = 2.0
+    Tf = 1.0
     nx = model.x.rows()
     nu = model.u.rows()
-    nparam = model.p.rows()
-    N = 20
+    nparams = model.p.rows()
+    N = 10
 
-    ocp.solver_options.N_horizon = N
-    ocp.solver_options.tf = Tf
-
-    Q_mat = 2 * np.diag([1e1, 1e1, 1e-2, 1e-2, 1, 1])
+    # Q_mat = 2 * np.diag([1e1, 1e1, 1e-2, 1e-2, 1, 1])
+    # R_mat = 2 * 5 * np.diag([1e-1, 1e-3])
+    Q_mat = 2 * np.diag([0, 0, 0, 0, 0, 0])
     R_mat = 2 * 5 * np.diag([1e-1, 1e-3])
 
     # path cost
-    ocp.cost.cost_type = "LINEAR_LS"
-    ocp.model.cost_y_expr = ca.vertcat(model.x, model.u)
-    ocp.cost.yref = np.zeros((nx + nu,))
-    ocp.cost.W = scipy.linalg.block_diag(Q_mat, R_mat)
-    ocp.cost.Vx = np.zeros((nx + nu, nx))
-    ocp.cost.Vx[:nx, :nx] = np.eye(nx)
-    ocp.cost.Vu = np.zeros((nx + nu, nu))
-    ocp.cost.Vu[nx : nx + nu, 0:nu] = np.eye(nu)
+    # ocp.cost.cost_type = "LINEAR_LS"
+    # ocp.model.cost_y_expr = ca.vertcat(model.x, model.u)
+    # ocp.cost.yref = np.zeros((nx + nu,))
+    # ocp.cost.W = scipy.linalg.block_diag(Q_mat, R_mat)
+    # ocp.cost.Vx = np.zeros((nx + nu, nx))
+    # ocp.cost.Vx[:nx, :nx] = np.eye(nx)
+    # ocp.cost.Vu = np.zeros((nx + nu, nu))
+    # ocp.cost.Vu[nx : nx + nu, 0:nu] = np.eye(nu)
+    ocp.cost.cost_type = "EXTERNAL"
 
     # terminal cost
-    ocp.cost.cost_type_e = "LINEAR_LS"
-    ocp.cost.yref_e = np.zeros((nx,))
-    ocp.model.cost_y_expr_e = model.x
-    ocp.cost.W_e = Q_mat
-    ocp.cost.Vx_e = np.eye(nx)
+    ocp.cost.cost_type_e = "EXTERNAL"
+    # ocp.cost.cost_type_e = "LINEAR_LS"
+    # ocp.cost.yref_e = np.zeros((nx,))
+    # ocp.model.cost_y_expr_e = model.x
+    # ocp.cost.W_e = Q_mat
+    # ocp.cost.Vx_e = np.eye(nx)
+    # ns = N
 
-    ocp.parameter_values = np.zeros((nparam,))
+    ocp.dims.N = N
+    ocp.parameter_values = np.zeros((nparams,))
+
+    ocp.model.cost_expr_ext_cost_0 = model.cost_expr_ext_cost
+    ocp.model.cost_expr_ext_cost = model.cost_expr_ext_cost
+    ocp.model.cost_expr_ext_cost_e = model.cost_expr_ext_cost_e
+
+    # ocp.cost.zl = 100 * np.ones((ns,))
+    # ocp.cost.zu = 100 * np.ones((ns,))
+    # ocp.cost.Zl = 1 * np.ones((ns,))
+    # ocp.cost.Zu = 1 * np.ones((ns,))
 
     ocp.constraints.lbu = np.array([-3, -np.pi / 2, -3])
     ocp.constraints.ubu = np.array([3, np.pi / 2, 3])
-    ocp.constraints.idxbu = np.array([0, 1])
+    ocp.constraints.idxbu = np.array([0, 1, 2])
 
-    ocp.constraints.lbx = np.array([-1e6, -1e6, -np.pi, -2, 0, 0])
-    ocp.constraints.ubx = np.array([1e6, 1e6, np.pi, 2, 10, 1e6])
+    ocp.constraints.lbx = np.array([-1e6, -1e6, -np.pi, 0, 0, 0])
+    ocp.constraints.ubx = np.array([1e6, 1e6, np.pi, 2, ss[-1], 2])
     ocp.constraints.idxbx = np.array(range(nx))  # Covers all state indices
 
     ocp.constraints.x0 = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
 
-    # ocp.solver_options.qp_solver = "PARTIAL_CONDENSING_HPIPM"
-    ocp.solver_options.qp_solver = "FULL_CONDENSING_HPIPM"
+    ocp.solver_options.tf = Tf
+    ocp.solver_options.N_horizon = N
+    ocp.solver_options.shooting_nodes = np.linspace(0, Tf, N + 1)
+    ocp.solver_options.qp_solver = "PARTIAL_CONDENSING_HPIPM"
+    # ocp.solver_options.qp_solver = "FULL_CONDENSING_HPIPM"
     # ocp.solver_options.qp_solver = "FULL_CONDENSING_QPOASES"
-    ocp.solver_options.hessian_approx = "GAUSS_NEWTON"
-    ocp.solver_options.integrator_type = "IRK"
+    ocp.solver_options.hessian_approx = "EXACT"
+    ocp.solver_options.integrator_type = "ERK"
     ocp.solver_options.nlp_solver_type = "SQP"
-    ocp.solver_options.globalization = "MERIT_BACKTRACKING"
-    ocp.solver_options.nlp_solver_max_iter = 300
+    # ocp.solver_options.globalization = "MERIT_BACKTRACKING"
+    # ocp.solver_options.nlp_solver_max_iter = 100
+    # ocp.solver_options.sim_method_num_stages = 4
+    # ocp.solver_options.sim_method_num_steps = 3
     # ocp.solver_options.hpipm_mode = "ROBUST"
     # ocp.solver_options.qp_solver_iter_max = 100
-    ocp.solver_options.globalization_line_search_use_sufficient_descent = True
+    # ocp.solver_options.globalization_line_search_use_sufficient_descent = True
 
     return ocp
 
@@ -136,7 +196,16 @@ def create_ocp():
 def simulation():
 
     ocp = create_ocp()
-    model = ocp.model
+
+    ss, xs, ys = create_reference()
+    sX = interpolate.CubicSpline(ss, xs)
+    sY = interpolate.CubicSpline(ss, ys)
+
+    s_space = np.linspace(0, ss[-1], 100)
+    x_space = [sX(s) for s in s_space]
+    y_space = [sY(s) for s in s_space]
+
+    # model = ocp.model
     acados_ocp_solver = AcadosOcpSolver(ocp)
     acados_integrator = AcadosSimSolver(ocp)
 
@@ -146,7 +215,7 @@ def simulation():
     N_horizon = acados_ocp_solver.N
 
     # prepare simulation
-    Nsim = 100
+    Nsim = 200
     nx = ocp.model.x.rows()
     nu = ocp.model.u.rows()
 
@@ -156,29 +225,29 @@ def simulation():
     xcurrent = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
     simX[0, :] = xcurrent
 
-    ref = create_reference()
+    # for stage in range(N_horizon + 1):
+    #     acados_ocp_solver.set(stage, "x", xcurrent)
+    #     # compute traj_omg
+    #     vx = ref[stage][2]
+    #     vy = ref[stage][3]
+    #     ax = ref[stage][4]
+    #     ay = ref[stage][5]
 
-    for stage in range(N_horizon + 1):
-        acados_ocp_solver.set(stage, "x", xcurrent)
-        # compute traj_omg
-        vx = ref[stage][2]
-        vy = ref[stage][3]
-        ax = ref[stage][4]
-        ay = ref[stage][5]
+    #     traj_omg = 0
+    #     if np.linalg.norm([vx, vy]) > 1e-6:
+    #         traj_omg = (ay * vx - ax * vy) / (vx**2 + vy**2)
 
-        traj_omg = 0
-        if np.linalg.norm([vx, vy]) > 1e-6:
-            traj_omg = (ay * vx - ax * vy) / (vx**2 + vy**2)
+    #     acados_ocp_solver.set(stage, "p", traj_omg)
 
-        acados_ocp_solver.set(stage, "p", traj_omg)
     for stage in range(N_horizon):
         acados_ocp_solver.set(stage, "u", np.zeros((nu,)))
 
     fig, ax = plt.subplots()
-    (current_pt,) = ax.plot([], [], "r-", label="Current")
+    # (current_pt,) = ax.plot([], [], "r-", label="Current")
     (line_traj,) = ax.plot([], [], "b-", label="Trajectory")
-    ax.set_xlim(-5, 5)
-    ax.set_ylim(-5, 0)
+    ax.plot(x_space, y_space)
+    # ax.set_xlim(-5, 5)
+    # ax.set_ylim(-5, 0)
     ax.set_xlabel("x")
     ax.set_ylabel("y")
     ax.legend()
@@ -186,48 +255,18 @@ def simulation():
 
     for i in range(Nsim):
 
-        for j in range(N_horizon):
+        for stage in range(N_horizon + 1):
 
-            step = min(len(ref) - 1, i + j)
-
-            # compute yref from ref
-            x = ref[step][0]
-            y = ref[step][1]
-            vx = ref[step][2]
-            vy = ref[step][3]
-            theta = np.arctan2(vy, vx)
-            v = np.sqrt(vx**2 + vy**2)
-            cte = 0
-            etheta = 0
-
-            acados_ocp_solver.set(
-                j,
-                "yref",
-                np.array([x, y, theta, v, cte, etheta, 0, 0]),
-            )
-
-        step = min(len(ref) - 1, i + N_horizon)
-        x = ref[step][0]
-        y = ref[step][1]
-        vx = ref[step][2]
-        vy = ref[step][3]
-        theta = np.arctan2(vy, vx)
-        v = np.sqrt(vx**2 + vy**2)
-        cte = 0
-        etheta = 0
-
-        acados_ocp_solver.set(
-            N_horizon,
-            "yref",
-            np.array([x, y, theta, v, cte, etheta]),
-        )
+            acados_ocp_solver.set(stage, "p", np.zeros([91, 1]))
 
         # time the solver
         start = time.time()
         simU[i, :] = acados_ocp_solver.solve_for_x0(xcurrent)
+        # acados_ocp_solver.print_statistics()
         end = time.time()
-        print(f"{i}/{Nsim} TTS: {(end - start)*1000}")
-        # status = acados_ocp_solver.get_status()
+        print("XCURRENT:", xcurrent)
+        print("SIMU:", simU[i, :])
+        print(f"{i}/{Nsim} TTS: {(end - start)}")
 
         xcurrent = acados_integrator.simulate(xcurrent, simU[i, :])
         simX[i + 1, :] = xcurrent
@@ -235,9 +274,9 @@ def simulation():
         # plt.plot(simX[:, 0], simX[:, 1], "r")
         line_traj.set_xdata(simX[: i + 1, 0])
         line_traj.set_ydata(simX[: i + 1, 1])
-        current_pt.set_data(ref[: i + 1, 0], ref[: i + 1, 1])
+        # current_pt.set_data(ref[: i + 1, 0], ref[: i + 1, 1])
 
-        plt.pause(0.1)
+        plt.pause(0.01)
 
     # plot results
     plt.show()
