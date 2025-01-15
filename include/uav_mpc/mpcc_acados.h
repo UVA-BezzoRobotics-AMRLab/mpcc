@@ -49,6 +49,7 @@ public:
 protected:
 
     double get_s_from_state(const Eigen::VectorXd &state);
+    std::vector<Spline1D> get_ref_from_s(double s);
 
     std::map<std::string, double> _params;
     std::vector<double> _prev_x0;
@@ -66,7 +67,8 @@ protected:
     int _angvel_start;
     int _linacc_start;
     int _s_ddot_start;
-    int _ind_inc;
+    int _ind_state_inc;
+    int _ind_input_inc;
 
     double _dt;
     double _ds;

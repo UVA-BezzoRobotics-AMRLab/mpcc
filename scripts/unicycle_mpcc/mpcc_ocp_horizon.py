@@ -225,156 +225,169 @@ def simulation():
 
     # # model = ocp.model
     acados_ocp_solver = AcadosOcpSolver(ocp)
-    # acados_integrator = AcadosSimSolver(ocp)
+    exit(0)
+    acados_integrator = AcadosSimSolver(ocp)
 
-    # N_horizon = acados_ocp_solver.N
+    N_horizon = acados_ocp_solver.N
 
-    # # prepare simulation
-    # Nsim = 100
-    # nx = ocp.model.x.rows()
-    # nu = ocp.model.u.rows()
+    # prepare simulation
+    Nsim = 100
+    nx = ocp.model.x.rows()
+    nu = ocp.model.u.rows()
 
-    # simX = np.zeros((Nsim + 1, nx))
-    # simU = np.zeros((Nsim, nu))
+    simX = np.zeros((Nsim + 1, nx))
+    simU = np.zeros((Nsim, nu))
 
-    # xcurrent = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
-    # simX[0, :] = xcurrent
+    xcurrent = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+    simX[0, :] = xcurrent
 
-    # for stage in range(N_horizon):
-    #     acados_ocp_solver.set(stage, "u", np.zeros((nu,)))
+    for stage in range(N_horizon):
+        acados_ocp_solver.set(stage, "u", np.zeros((nu,)))
 
-    # fig, ax = plt.subplots()
-    # # (current_pt,) = ax.plot([], [], "r-", label="Current")
-    # ax.plot(x_space, y_space, "b--")
-    # (line_traj,) = ax.plot([], [], "g-", label="Trajectory", zorder=2)
-    # (horizon,) = ax.plot([], [], "r-", label="Horizon", zorder=3)
-    # # ax.set_xlim(-5, 5)
-    # # ax.set_ylim(-5, 0)
-    # ax.set_xlabel("x")
-    # ax.set_ylabel("y")
-    # ax.legend()
-    # ax.set_title("Reference vs. Trajectory")
+    fig, ax = plt.subplots()
+    # (current_pt,) = ax.plot([], [], "r-", label="Current")
+    ax.plot(x_space, y_space, "b--")
+    (line_traj,) = ax.plot([], [], "g-", label="Trajectory", zorder=2)
+    (horizon,) = ax.plot([], [], "r-", label="Horizon", zorder=3)
+    # ax.set_xlim(-5, 5)
+    # ax.set_ylim(-5, 0)
+    ax.set_xlabel("x")
+    ax.set_ylabel("y")
+    ax.legend()
+    ax.set_title("Reference vs. Trajectory")
 
-    # # knots = np.linspace(0, 2, 11)
-    # # x_hor_spline = None
-    # # y_hor_spline = None
+    # knots = np.linspace(0, 2, 11)
+    # x_hor_spline = None
+    # y_hor_spline = None
 
-    # x_hor_spline = sX
-    # y_hor_spline = sY
+    x_hor_spline = sX
+    y_hor_spline = sY
 
-    # v = ca.MX.sym("v")
-    # x_coeff = ca.MX.sym("x_coeffs", 11)
-    # y_coeff = ca.MX.sym("y_coeffs", 11)
-    # # arc_len_knots = DM([1.0] * 11)
-    # # arc_len_knots = MX.sym("knots", 11)
-    # p = ca.vertcat(x_coeff, y_coeff)
+    v = ca.MX.sym("v")
+    x_coeff = ca.MX.sym("x_coeffs", 11)
+    y_coeff = ca.MX.sym("y_coeffs", 11)
+    # arc_len_knots = DM([1.0] * 11)
+    # arc_len_knots = MX.sym("knots", 11)
+    p = ca.vertcat(x_coeff, y_coeff)
 
-    # # arc_len_knots = np.linspace(0, 2, 11)
-    # # arc_len_knots = np.linspace(0, 17.0385372, 11)
-    # # arc_len_knots = np.concatenate(
-    # #     (
-    # #         np.ones((4,)) * arc_len_knots[0],
-    # #         arc_len_knots[2:-2],
-    # #         np.ones((4,)) * arc_len_knots[-1],
-    # #     )
-    # # )
+    # arc_len_knots = np.linspace(0, 2, 11)
+    # arc_len_knots = np.linspace(0, 17.0385372, 11)
+    # arc_len_knots = np.concatenate(
+    #     (
+    #         np.ones((4,)) * arc_len_knots[0],
+    #         arc_len_knots[2:-2],
+    #         np.ones((4,)) * arc_len_knots[-1],
+    #     )
+    # )
 
-    # # k defaults to 3 (cubic)
-    # bspl_x = interpolate.make_interp_spline(ss, xs)
-    # bspl_y = interpolate.make_interp_spline(ss, ys)
+    # k defaults to 3 (cubic)
+    bspl_x = interpolate.make_interp_spline(ss, xs)
+    bspl_y = interpolate.make_interp_spline(ss, ys)
 
-    # # domain = np.linspace(1, 10, 11)
-    # # bspl_x = interpolate.make_interp_spline(domain, [bspl_x(x) for x in domain])
-    # # bspl_y = interpolate.make_interp_spline(domain, [bspl_y(x) for x in domain])
+    # domain = np.linspace(0, 4, 11)
+    # bspl_x = interpolate.make_interp_spline(domain, [bspl_x(x) for x in domain])
+    # bspl_y = interpolate.make_interp_spline(domain, [bspl_y(x) for x in domain])
 
-    # # 1 denotes the multiplicity of the knots at the ends
-    # # don't need clamped so leave as 1
-    # # x_spline_mx = ca.bspline(v, x_coeff, [list(arc_len_knots)], [3], 1, {})
-    # # y_spline_mx = ca.bspline(v, y_coeff, [list(arc_len_knots)], [3], 1, {})
+    # 1 denotes the multiplicity of the knots at the ends
+    # don't need clamped so leave as 1
+    # x_spline_mx = ca.bspline(v, x_coeff, [list(arc_len_knots)], [3], 1, {})
+    # y_spline_mx = ca.bspline(v, y_coeff, [list(arc_len_knots)], [3], 1, {})
 
-    # # spline_x = ca.Function("xr", [v, x_coeff], [x_spline_mx], {})
-    # # spline_y = ca.Function("yr", [v, y_coeff], [y_spline_mx], {})
+    # spline_x = ca.Function("xr", [v, x_coeff], [x_spline_mx], {})
+    # spline_y = ca.Function("yr", [v, y_coeff], [y_spline_mx], {})
 
-    # # print(spline_x(17.01, bspl.c))
-    # # print(sX(17.01))
+    # print(spline_x(17.01, bspl.c))
+    # print(sX(17.01))
 
-    # # exit()
-    # samples = np.linspace(0, max_s, 11)
-    # for i in range(Nsim):
+    # exit()
+    samples = np.linspace(0, max_s, 11)
+    for i in range(Nsim):
 
-    #     # find s minimizing dist to robot
-    #     s = 0
-    #     min_dist = 1e6
-    #     for si in np.linspace(0, ss[-1] - 1, 100):
-    #         d = np.linalg.norm(
-    #             np.array(xcurrent[:2]) - np.array([bspl_x(si), bspl_y(si)])
-    #         )
+        # find s minimizing dist to robot
+        s = 0
+        min_dist = 1e6
+        for si in np.linspace(0, ss[-1] - 1, 100):
+            d = np.linalg.norm(
+                np.array(xcurrent[:2]) - np.array([bspl_x(si), bspl_y(si)])
+            )
 
-    #         if min_dist > d:
-    #             min_dist = d
-    #             s = si
+            if min_dist > d:
+                min_dist = d
+                s = si
 
-    #     print("found s", s)
-    #     print("end horizon is", s + max_s)
-    #     print("ss[-1]: ", bspl_x.t[-1])
-    #     xcurrent[4] = 0
-    #     # s = xcurrent[4]
-    #     # for the knots, get the associated cubic spline values
-    #     if s + max_s < bspl_x.t[-1]:
-    #         x_hor = [bspl_x(s + k) for k in samples]
-    #         y_hor = [bspl_y(s + k) for k in samples]
+        print("found s", s)
+        print("end horizon is", s + max_s)
+        print("ss[-1]: ", bspl_x.t[-1])
+        xcurrent[4] = 0
+        # s = xcurrent[4]
+        # for the knots, get the associated cubic spline values
+        if s + max_s < bspl_x.t[-1]:
+            x_hor = [bspl_x(s + k) for k in samples]
+            y_hor = [bspl_y(s + k) for k in samples]
 
-    #         horizon.set_xdata(x_hor)
-    #         horizon.set_ydata(y_hor)
+            horizon.set_xdata(x_hor)
+            horizon.set_ydata(y_hor)
 
-    #         x_hor_spline = interpolate.make_interp_spline(samples, x_hor)
-    #         y_hor_spline = interpolate.make_interp_spline(samples, y_hor)
-    #         print(x_hor_spline.c)
-    #         print(y_hor_spline.c)
+            x_hor_spline = interpolate.make_interp_spline(samples, x_hor)
+            y_hor_spline = interpolate.make_interp_spline(samples, y_hor)
 
-    #     else:
-    #         print("AHHHHH WE'RE DONE")
-    #         break
+            print(x_hor_spline.t)
+            print(x_hor_spline.c)
+            print("-------------------")
+            print(y_hor_spline.t)
+            print(y_hor_spline.c)
 
-    #         # x_hor_spline = interpolate.CubicSpline(knots, x_hor)
-    #         # y_hor_spline = interpolate.CubicSpline(knots, y_hor)
+            # print(x_hor_spline(0))
+            # print(x_hor_spline(1))
+            # print(x_hor_spline(2))
+            # print(x_hor_spline(3))
+            # print(x_hor_spline(4))
 
-    #     for stage in range(N_horizon + 1):
+        else:
+            print("AHHHHH WE'RE DONE")
+            break
 
-    #         # x_spline_coeff = bspl_x.c
-    #         # y_spline_coeff = bspl_y.c
+            # x_hor_spline = interpolate.CubicSpline(knots, x_hor)
+            # y_hor_spline = interpolate.CubicSpline(knots, y_hor)
 
-    #         x_spline_coeff = x_hor_spline.c
-    #         y_spline_coeff = y_hor_spline.c
+        for stage in range(N_horizon + 1):
 
-    #         acados_ocp_solver.set(
-    #             stage, "p", np.concatenate((x_spline_coeff, y_spline_coeff))
-    #         )
+            # x_spline_coeff = bspl_x.c
+            # y_spline_coeff = bspl_y.c
 
-    #     # time the solver
-    #     start = time.time()
-    #     simU[i, :] = acados_ocp_solver.solve_for_x0(xcurrent)
-    #     # acados_ocp_solver.print_statistics()
-    #     end = time.time()
+            x_spline_coeff = x_hor_spline.c
+            y_spline_coeff = y_hor_spline.c
 
-    #     print("XCURRENT:", xcurrent)
-    #     print("SIMU:", simU[i, :])
-    #     print(f"{i}/{Nsim} TTS: {(end - start)}")
+            acados_ocp_solver.set(
+                stage, "p", np.concatenate((x_spline_coeff, y_spline_coeff))
+            )
 
-    #     xcurrent = acados_integrator.simulate(xcurrent, simU[i, :])
-    #     simX[i + 1, :] = xcurrent
+        # time the solver
+        start = time.time()
+        simU[i, :] = acados_ocp_solver.solve_for_x0(xcurrent)
+        # acados_ocp_solver.print_statistics()
+        end = time.time()
 
-    #     xcurrent[2] = np.arctan2(np.sin(xcurrent[2]), np.cos(xcurrent[2]))
+        print("XCURRENT:", xcurrent)
+        print("SIMU:", simU[i, :])
+        print(f"{i}/{Nsim} TTS: {(end - start)}")
 
-    #     # plt.plot(simX[:, 0], simX[:, 1], "r")
-    #     line_traj.set_xdata(simX[: i + 1, 0])
-    #     line_traj.set_ydata(simX[: i + 1, 1])
-    #     # current_pt.set_data(ref[: i + 1, 0], ref[: i + 1, 1])
+        xcurrent = acados_integrator.simulate(xcurrent, simU[i, :])
+        simX[i + 1, :] = xcurrent
 
-    #     plt.pause(0.01)
+        xcurrent[2] = np.arctan2(np.sin(xcurrent[2]), np.cos(xcurrent[2]))
+        print(xcurrent)
 
-    # # plot results
-    # plt.show()
+        # plt.plot(simX[:, 0], simX[:, 1], "r")
+        line_traj.set_xdata(simX[: i + 1, 0])
+        line_traj.set_ydata(simX[: i + 1, 1])
+        # current_pt.set_data(ref[: i + 1, 0], ref[: i + 1, 1])
+
+        # exit(0)
+        plt.pause(0.01)
+
+    # plot results
+    plt.show()
 
 
 if __name__ == "__main__":

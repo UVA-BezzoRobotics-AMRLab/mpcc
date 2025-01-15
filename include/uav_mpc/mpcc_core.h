@@ -5,7 +5,8 @@
 #include <fstream>
 
 #include <uav_mpc/types.h>
-#include <uav_mpc/mpcc_impl.h>
+// #include <uav_mpc/mpcc_impl.h>
+#include <uav_mpc/mpcc_acados.h>
 // #include <uav_mpc/mpcc_nlopt_impl.h>
 
 #include <distance_map_core/distance_map_converter_base.h>
@@ -45,6 +46,7 @@ protected:
     double _curr_ang_vel;
     double _max_vel;
     double _max_ang_vel;
+    double _ref_length;
 
     bool _use_cbf;
 

@@ -168,9 +168,9 @@ def export_mpcc_ode_model_spline_param() -> AcadosModel:
     e_c = sin(phi_r) * (x1 - xr) - cos(phi_r) * (y1 - yr)
     e_l = -cos(phi_r) * (x1 - xr) - sin(phi_r) * (y1 - yr)
 
-    Q_c = 50
-    Q_l = 1
-    Q_mat = np.diag([Q_c, Q_l, 1e-1, 1e-3, 1e-1])
+    Q_c = 4.0  # 50
+    Q_l = 100  # 3
+    Q_mat = np.diag([Q_c, Q_l, 1e-1, 4e-1, 1e-1])
     Q_mat_e = np.diag([Q_c, Q_l])  # / 10
 
     y_expr = vertcat(e_c, e_l, a, w, sddot)
@@ -210,8 +210,8 @@ def export_mpcc_ode_model_spline_param() -> AcadosModel:
     model.xdot = xdot
     model.name = model_name
 
-    model.cost_expr_ext_cost = y_expr.T @ Q_mat @ y_expr - sdot1
-    model.cost_expr_ext_cost_e = y_expr_e.T @ Q_mat_e @ y_expr_e - sdot1
+    model.cost_expr_ext_cost = y_expr.T @ Q_mat @ y_expr - 0.2 * sdot1
+    model.cost_expr_ext_cost_e = y_expr_e.T @ Q_mat_e @ y_expr_e - 0.2 * sdot1
 
     # store meta information
     model.x_labels = [

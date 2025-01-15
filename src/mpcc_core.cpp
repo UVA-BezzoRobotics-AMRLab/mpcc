@@ -2,6 +2,7 @@
 #include <cmath>
 #include <iostream>
 
+#include "uav_mpc/utils.h"
 #include "uav_mpc/spline.h"
 #include "uav_mpc/mpcc_core.h"
 
@@ -16,6 +17,7 @@ MPCCore::MPCCore()
     _state = Eigen::VectorXd::Zero(6);
 
     _is_set = false;
+    _ref_length = 0;
 }
 
 MPCCore::~MPCCore()
@@ -44,65 +46,60 @@ void MPCCore::set_trajectory(const Eigen::RowVectorXd &ss, const Eigen::RowVecto
 {
     _is_set = true;
 
-    const auto fitX = SplineFitting1D::Interpolate(xs, 3, ss);
+    const auto fitX = utils::Interp(xs, 3, ss);
     _splineX = std::make_unique<Spline1D>(fitX);
 
-    const auto fitY = SplineFitting1D::Interpolate(ys, 3, ss);
+    const auto fitY = utils::Interp(ys, 3, ss);
     _splineY = std::make_unique<Spline1D>(fitY);
 
-    double tot_err = 0;
-    for(double s = 0; s < ss(ss.size()-1); s += .01)
-    {
-        Eigen::Vector2d tan(_splineX->derivatives(s, 1).coeff(1), 
-                            _splineY->derivatives(s, 1).coeff(1));
+    _ref_length = ss[ss.size() - 1];
 
-        tot_err += fabs(1-tan.norm());
-    }
+    // double tot_err = 0;
+    // for(double s = 0; s < ss(ss.size()-1); s += .01)
+    // {
+    //     Eigen::Vector2d tan(_splineX->derivatives(s, 1).coeff(1), 
+    //                         _splineY->derivatives(s, 1).coeff(1));
 
-    std::cout << "EIGEN ERROR IS: " << tot_err << std::endl;
+    //     tot_err += fabs(1-tan.norm());
+    // }
+
+    // std::cout << "EIGEN ERROR IS: " << tot_err << std::endl;
 
     std::vector<Spline1D> ref;
     ref.push_back(*_splineX);
     ref.push_back(*_splineY);
-    _mpc->set_reference(ref, ss[ss.size() - 1]);
+    _mpc->set_reference(ref, _ref_length);
 }
 
 void MPCCore::set_trajectory(const std::vector<double> &ss, const std::vector<double> &xs, const std::vector<double> &ys)
 {
     _is_set = true;
 
-    // tk::spline sx(ss, xs, tk::spline::cspline, false,
-    //               tk::spline::first_deriv, 1.0,
-    //               tk::spline::first_deriv, 1.0);
-    // tk::spline sy(ss, ys, tk::spline::cspline, false,
-    //               tk::spline::first_deriv, 1.0,
-    //               tk::spline::first_deriv, 1.0);
+    // tk::spline sx(ss, xs, tk::spline::cspline);
+    // tk::spline sy(ss, ys, tk::spline::cspline);
 
-    tk::spline sx(ss, xs, tk::spline::cspline);
-    tk::spline sy(ss, ys, tk::spline::cspline);
-
-    double tot_err = 0;
-    for(double s = 0; s < ss.back(); s += .01)
-    {
-        Eigen::Vector2d tan(sx.deriv(1, s),
-                            sy.deriv(1, s));
+    // double tot_err = 0;
+    // for(double s = 0; s < ss.back(); s += .01)
+    // {
+    //     Eigen::Vector2d tan(sx.deriv(1, s),
+    //                         sy.deriv(1, s));
                             
 
-        tot_err += fabs(1-tan.norm());
-    }
+    //     tot_err += fabs(1-tan.norm());
+    // }
 
-    std::cout << "TK ERROR IS: " << tot_err << std::endl;
+    // std::cout << "TK ERROR IS: " << tot_err << std::endl;
 
-    std::vector<SplineWrapper> ref;
-    SplineWrapper sx_wrap;
-    sx_wrap.spline = sx;
+    // std::vector<SplineWrapper> ref;
+    // SplineWrapper sx_wrap;
+    // sx_wrap.spline = sx;
 
-    SplineWrapper sy_wrap;
-    sy_wrap.spline = sy;
+    // SplineWrapper sy_wrap;
+    // sy_wrap.spline = sy;
 
-    ref.push_back(sx_wrap);
-    ref.push_back(sy_wrap);
-    _mpc->set_reference(ref, ss[ss.size() - 1]);
+    // ref.push_back(sx_wrap);
+    // ref.push_back(sy_wrap);
+    // _mpc->set_reference(ref, ss[ss.size() - 1]);
 }
 
 void MPCCore::set_tubes(const std::vector<SplineWrapper>& tubes)
@@ -146,7 +143,14 @@ std::vector<double> MPCCore::solve()
 {
 
     if (!_is_set)
-        return {};
+        return {0,0};
+
+    Eigen::Vector2d end_p((*_splineX)(_ref_length).coeff(0), (*_splineY)(_ref_length).coeff(0));
+    if ((Eigen::Vector2d(_odom(0), _odom(1)) - end_p).norm() < 2e-1)
+    {
+        _is_set = false;
+        return {0,0};
+    }
 
     // std::cout << "odometry is " << _odom.transpose() << std::endl;
     double new_vel;

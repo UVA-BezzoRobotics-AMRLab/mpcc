@@ -1,34 +1,7 @@
 #include <iostream>
+
+#include <uav_mpc/utils.h>
 #include <uav_mpc/mpcc_acados.h>
-
-std::vector<Spline1D> create_reference()
-{
-    std::vector<Spline1D> ret;
-
-    Eigen::RowVectorXd ss(11);
-    ss << 0.0, 1.88503, 3.77006, 5.655, 7.54, 9.42515, 11.31, 13.1952, 15.08, 16.9652, 18.85;
-
-    Eigen::RowVectorXd xs(11);
-    xs << 0.0003, 1.7632, 2.8531, 2.8531, 1.7632, -0.0003, -1.7632, -2.8531, -2.8531, -1.7632, -0.0003;
-
-    Eigen::RowVectorXd ys(11);
-    ys << 0.0, -0.5728, -2.0729, -3.9271, -5.4271, -6.0, -5.4271, -3.9271, -2.0729, -0.5728, 0.0;
-
-
-    const auto fitX = SplineFitting1D::Interpolate(xs, 3, ss);
-    Spline1D splineX = Spline1D(fitX);
-
-    const auto fitY = SplineFitting1D::Interpolate(ys, 3, ss);
-    Spline1D splineY = Spline1D(fitY);
-
-    std::cout << splineX.knots() << std::endl;
-    std::cout << splineX.ctrls() << std::endl;
-
-    ret.push_back(splineX);
-    ret.push_back(splineY);
-
-    return ret;
-}
 
 MPCC::MPCC()
 {
@@ -47,11 +20,40 @@ MPCC::MPCC()
 
     _use_eigen = false;
 
-    _acados_ocp_capsule = nullptr; 
+    _acados_ocp_capsule = nullptr;
     _new_time_steps = nullptr;
 
     _s_dot = 0;
     _ref_length = 0;
+
+    _state = Eigen::VectorXd(6);
+    _state << 0, 0, 0, 0, 0, 0;
+
+    _prev_x0.resize((_mpc_steps+1) * _state.size());
+
+    // _x_start = 0;
+    // _y_start = _x_start + _mpc_steps;
+    // _theta_start = _y_start + _mpc_steps;
+    // _v_start = _theta_start + _mpc_steps;
+    // _s_start = _v_start + _mpc_steps;
+    // _s_dot_start = _s_start + _mpc_steps;
+    // _angvel_start = _s_dot_start + _mpc_steps;
+    // _linacc_start = _angvel_start + _mpc_steps - 1;
+    // _s_ddot_start = _linacc_start + _mpc_steps - 1;
+
+
+
+    _x_start = 0;
+    _y_start = 1;
+    _theta_start = 2;
+    _v_start = 3;
+    _s_start = 4;
+    _s_dot_start = 5;
+    _angvel_start = 6;
+    _linacc_start = 7;
+    _s_ddot_start = 8;
+    _ind_state_inc = 6;
+    _ind_input_inc = 3;
 }
 
 MPCC::~MPCC()
@@ -91,14 +93,15 @@ void MPCC::load_params(const std::map<std::string, double> &params)
 
     _acados_ocp_capsule = unicycle_model_mpcc_acados_create_capsule();
 
-    if(_new_time_steps)
-        delete [] _new_time_steps;
+    if (_new_time_steps)
+        delete[] _new_time_steps;
 
-    _new_time_steps = new double[_mpc_steps];
-    for(int i = 0; i < _mpc_steps; ++i)
-    {
-        _new_time_steps[i] = _dt * i;
-    }
+    // _new_time_steps = new double[_mpc_steps];
+    // for(int i = 0; i < _mpc_steps; ++i)
+    // {
+    //     _new_time_steps[i] = _dt * i;
+    //     std::cout << _new_time_steps[i] << std::endl;
+    // }
 
     int status = unicycle_model_mpcc_acados_create_with_discretization(_acados_ocp_capsule, _mpc_steps, _new_time_steps);
     if (status)
@@ -114,9 +117,32 @@ void MPCC::load_params(const std::map<std::string, double> &params)
     _nlp_solver = unicycle_model_mpcc_acados_get_nlp_solver(_acados_ocp_capsule);
     _nlp_config = unicycle_model_mpcc_acados_get_nlp_config(_acados_ocp_capsule);
 
+    // _x_start = 0;
+    // _y_start = _x_start + _mpc_steps;
+    // _theta_start = _y_start + _mpc_steps;
+    // _v_start = _theta_start + _mpc_steps;
+    // _s_start = _v_start + _mpc_steps;
+    // _s_dot_start = _s_start + _mpc_steps;
+    // _angvel_start = _s_dot_start + _mpc_steps;
+    // _linacc_start = _angvel_start + _mpc_steps - 1;
+    // _s_ddot_start = _linacc_start + _mpc_steps - 1;
+
+    _prev_x0.resize((_mpc_steps + 1) * _state.size());
+
+    _x_start = 0;
+    _y_start = 1;
+    _theta_start = 2;
+    _v_start = 3;
+    _s_start = 4;
+    _s_dot_start = 5;
+    _angvel_start = 6;
+    _linacc_start = 7;
+    _s_ddot_start = 8;
+    _ind_state_inc = 6;
+    _ind_input_inc = 3;
+
     std::cout << "!! MPC Obj parameters updated !! " << std::endl;
     std::cout << "!! ACADOS model instantiated !! " << std::endl;
-
 }
 
 void MPCC::set_reference(const std::vector<Spline1D> &reference, double arclen)
@@ -129,7 +155,6 @@ void MPCC::set_reference(const std::vector<Spline1D> &reference, double arclen)
 double MPCC::get_s_from_state(const Eigen::VectorXd &state)
 {
 
-    std::cout << "getting s" << std::endl;
     // find the s which minimizes dist to robot
     double s = 0;
     double min_dist = 1e6;
@@ -146,13 +171,67 @@ double MPCC::get_s_from_state(const Eigen::VectorXd &state)
         }
     }
 
-    std::cout << "done" << std::endl;
     return s;
+}
+
+Eigen::VectorXd MPCC::get_state()
+{
+    return _state;
+}
+
+std::vector<Spline1D> MPCC::get_ref_from_s(double s)
+{
+    // get reference for next 4 meters, indexing from s=0 onwards
+
+    Eigen::RowVectorXd ss, xs, ys;
+    ss.resize(11);
+    xs.resize(11);
+    ys.resize(11);
+
+    double px = _reference[0](_ref_length).coeff(0);
+    double py = _reference[1](_ref_length).coeff(0);
+
+    double dx = _reference[0].derivatives(_ref_length, 1).coeff(1);
+    double dy = _reference[1].derivatives(_ref_length, 1).coeff(1);
+
+    // capture reference at each sample
+    for (int i = 0; i < 11; ++i)
+    {
+        ss(i) = ((double)i) * 4. / 10.;
+
+        // if sample domain exceeds trajectory, duplicate final point
+        if (ss(i) + s <= _ref_length)
+        {
+            xs(i) = _reference[0](ss(i) + s).coeff(0);
+            ys(i) = _reference[1](ss(i) + s).coeff(0);
+        }
+        else
+        {
+            // xs(i) = dx * (ss(i) + s - _ref_length) + px;
+            // ys(i) = dy * (ss(i) + s - _ref_length) + py;
+            xs(i) = px;
+            ys(i) = py;
+        }
+    }
+
+    // fit splines
+    const auto fitX = utils::Interp(xs, 3, ss);
+    Spline1D splineX(fitX);
+
+    const auto fitY = utils::Interp(ys, 3, ss);
+    Spline1D splineY(fitY);
+
+    return {splineX, splineY};
 }
 
 std::vector<double> MPCC::solve(const Eigen::VectorXd &state)
 {
-    // set initial condition
+
+
+    /*************************************
+    ********** INITIAL CONDITION *********
+    **************************************/
+
     double lbx0[NBX0];
     double ubx0[NBX0];
     lbx0[0] = state[0];
@@ -163,65 +242,173 @@ std::vector<double> MPCC::solve(const Eigen::VectorXd &state)
     ubx0[2] = state[2];
     lbx0[3] = state[3];
     ubx0[3] = state[3];
-    lbx0[4] = get_s_from_state(state);
-    ubx0[4] = get_s_from_state(state);
+    lbx0[4] = 0; 
+    ubx0[4] = 0; 
     lbx0[5] = _s_dot;
     ubx0[5] = _s_dot;
 
     ocp_nlp_constraints_model_set(_nlp_config, _nlp_dims, _nlp_in, 0, "lbx", lbx0);
     ocp_nlp_constraints_model_set(_nlp_config, _nlp_dims, _nlp_in, 0, "ubx", ubx0);
 
-    // warm start
+    /*************************************
+    ********* INITIALIZE SOLUTION ********
+    **************************************/
+
     double x_init[NX];
     x_init[0] = lbx0[0];
     x_init[1] = lbx0[1];
     x_init[2] = lbx0[2];
     x_init[3] = lbx0[3];
-    x_init[4] = lbx0[4];
+    x_init[4] = 0;
     x_init[5] = lbx0[5];
+
+    // for (int i = 0; i < NX; ++i)
+    // {
+    //     std::cout << "x_i[" << i << "]: " << x_init[i] << "\tubx[" << i << "]: " << ubx0[i] << std::endl;
+    // }
 
     double u_init[NU];
     u_init[0] = 0.0;
     u_init[1] = 0.0;
     u_init[2] = 0.0;
 
-    for(int i = 0; i < _mpc_steps; ++i)
+    for (int i = 0; i < _mpc_steps; ++i)
     {
+        // double x_stage[NX];
+        // for(int j = 0; j < NX; ++j)
+        //     x_stage[j] = _prev_x0[(i+1)*_ind_state_inc + j];
+
         ocp_nlp_out_set(_nlp_config, _nlp_dims, _nlp_out, i, "x", x_init);
         ocp_nlp_out_set(_nlp_config, _nlp_dims, _nlp_out, i, "u", u_init);
     }
 
     // no input in final step of MPC
+    // double x_stage[NX];
+    // for(int j = 0; j < NX; ++j)
+    //     x_stage[j] = _prev_x0[_mpc_steps*_ind_state_inc + j];
+
     ocp_nlp_out_set(_nlp_config, _nlp_dims, _nlp_out, _mpc_steps, "x", x_init);
-    std::cout << "solving" << std::endl;
+
+    /*************************************
+    ********* SET REFERENCE PARAMS *******
+    **************************************/
+    
+    // generate params from reference trajectory starting at current s
+    double s = get_s_from_state(state);
+    std::vector<Spline1D> ref = get_ref_from_s(s);
+
+    double params[NP];
+    auto ctrls_x = ref[0].ctrls();
+    auto ctrls_y = ref[1].ctrls();
+
+    if (ctrls_x.size() + ctrls_y.size() != NP)
+    {
+        std::cout << "reference size does not match acados parameter size" << std::endl;
+        return {};
+    }
+
+    for (int i = 0; i < ctrls_x.size(); ++i)
+    {
+        params[i] = ctrls_x[i];
+        params[i + ctrls_x.size()] = ctrls_y[i];
+    }
+
+    // for (int i = 0; i < NP; ++i)
+    // {
+    //     std::cout << "params[" << i << "]: " << params[i] << std::endl;
+    // }
+
+    for (int i = 0; i < _mpc_steps + 1; ++i)
+        unicycle_model_mpcc_acados_update_params(_acados_ocp_capsule, i, params, NP);
+
+    /*************************************
+    ************* RUN SOLVER *************
+    **************************************/
+
+    double elapsed_time;
+
     int status = unicycle_model_mpcc_acados_solve(_acados_ocp_capsule);
-    std::cout << "done solving" << std::endl;
+    ocp_nlp_get(_nlp_config, _nlp_solver, "time_tot", &elapsed_time);
 
     if (status == ACADOS_SUCCESS)
-        std::cout << "unicycle_model_mpcc_acados_solve(): SUCCESS!" << std::endl;
+        std::cout << "unicycle_model_mpcc_acados_solve(): SUCCESS! " << elapsed_time * 1000 << std::endl;
     else
+    {
         std::cout << "unicycle_model_mpcc_acados_solve() failed with status " << status << std::endl;
+        return {0, 0};
+    }
 
-    return {};
+    // unicycle_model_mpcc_acados_print_stats(_acados_ocp_capsule);
+
+    /*************************************
+    *********** PROCESS OUTPUT ***********
+    **************************************/
+
+    Eigen::VectorXd utraj(NU);
+    ocp_nlp_out_get(_nlp_config, _nlp_dims, _nlp_out, 0, "u", &utraj[0]);
+
+    // stored as x0, y0,..., x1, y1, ..., xN, yN, ...
+    Eigen::VectorXd xtraj((_mpc_steps + 1) * NX);
+    for (int i = 0; i <= _mpc_steps; ++i)
+        ocp_nlp_out_get(_nlp_config, _nlp_dims, _nlp_out, i, "x", &xtraj[i * NX]);
+
+
+    for(int i = 0; i < xtraj.size(); ++i)
+        _prev_x0[i] = xtraj[i];
+
+    mpc_x = {};
+    mpc_y = {};
+    mpc_theta = {};
+    mpc_linvels = {};
+    mpc_s = {};
+    mpc_s_dot = {};
+    for (int i = 0; i < _mpc_steps; i++)
+    {
+        mpc_x.push_back(xtraj[_x_start + i * _ind_state_inc]);
+        mpc_y.push_back(xtraj[_y_start + i * _ind_state_inc]);
+        mpc_theta.push_back(xtraj[_theta_start + i * _ind_state_inc]);
+        mpc_linvels.push_back(xtraj[_v_start + i * _ind_state_inc]);
+        mpc_s.push_back(xtraj[_s_start + i * _ind_state_inc]);
+        mpc_s_dot.push_back(xtraj[_s_dot_start + i * _ind_state_inc]);
+    }
+
+    mpc_angvels = {};
+    mpc_linaccs = {};
+    mpc_s_ddots = {};
+    for (int i = 0; i < _mpc_steps - 1; i++)
+    {
+        mpc_angvels.push_back(xtraj[_angvel_start + i * _ind_input_inc]);
+        mpc_linaccs.push_back(xtraj[_linacc_start + i * _ind_input_inc]);
+        mpc_s_ddots.push_back(xtraj[_s_ddot_start + i * _ind_input_inc]);
+    }
+
+    _s_dot = xtraj[_s_dot_start + 1 * _ind_state_inc];
+
+    _state << xtraj[_x_start],
+        xtraj[_y_start],
+        xtraj[_theta_start],
+        xtraj[_v_start],
+        xtraj[_s_start],
+        xtraj[_s_dot_start];
+
+
+    return {utraj[1], utraj[0]};
 }
 
-int main()
-{
-    MPCC obj;
-    std::map<std::string, double> params;
+// int main()
+// {
+//     MPCC obj;
+//     std::map<std::string, double> params;
 
-    double arclen = 18.85;
-    std::vector<Spline1D> ref = create_reference();
-    obj.set_reference(ref, arclen);
+//     double arclen = 18.85;
+//     std::vector<Spline1D> ref = create_reference();
+//     obj.set_reference(ref, arclen);
 
-    obj.load_params(params);
-    Eigen::VectorXd state(4);
-    state << 0,0,0,0;
+//     obj.load_params(params);
+//     Eigen::VectorXd state(4);
+//     state << 0, 0, 0, 0;
 
+//     obj.solve(state);
 
-    obj.solve(state);
-
-    
-
-    return 0;
-}
+//     return 0;
+// }

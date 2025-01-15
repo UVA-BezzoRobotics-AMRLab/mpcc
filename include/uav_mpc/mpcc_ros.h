@@ -70,7 +70,8 @@ private:
 
 	std::vector<Eigen::Vector3d> poses;
 	std::vector<double> mpc_results;
-	std::vector<SplineWrapper> _ref;
+	// std::vector<SplineWrapper> _ref;
+	std::vector<Spline1D> _ref;
 
 	// MPCBase* _mpc;
 	std::unique_ptr<MPCCore> _mpc_core;

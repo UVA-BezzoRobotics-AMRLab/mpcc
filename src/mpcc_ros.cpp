@@ -15,8 +15,8 @@
 #include <std_msgs/Float32MultiArray.h>
 #include <geometry_msgs/PolygonStamped.h>
 
-#include "uav_mpc/mpcc_ros.h"
 #include "uav_mpc/utils.h"
+#include "uav_mpc/mpcc_ros.h"
 
 MPCCROS::MPCCROS(ros::NodeHandle &nh) : _nh("~")
 {
@@ -164,70 +164,70 @@ void MPCCROS::visualizeTubes()
 	ROS_INFO("horizon is %.2f", horizon);
 
 	std::vector<SplineWrapper> tubes;
-	if(!utils::get_tubes(_ref, _ref_len, len_start, horizon, _grid_map, tubes))
-		return;
+	// if(!utils::get_tubes(_ref, _ref_len, len_start, horizon, _grid_map, tubes))
+	// 	return;
 
-	tk::spline d_above = tubes[0].spline;
-	tk::spline d_below = tubes[1].spline;
+	// tk::spline d_above = tubes[0].spline;
+	// tk::spline d_below = tubes[1].spline;
 
-	visualization_msgs::Marker tubemsg_a;
-	tubemsg_a.header.frame_id = _frame_id;
-	tubemsg_a.header.stamp = ros::Time::now();
-	tubemsg_a.ns = "tube_above";
-	tubemsg_a.id = 87;
-	tubemsg_a.action = visualization_msgs::Marker::ADD;
-	tubemsg_a.type = visualization_msgs::Marker::LINE_STRIP;
-	tubemsg_a.scale.x = .05;
-	tubemsg_a.pose.orientation.w = 1;
+	// visualization_msgs::Marker tubemsg_a;
+	// tubemsg_a.header.frame_id = _frame_id;
+	// tubemsg_a.header.stamp = ros::Time::now();
+	// tubemsg_a.ns = "tube_above";
+	// tubemsg_a.id = 87;
+	// tubemsg_a.action = visualization_msgs::Marker::ADD;
+	// tubemsg_a.type = visualization_msgs::Marker::LINE_STRIP;
+	// tubemsg_a.scale.x = .05;
+	// tubemsg_a.pose.orientation.w = 1;
 
-	visualization_msgs::Marker tubemsg_b = tubemsg_a;
-	tubemsg_b.ns = "tube_below";
-	tubemsg_b.id = 88;
+	// visualization_msgs::Marker tubemsg_b = tubemsg_a;
+	// tubemsg_b.ns = "tube_below";
+	// tubemsg_b.id = 88;
 
-	for (double s = len_start; s < len_start + horizon; s += .05)
-	{
+	// for (double s = len_start; s < len_start + horizon; s += .05)
+	// {
 
-		// get point and tangent to curve
-		double px = _ref[0].spline(s);
-		double py = _ref[1].spline(s);
+	// 	// get point and tangent to curve
+	// 	double px = _ref[0].spline(s);
+	// 	double py = _ref[1].spline(s);
 
-		double tx = _ref[0].spline.deriv(1, s);
-		double ty = _ref[1].spline.deriv(1, s);
+	// 	double tx = _ref[0].spline.deriv(1, s);
+	// 	double ty = _ref[1].spline.deriv(1, s);
 
-		std_msgs::ColorRGBA color_msg;
-		color_msg.r = 0.0;
-		color_msg.g = 1.0;
-		color_msg.b = 1.0;
-		color_msg.a = 1.0;
+	// 	std_msgs::ColorRGBA color_msg;
+	// 	color_msg.r = 0.0;
+	// 	color_msg.g = 1.0;
+	// 	color_msg.b = 1.0;
+	// 	color_msg.a = 1.0;
 
-		Eigen::Vector2d point(px, py);
-		Eigen::Vector2d normal(-ty, tx);
-		normal = normal / normal.norm();
+	// 	Eigen::Vector2d point(px, py);
+	// 	Eigen::Vector2d normal(-ty, tx);
+	// 	normal = normal / normal.norm();
 
-		double da = d_above(s);
-		double db = d_below(s);
+	// 	double da = d_above(s);
+	// 	double db = d_below(s);
 
-		geometry_msgs::Point tube_pt;
-		tube_pt.x = point(0) + normal(0) * da;
-		tube_pt.y = point(1) + normal(1) * da;
-		tube_pt.z = 1.0;
-		tubemsg_a.points.push_back(tube_pt);
+	// 	geometry_msgs::Point tube_pt;
+	// 	tube_pt.x = point(0) + normal(0) * da;
+	// 	tube_pt.y = point(1) + normal(1) * da;
+	// 	tube_pt.z = 1.0;
+	// 	tubemsg_a.points.push_back(tube_pt);
 
-		geometry_msgs::Point tube_pt1;
-		tube_pt1.x = point(0) - normal(0) * db;
-		tube_pt1.y = point(1) - normal(1) * db;
-		tube_pt1.z = 1.0;
-		tubemsg_b.points.push_back(tube_pt1);
+	// 	geometry_msgs::Point tube_pt1;
+	// 	tube_pt1.x = point(0) - normal(0) * db;
+	// 	tube_pt1.y = point(1) - normal(1) * db;
+	// 	tube_pt1.z = 1.0;
+	// 	tubemsg_b.points.push_back(tube_pt1);
 
-		tubemsg_a.colors.push_back(color_msg);
-		tubemsg_b.colors.push_back(color_msg);
-	}
+	// 	tubemsg_a.colors.push_back(color_msg);
+	// 	tubemsg_b.colors.push_back(color_msg);
+	// }
 
-	visualization_msgs::MarkerArray tube_ma;
-	tube_ma.markers.push_back(tubemsg_a);
-	tube_ma.markers.push_back(tubemsg_b);
+	// visualization_msgs::MarkerArray tube_ma;
+	// tube_ma.markers.push_back(tubemsg_a);
+	// tube_ma.markers.push_back(tubemsg_b);
 
-	_tubeVizPub.publish(tube_ma);
+	// _tubeVizPub.publish(tube_ma);
 }
 
 
@@ -307,90 +307,63 @@ void MPCCROS::trajectorycb(const trajectory_msgs::JointTrajectory::ConstPtr &msg
 
 	int N = msg->points.size();
 
-	{
-		Eigen::RowVectorXd ss, xs, ys;
-		ss.resize(N);
-		xs.resize(N);
-		ys.resize(N);
-
-		for (int i = 0; i < N; ++i)
-		{
-			xs(i) = msg->points[i].positions[0];
-			ys(i) = msg->points[i].positions[1];
-			ss(i) = msg->points[i].time_from_start.toSec();
-		}
-		_mpc_core->set_trajectory(ss, xs, ys);
-	}
-
-
-	std::vector<double> ss, xs, ys;
+	Eigen::RowVectorXd ss, xs, ys;
 	ss.resize(N);
 	xs.resize(N);
 	ys.resize(N);
 
 	for (int i = 0; i < N; ++i)
 	{
-		xs[i] = msg->points[i].positions[0];
-		ys[i] = msg->points[i].positions[1];
-		ss[i] = msg->points[i].time_from_start.toSec();
-
+		xs(i) = msg->points[i].positions[0];
+		ys(i) = msg->points[i].positions[1];
+		ss(i) = msg->points[i].time_from_start.toSec();
 	}
 
-	// for (int i = 0; i < N-1; ++i)
-	// {
-	// 	if (ss[i] >= ss[i + 1]){
-	// 		std::cerr << "NOT MONOTONIC IN S!!" << std::endl;
-	// 		std::cerr << i << ": " << ss[i] << " --> " << i+1 << ": " << ss[i+1] << std::endl;
-	// 	}
-	// }
+	_ref.clear();
+	_ref_len = ss(ss.size()-1);
+	
+    const auto fitX = utils::Interp(xs, 3, ss);
+    Spline1D splineX(fitX);
 
-    // tk::spline sx(ss, xs, tk::spline::cspline, false,
-    //               tk::spline::first_deriv, 1.0,
-    //               tk::spline::first_deriv, 1.0);
-    // tk::spline sy(ss, ys, tk::spline::cspline, false,
-    //               tk::spline::first_deriv, 1.0,
-    //               tk::spline::first_deriv, 1.0);
+    const auto fitY = utils::Interp(ys, 3, ss);
+    Spline1D splineY(fitY);
 
-    tk::spline sx(ss, xs, tk::spline::cspline);
-    tk::spline sy(ss, ys, tk::spline::cspline);
-
-	// std::vector<Segment_t> segments;
-	// double ds = .1;
-	// for(double s = 0; s < ss.back()-ds-1e-3; s += ds)
-	// {
-	// 	double s0 = s;
-	// 	double s1 = s + ds;
-
-	// 	double s_mid = (s0 + s1) / 2;
-
-	// 	double mx = sx.deriv(1, s_mid);
-	// 	double bx = sx(s_mid) - mx * s_mid;
-	// 	double my = sy.deriv(1, s_mid);
-	// 	double by = sy(s_mid) - my * s_mid;
-
-	// 	double dmx = sx.deriv(2, s_mid);
-	// 	double dbx = sx.deriv(1, s_mid) - dmx * s_mid;
-	// 	double dmy = sy.deriv(2, s_mid);
-	// 	double dby = sy.deriv(1, s_mid) - dmy * s_mid;
-
-	// 	segments.push_back({s0, s1, mx, bx, my, by, dmx, dbx, dmy, dby});
-	// }
-
-	// _mpc_core->set_segments(segments);
-
-    _ref.clear();
-	_ref_len = ss.back();
-
-    SplineWrapper sx_wrap;
-    sx_wrap.spline = sx;
-
-    SplineWrapper sy_wrap;
-    sy_wrap.spline = sy;
-
-	_ref.push_back(sx_wrap);
-	_ref.push_back(sy_wrap);
-
+	_ref.push_back(splineX);
+	_ref.push_back(splineY);
+	
 	_mpc_core->set_trajectory(ss, xs, ys);
+
+
+	// std::vector<double> ss, xs, ys;
+	// ss.resize(N);
+	// xs.resize(N);
+	// ys.resize(N);
+
+	// for (int i = 0; i < N; ++i)
+	// {
+	// 	xs[i] = msg->points[i].positions[0];
+	// 	ys[i] = msg->points[i].positions[1];
+	// 	ss[i] = msg->points[i].time_from_start.toSec();
+
+	// }
+
+
+    // tk::spline sx(ss, xs, tk::spline::cspline);
+    // tk::spline sy(ss, ys, tk::spline::cspline);
+
+    // _ref.clear();
+	// _ref_len = ss.back();
+
+    // SplineWrapper sx_wrap;
+    // sx_wrap.spline = sx;
+
+    // SplineWrapper sy_wrap;
+    // sy_wrap.spline = sy;
+
+	// _ref.push_back(sx_wrap);
+	// _ref.push_back(sy_wrap);
+
+	// _mpc_core->set_trajectory(ss, xs, ys);
 
 	ROS_INFO("**********************************************************");
 	ROS_INFO("MPC received trajectory!");
@@ -450,8 +423,8 @@ void MPCCROS::controlLoop(const ros::TimerEvent &)
 		// calculate heading error between robot and trajectory start
 		// use 1st point as most times first point has 0 velocity
 
-		double traj_heading = atan2(_ref[1].spline.deriv(1, .2),
-									_ref[0].spline.deriv(1, .2));
+		double traj_heading = atan2(_ref[1].derivatives(1, 1).coeff(1),
+									_ref[0].derivatives(1, 1).coeff(1));
 
 		// wrap between -pi and pi
 		double e = atan2(sin(traj_heading - _odom(THETAI)), cos(traj_heading - _odom(THETAI)));

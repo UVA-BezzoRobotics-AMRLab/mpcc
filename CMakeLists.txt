@@ -153,24 +153,32 @@ add_executable(mpcc_ros
   src/mpcc_node.cpp
   src/mpcc_ros.cpp
   src/mpcc_core.cpp
-  src/mpcc_impl.cpp
+  src/mpcc_acados.cpp
+  # src/mpcc_impl.cpp
   # src/mpcc_nlopt_impl.cpp
 )
 target_link_libraries(mpcc_ros
   ${catkin_LIBRARIES}
-  ${EIGEN3_LIBRARIES}
-  # ${NLOPT_LIBRARIES}
-  ipopt
-)
-
-add_executable(mpcc_acados src/mpcc_acados.cpp)
-target_link_libraries(mpcc_acados
   ${ACADOS_LIBRARIES}
   ${BLASFEO_LIBRARIES}
   ${HPIPM_LIBRARIES}
   ${catkin_LIBRARIES}
   ${EIGEN3_LIBRARIES}
   ${ACADOS_OUTPUT_LIB}
+  # ${NLOPT_LIBRARIES}
+  # ipopt
 )
-add_dependencies(mpcc_acados GenerateAcadosCode)
-target_include_directories(mpcc_acados PRIVATE ${ACADOS_OUTPUT_DIR})
+add_dependencies(mpcc_ros GenerateAcadosCode)
+target_include_directories(mpcc_ros PRIVATE ${ACADOS_OUTPUT_DIR})
+
+# add_executable(mpcc_acados src/mpcc_acados.cpp)
+# target_link_libraries(mpcc_acados
+#   ${ACADOS_LIBRARIES}
+#   ${BLASFEO_LIBRARIES}
+#   ${HPIPM_LIBRARIES}
+#   ${catkin_LIBRARIES}
+#   ${EIGEN3_LIBRARIES}
+#   ${ACADOS_OUTPUT_LIB}
+# )
+# add_dependencies(mpcc_acados GenerateAcadosCode)
+# target_include_directories(mpcc_acados PRIVATE ${ACADOS_OUTPUT_DIR})

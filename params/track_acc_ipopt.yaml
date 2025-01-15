@@ -1,7 +1,7 @@
 # IPOPT Horizon MPC parameters
 frame_id: "map"
 use_vicon: false
-mpc_steps: 15
+mpc_steps: 20
 controller_frequency: 10
 
 # cost function weights
@@ -24,4 +24,4 @@ cbf_colinear: .05
 cbf_padding: .05
 
 prop_gain: 1.0
-prop_gain_thresh: .2617
+prop_gain_thresh: .174533
