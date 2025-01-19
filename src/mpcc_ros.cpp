@@ -20,7 +20,7 @@
 
 MPCCROS::MPCCROS(ros::NodeHandle &nh) : _nh("~")
 {
-
+	//states whether the trajectory is currently being modified / blended between and old and new trajectory
 	_in_transition = false;
     _transition_duration = 1.0;  
     _old_ref_len = 0;
@@ -529,12 +529,13 @@ void MPCCROS::controlLoop(const ros::TimerEvent &)
 {
 
 	 ROS_DEBUG("Entered control loop.");
-
+	
+	// if not initialized
     if (!_is_init) {
         ROS_DEBUG("Not initialized yet. Waiting for odom...");
         return;
     }
-
+	//if 
     if (_in_transition) {
         double current_time = ros::Time::now().toSec();
         double elapsed_time = current_time - _transition_start_time;
@@ -558,7 +559,13 @@ void MPCCROS::controlLoop(const ros::TimerEvent &)
             _is_executing = false;
             _in_transition = false;
             _traj_reset = false;
+
+			velMsg.linear.x = 0.0;
+        	velMsg.angular.z = 0.0;
+			velMsg.angular.y = 0.0;
+			
             ROS_WARN("Trajectory execution complete. Stopping.");
+			return;
         }
     }
 
