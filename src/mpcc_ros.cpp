@@ -528,7 +528,7 @@ bool MPCCROS::executeTrajSrv(std_srvs::Empty::Request &req, std_srvs::Empty::Res
 void MPCCROS::controlLoop(const ros::TimerEvent &)
 {
 
-	 ROS_DEBUG("Entered control loop.");
+	ROS_DEBUG("Entered control loop.");
 	
 	// if not initialized
     if (!_is_init) {
@@ -550,9 +550,23 @@ void MPCCROS::controlLoop(const ros::TimerEvent &)
             blendTrajectories(blend_factor);
         }
     }
+	//calcu euclid distance
+	double dx = _odom(0) - _x_goal;  //distance x
+    double dy = _odom(1) - _y_goal;	 // distance y
+    double dist_to_goal = std::sqrt(dx * dx + dy * dy);
+
+    // If within some threshold
+    if (dist_to_goal < _tol) {
+        ROS_WARN("Close enough to goal (%.2f < %.2f). Stopping execution.", dist_to_goal, _tol);
+        velMsg.linear.x = 0;
+        velMsg.angular.z = 0;
+        _velPub.publish(velMsg);
+
+        _is_executing = false;
+    }
 
 	//bugs it out so that it send cmd_vel commands that are essentially 0, 2e^-16
-    if (_is_executing) {
+    /*if (_is_executing) {
         double progress = _mpc_core->getTrajectoryProgress();
         ROS_WARN("Trajectory progress: %.2f%%", progress * 100.0);
         if (progress >= 0.99 && progress >= 0.1 && !std::isnan(progress) ) {  
@@ -567,7 +581,7 @@ void MPCCROS::controlLoop(const ros::TimerEvent &)
             ROS_WARN("Trajectory execution complete. Stopping.");
 			return;
         }
-    }
+    }*/
 
 	// don't care about aligning if trajectory short
 	if (_ref_len > 1 && _traj_reset)
