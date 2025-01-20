@@ -560,6 +560,7 @@ void MPCCROS::controlLoop(const ros::TimerEvent &)
     double dist_to_goal = std::sqrt(dx * dx + dy * dy);
 
     // If within some threshold
+	ROS_WARN("Outside loop (%.2f < %.2f).", dist_to_goal, _tol);
     if (dist_to_goal < _tol) {
         ROS_WARN("Close enough to goal (%.2f < %.2f). Stopping execution.", dist_to_goal, _tol);
         velMsg.linear.x = 0;
