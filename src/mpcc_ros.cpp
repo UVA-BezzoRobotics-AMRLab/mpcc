@@ -264,6 +264,9 @@ void MPCCROS::trajectorycb(const trajectory_msgs::JointTrajectory::ConstPtr &msg
 
 	}
 
+	_x_goal = xs[N-1];  
+    _y_goal = ys[N-1];
+
 	for (int i = 0; i < N-1; ++i)
 	{
 		if (ss[i] >= ss[i + 1]){
