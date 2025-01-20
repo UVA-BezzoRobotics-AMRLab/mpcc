@@ -561,7 +561,7 @@ void MPCCROS::controlLoop(const ros::TimerEvent &)
 
     // If within some threshold
 	ROS_WARN("Outside loop (%.2f < %.2f).", dist_to_goal, _tol);
-    if (dist_to_goal < _tol) {
+    if (dist_to_goal < _tol+1) {
         ROS_WARN("Close enough to goal (%.2f < %.2f). Stopping execution.", dist_to_goal, _tol);
         velMsg.linear.x = 0;
         velMsg.angular.z = 0;
