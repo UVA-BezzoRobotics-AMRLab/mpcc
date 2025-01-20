@@ -519,6 +519,8 @@ bool MPCCROS::executeTrajSrv(std_srvs::Empty::Request &req, std_srvs::Empty::Res
 		_traj_reset = true;
 		_is_executing = true; 
 		_mpc_core->set_trajectory(_requested_ss, _requested_xs, _requested_ys);
+		_x_goal = _requested_xs.back(); 
+        _y_goal = _requested_ys.back();  
 		ROS_INFO("Executing the requested trajectory now. Robot will start moving.");
 		return true;
     
