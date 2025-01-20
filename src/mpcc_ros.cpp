@@ -555,7 +555,7 @@ void MPCCROS::controlLoop(const ros::TimerEvent &)
     if (_is_executing) {
         double progress = _mpc_core->getTrajectoryProgress();
         ROS_WARN("Trajectory progress: %.2f%%", progress * 100.0);
-        if (progress >= 0.99) {  
+        if (progress >= 0.99 && progress >= 0.1 && !std::isnan(progress) ) {  
             _is_executing = false;
             _in_transition = false;
             _traj_reset = false;
