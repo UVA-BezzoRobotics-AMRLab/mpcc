@@ -332,6 +332,10 @@ void MPCCROS::cte_ctrl_loop()
 		_traj_reset = false;
 	}
 
+	if (!_is_executing) {
+        return;
+    }
+
 	if (_ref.size() != 0)
 	{
 		// generate tubes
