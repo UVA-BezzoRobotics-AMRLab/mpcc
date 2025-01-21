@@ -37,7 +37,8 @@ private:
 	ros::Subscriber _odomSub;
 	ros::Subscriber _collisionSub;
 	ros::Subscriber _mapSub;
-
+	double _x_goal_euclid = 0;
+	double _y_goal_euclid =0;
 	ros::Publisher _velPub;
 	ros::Publisher _trajPub;
 	ros::Publisher _pathPub;
