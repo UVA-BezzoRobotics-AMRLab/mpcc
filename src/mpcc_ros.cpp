@@ -44,7 +44,8 @@ MPCCROS::MPCCROS(ros::NodeHandle &nh) : _nh("~")
 		std::make_shared<distmap::DistanceMap>(distmap::DistanceMap::Dimension(5, 5),
 											   1,
 											   distmap::DistanceMap::Origin());
-
+	auto _x_goal_euclid = 0;
+	auto _y_goal_euclid = 0;
 
 	velMsg.linear.x = 0;
 	velMsg.angular.z = 0;
@@ -264,8 +265,6 @@ void MPCCROS::trajectorycb(const trajectory_msgs::JointTrajectory::ConstPtr &msg
 
 	}
 
-	_x_goal = xs[N-1];  
-    _y_goal = ys[N-1];
 
 	for (int i = 0; i < N-1; ++i)
 	{
@@ -519,8 +518,8 @@ bool MPCCROS::executeTrajSrv(std_srvs::Empty::Request &req, std_srvs::Empty::Res
 		_traj_reset = true;
 		_is_executing = true; 
 		_mpc_core->set_trajectory(_requested_ss, _requested_xs, _requested_ys);
-		_x_goal = _requested_xs.back(); 
-        _y_goal = _requested_ys.back();  
+		_x_goal_euclid = _requested_xs.back(); 
+        _y_goal_euclid = _requested_ys.back();  
 		ROS_INFO("Executing the requested trajectory now. Robot will start moving.");
 		return true;
     
@@ -560,13 +559,13 @@ void MPCCROS::controlLoop(const ros::TimerEvent &)
         }
     }
 	//calcu euclid distance
-	double dx = _odom(0) - _x_goal;  //distance x
-    double dy = _odom(1) - _y_goal;	 // distance y
+	double dx = _odom(0) - _x_goal_euclid;  //distance x
+    double dy = _odom(1) - _y_goal_euclid;	 // distance y
     double dist_to_goal = std::sqrt(dx * dx + dy * dy);
 
     // If within some threshold
 	ROS_WARN("Outside loop (dist_to_goal: %.2f) (_y_goal: %.2f) (_x_goal: %.2f)", dist_to_goal, _y_goal, _x_goal);
-    if (dist_to_goal-1 < .1) {
+    if (dist_to_goal < _tol) {
         ROS_WARN("Close enough to goal (%.2f < %.2f). Stopping execution.", dist_to_goal, _tol);
         velMsg.linear.x = 0;
         velMsg.angular.z = 0;
