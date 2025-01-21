@@ -334,6 +334,9 @@ void MPCCROS::cte_ctrl_loop()
 		_traj_reset = false;
 	}
 
+	ROS_ERROR("is_executing is %d", _is_executing);
+	ROS_ERROR("is_executing is %d", _in_transition);
+	ROS_ERROR("is_executing is %d", _traj_reset);
 	if (!_is_executing) {
         return;
     }
@@ -564,30 +567,34 @@ void MPCCROS::controlLoop(const ros::TimerEvent &)
     double dist_to_goal = std::sqrt(dx * dx + dy * dy);
 
     // If within some threshold
-	ROS_WARN("Outside loop (dist_to_goal: %.2f) (_y_goal: %.2f) (_x_goal: %.2f)", dist_to_goal, _y_goal_euclid, _x_goal_euclid);
-    if (dist_to_goal < 0.1) {
+     ROS_WARN("Outside loop (dist_to_goal: %.2f) (_y_goal: %.2f) (_x_goal: %.2f)", dist_to_goal, _y_goal_euclid, _x_goal_euclid);
+    if (dist_to_goal < 0.5) {
         ROS_WARN("Close enough to goal (%.2f < %.2f). Stopping execution.", dist_to_goal, _tol);
 
         _is_executing = false;
+    	_in_transition = false;
+    	_traj_reset = false;
+    	velMsg.linear.x = 0.0;
+       	velMsg.angular.z = 0.0;
     }
 
 	//bugs it out so that it send cmd_vel commands that are essentially 0, 2e^-16
-    /*if (_is_executing) {
-        double progress = _mpc_core->getTrajectoryProgress();
-        ROS_WARN("Trajectory progress: %.2f%%", progress * 100.0);
-        if (progress >= 0.99 && progress >= 0.1 && !std::isnan(progress) ) {  
-            _is_executing = false;
-            _in_transition = false;
-            _traj_reset = false;
+    // if (_is_executing) {
+    //     double progress = _mpc_core->getTrajectoryProgress();
+    //     ROS_WARN("Trajectory progress: %.2f%%", progress * 100.0);
+    //     if (progress >= 0.99 && !std::isnan(progress) ) {  
+    //         _is_executing = false;
+    //         _in_transition = false;
+    //         _traj_reset = false;
 
-			velMsg.linear.x = 0.0;
-        	velMsg.angular.z = 0.0;
-			velMsg.angular.y = 0.0;
-			
-            ROS_WARN("Trajectory execution complete. Stopping.");
-			return;
-        }
-    }*/
+    //     		velMsg.linear.x = 0.0;
+    //     	velMsg.angular.z = 0.0;
+    //     		velMsg.angular.y = 0.0;
+    //     		
+    //         ROS_WARN("Trajectory execution complete. Stopping.");
+    //     		return;
+    //     }
+    // }
 
 	// don't care about aligning if trajectory short
 	if (_ref_len > 1 && _traj_reset)
