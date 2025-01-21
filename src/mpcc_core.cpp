@@ -102,7 +102,7 @@ void MPCCore::set_trajectory(const std::vector<double> &ss, const std::vector<do
     // _mpc->set_reference(ref, ss[ss.size() - 1]);
 }
 
-void MPCCore::set_tubes(const std::vector<SplineWrapper>& tubes)
+void MPCCore::set_tubes(const std::vector<Spline1D>& tubes)
 {
     _mpc->set_tubes(tubes);
 }

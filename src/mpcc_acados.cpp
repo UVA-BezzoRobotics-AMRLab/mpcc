@@ -29,7 +29,7 @@ MPCC::MPCC()
     _state = Eigen::VectorXd(6);
     _state << 0, 0, 0, 0, 0, 0;
 
-    _prev_x0.resize((_mpc_steps+1) * _state.size());
+    _prev_x0.resize((_mpc_steps + 1) * _state.size());
 
     // _x_start = 0;
     // _y_start = _x_start + _mpc_steps;
@@ -40,8 +40,6 @@ MPCC::MPCC()
     // _angvel_start = _s_dot_start + _mpc_steps;
     // _linacc_start = _angvel_start + _mpc_steps - 1;
     // _s_ddot_start = _linacc_start + _mpc_steps - 1;
-
-
 
     _x_start = 0;
     _y_start = 1;
@@ -65,9 +63,9 @@ MPCC::~MPCC()
         delete _new_time_steps;
 }
 
-void MPCC::set_tubes(const std::vector<SplineWrapper> &tubes)
+void MPCC::set_tubes(const std::vector<Spline1D> &tubes)
 {
-    return;
+    _tubes = tubes;
 }
 
 void MPCC::load_params(const std::map<std::string, double> &params)
@@ -182,17 +180,22 @@ Eigen::VectorXd MPCC::get_state()
 std::vector<Spline1D> MPCC::get_ref_from_s(double s)
 {
     // get reference for next 4 meters, indexing from s=0 onwards
-
-    Eigen::RowVectorXd ss, xs, ys;
+    // need to also down sample the tubes
+    Eigen::RowVectorXd ss, xs, ys, abvs, blws;
     ss.resize(11);
     xs.resize(11);
     ys.resize(11);
+    abvs.resize(11);
+    blws.resize(11);
 
     double px = _reference[0](_ref_length).coeff(0);
     double py = _reference[1](_ref_length).coeff(0);
 
-    double dx = _reference[0].derivatives(_ref_length, 1).coeff(1);
-    double dy = _reference[1].derivatives(_ref_length, 1).coeff(1);
+    double final_abv_d = _tubes[0](4).coeff(0);
+    double final_blw_d = _tubes[1](4).coeff(0);
+
+    // double dx = _reference[0].derivatives(_ref_length, 1).coeff(1);
+    // double dy = _reference[1].derivatives(_ref_length, 1).coeff(1);
 
     // capture reference at each sample
     for (int i = 0; i < 11; ++i)
@@ -204,6 +207,8 @@ std::vector<Spline1D> MPCC::get_ref_from_s(double s)
         {
             xs(i) = _reference[0](ss(i) + s).coeff(0);
             ys(i) = _reference[1](ss(i) + s).coeff(0);
+            abvs(i) = _tubes[0](ss(i) + s).coeff(0);
+            blws(i) = _tubes[1](ss(i) + s).coeff(0);
         }
         else
         {
@@ -211,6 +216,8 @@ std::vector<Spline1D> MPCC::get_ref_from_s(double s)
             // ys(i) = dy * (ss(i) + s - _ref_length) + py;
             xs(i) = px;
             ys(i) = py;
+            abvs(i) = final_abv_d;
+            blws(i) = final_blw_d;
         }
     }
 
@@ -221,12 +228,23 @@ std::vector<Spline1D> MPCC::get_ref_from_s(double s)
     const auto fitY = utils::Interp(ys, 3, ss);
     Spline1D splineY(fitY);
 
-    return {splineX, splineY};
+    const auto fitAbv = utils::Interp(abvs, 3, ss);
+    Spline1D splineAbv(fitAbv);
+
+    const auto fitBlw = utils::Interp(blws, 3, ss);
+    Spline1D splineBlw(fitBlw);
+
+    return {splineX, splineY, splineAbv, splineBlw};
 }
 
 std::vector<double> MPCC::solve(const Eigen::VectorXd &state)
 {
 
+    if (_tubes.size() == 0)
+    {
+        std::cout << "tubes are not set yet, mpc cannot run" << std::endl;
+        return {0, 0};
+    }
 
     /*************************************
     ********** INITIAL CONDITION *********
@@ -242,8 +260,8 @@ std::vector<double> MPCC::solve(const Eigen::VectorXd &state)
     ubx0[2] = state[2];
     lbx0[3] = state[3];
     ubx0[3] = state[3];
-    lbx0[4] = 0; 
-    ubx0[4] = 0; 
+    lbx0[4] = 0;
+    ubx0[4] = 0;
     lbx0[5] = _s_dot;
     ubx0[5] = _s_dot;
 
@@ -282,17 +300,12 @@ std::vector<double> MPCC::solve(const Eigen::VectorXd &state)
         ocp_nlp_out_set(_nlp_config, _nlp_dims, _nlp_out, i, "u", u_init);
     }
 
-    // no input in final step of MPC
-    // double x_stage[NX];
-    // for(int j = 0; j < NX; ++j)
-    //     x_stage[j] = _prev_x0[_mpc_steps*_ind_state_inc + j];
-
     ocp_nlp_out_set(_nlp_config, _nlp_dims, _nlp_out, _mpc_steps, "x", x_init);
 
     /*************************************
     ********* SET REFERENCE PARAMS *******
     **************************************/
-    
+
     // generate params from reference trajectory starting at current s
     double s = get_s_from_state(state);
     std::vector<Spline1D> ref = get_ref_from_s(s);
@@ -300,23 +313,22 @@ std::vector<double> MPCC::solve(const Eigen::VectorXd &state)
     double params[NP];
     auto ctrls_x = ref[0].ctrls();
     auto ctrls_y = ref[1].ctrls();
+    auto ctrls_abv = ref[2].ctrls();
+    auto ctrls_blw = ref[3].ctrls();
 
-    if (ctrls_x.size() + ctrls_y.size() != NP)
+    if (ctrls_x.size() + ctrls_y.size() + ctrls_abv.size() + ctrls_blw.size() != NP)
     {
         std::cout << "reference size does not match acados parameter size" << std::endl;
-        return {};
+        return {0, 0};
     }
 
     for (int i = 0; i < ctrls_x.size(); ++i)
     {
         params[i] = ctrls_x[i];
         params[i + ctrls_x.size()] = ctrls_y[i];
+        params[i + 2 * ctrls_x.size()] = ctrls_abv[i];
+        params[i + 3 * ctrls_x.size()] = ctrls_blw[i];
     }
-
-    // for (int i = 0; i < NP; ++i)
-    // {
-    //     std::cout << "params[" << i << "]: " << params[i] << std::endl;
-    // }
 
     for (int i = 0; i < _mpc_steps + 1; ++i)
         unicycle_model_mpcc_acados_update_params(_acados_ocp_capsule, i, params, NP);
@@ -352,8 +364,7 @@ std::vector<double> MPCC::solve(const Eigen::VectorXd &state)
     for (int i = 0; i <= _mpc_steps; ++i)
         ocp_nlp_out_get(_nlp_config, _nlp_dims, _nlp_out, i, "x", &xtraj[i * NX]);
 
-
-    for(int i = 0; i < xtraj.size(); ++i)
+    for (int i = 0; i < xtraj.size(); ++i)
         _prev_x0[i] = xtraj[i];
 
     mpc_x = {};
@@ -384,13 +395,35 @@ std::vector<double> MPCC::solve(const Eigen::VectorXd &state)
 
     _s_dot = xtraj[_s_dot_start + 1 * _ind_state_inc];
 
+    // double xr = ref[0](0).coeff(0);
+    // double yr = ref[1](0).coeff(0);
+    // double tx = ref[0].derivatives(0, 1).coeff(1);
+    // double ty = ref[1].derivatives(0, 1).coeff(1);
+    // double phi = atan2(ty, tx);
+
+    // double el = -cos(phi) * (state[0] - xr) - sin(phi) * (state[1] - yr);
+    // std::cout << "lag error is: " << el << std::endl;
+
+    // double *sl;
+    // double *inequality_residuals;  // Replace m with the number of inequality constraints
+    // ocp_nlp_get(_nlp_config, _nlp_solver, "sl", sl);
+    // ocp_nlp_get(_nlp_config, _nlp_solver, "ineq_residuals", &inequality_residuals);
+
+    // std::cout << "ineq constraints" << std::endl;
+    // for (int i = 0; i < 2; i++)
+    // {
+    //     std::cout << "ineq_residual[" << i <<"] = " << inequality_residuals[i] << std::endl;
+    //     // std::cout << i << " slack value " << sl[i] << std::endl;
+    // }
+
+
+    // since s always = 0 in mpc state, need to use manually computed s
     _state << xtraj[_x_start],
         xtraj[_y_start],
         xtraj[_theta_start],
         xtraj[_v_start],
-        xtraj[_s_start],
+        s,
         xtraj[_s_dot_start];
-
 
     return {utraj[1], utraj[0]};
 }

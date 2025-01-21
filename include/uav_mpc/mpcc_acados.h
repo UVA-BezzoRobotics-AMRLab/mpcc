@@ -29,7 +29,8 @@ public:
     ~MPCC();
 
     std::vector<double> solve(const Eigen::VectorXd &state);
-    void set_tubes(const std::vector<SplineWrapper> &tubes);
+    // void set_tubes(const std::vector<SplineWrapper> &tubes);
+    void set_tubes(const std::vector<Spline1D> &tubes);
     void load_params(const std::map<std::string, double> &params);
     void set_reference(const std::vector<Spline1D> &reference, double arclen);
 
@@ -53,7 +54,9 @@ protected:
 
     std::map<std::string, double> _params;
     std::vector<double> _prev_x0;
+
     std::vector<Spline1D> _reference;
+    std::vector<Spline1D> _tubes;
 
     Eigen::VectorXd _state;
 

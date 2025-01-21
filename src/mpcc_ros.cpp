@@ -161,73 +161,81 @@ void MPCCROS::visualizeTubes()
 	if (len_start + horizon > _ref_len)
 		horizon = _ref_len - len_start;
 	
-	ROS_INFO("horizon is %.2f", horizon);
+	// ROS_INFO("horizon is %.2f", horizon);
 
-	std::vector<SplineWrapper> tubes;
-	// if(!utils::get_tubes(_ref, _ref_len, len_start, horizon, _grid_map, tubes))
-	// 	return;
+	if(_tubes.size() == 0)
+		return;
 
 	// tk::spline d_above = tubes[0].spline;
 	// tk::spline d_below = tubes[1].spline;
+	
+	Spline1D d_above = _tubes[0];
+	Spline1D d_below = _tubes[1];
 
-	// visualization_msgs::Marker tubemsg_a;
-	// tubemsg_a.header.frame_id = _frame_id;
-	// tubemsg_a.header.stamp = ros::Time::now();
-	// tubemsg_a.ns = "tube_above";
-	// tubemsg_a.id = 87;
-	// tubemsg_a.action = visualization_msgs::Marker::ADD;
-	// tubemsg_a.type = visualization_msgs::Marker::LINE_STRIP;
-	// tubemsg_a.scale.x = .05;
-	// tubemsg_a.pose.orientation.w = 1;
+	visualization_msgs::Marker tubemsg_a;
+	tubemsg_a.header.frame_id = _frame_id;
+	tubemsg_a.header.stamp = ros::Time::now();
+	tubemsg_a.ns = "tube_above";
+	tubemsg_a.id = 87;
+	tubemsg_a.action = visualization_msgs::Marker::ADD;
+	tubemsg_a.type = visualization_msgs::Marker::LINE_STRIP;
+	tubemsg_a.scale.x = .05;
+	tubemsg_a.pose.orientation.w = 1;
 
-	// visualization_msgs::Marker tubemsg_b = tubemsg_a;
-	// tubemsg_b.ns = "tube_below";
-	// tubemsg_b.id = 88;
+	visualization_msgs::Marker tubemsg_b = tubemsg_a;
+	tubemsg_b.ns = "tube_below";
+	tubemsg_b.id = 88;
 
-	// for (double s = len_start; s < len_start + horizon; s += .05)
-	// {
+	for (double s = len_start; s < len_start + horizon; s += .05)
+	{
 
-	// 	// get point and tangent to curve
-	// 	double px = _ref[0].spline(s);
-	// 	double py = _ref[1].spline(s);
+		// get point and tangent to curve
+		// double px = _ref[0].spline(s);
+		// double py = _ref[1].spline(s);
 
-	// 	double tx = _ref[0].spline.deriv(1, s);
-	// 	double ty = _ref[1].spline.deriv(1, s);
+		// double tx = _ref[0].spline.deriv(1, s);
+		// double ty = _ref[1].spline.deriv(1, s);
 
-	// 	std_msgs::ColorRGBA color_msg;
-	// 	color_msg.r = 0.0;
-	// 	color_msg.g = 1.0;
-	// 	color_msg.b = 1.0;
-	// 	color_msg.a = 1.0;
+		double px = _ref[0](s).coeff(0);
+		double py = _ref[1](s).coeff(0);
 
-	// 	Eigen::Vector2d point(px, py);
-	// 	Eigen::Vector2d normal(-ty, tx);
-	// 	normal = normal / normal.norm();
+		double tx = _ref[0].derivatives(s, 1).coeff(1);
+		double ty = _ref[1].derivatives(s, 1).coeff(1);
 
-	// 	double da = d_above(s);
-	// 	double db = d_below(s);
+		std_msgs::ColorRGBA color_msg;
+		color_msg.r = 0.0;
+		color_msg.g = 1.0;
+		color_msg.b = 1.0;
+		color_msg.a = 1.0;
 
-	// 	geometry_msgs::Point tube_pt;
-	// 	tube_pt.x = point(0) + normal(0) * da;
-	// 	tube_pt.y = point(1) + normal(1) * da;
-	// 	tube_pt.z = 1.0;
-	// 	tubemsg_a.points.push_back(tube_pt);
+		Eigen::Vector2d point(px, py);
+		Eigen::Vector2d normal(-ty, tx);
+		normal = normal / normal.norm();
 
-	// 	geometry_msgs::Point tube_pt1;
-	// 	tube_pt1.x = point(0) - normal(0) * db;
-	// 	tube_pt1.y = point(1) - normal(1) * db;
-	// 	tube_pt1.z = 1.0;
-	// 	tubemsg_b.points.push_back(tube_pt1);
+		double da = d_above(s).coeff(0);
+		double db = d_below(s).coeff(0);
 
-	// 	tubemsg_a.colors.push_back(color_msg);
-	// 	tubemsg_b.colors.push_back(color_msg);
-	// }
+		geometry_msgs::Point tube_pt;
+		tube_pt.x = point(0) + normal(0) * da;
+		tube_pt.y = point(1) + normal(1) * da;
+		tube_pt.z = 1.0;
+		tubemsg_a.points.push_back(tube_pt);
 
-	// visualization_msgs::MarkerArray tube_ma;
-	// tube_ma.markers.push_back(tubemsg_a);
-	// tube_ma.markers.push_back(tubemsg_b);
+		geometry_msgs::Point tube_pt1;
+		tube_pt1.x = point(0) + normal(0) * db;
+		tube_pt1.y = point(1) + normal(1) * db;
+		tube_pt1.z = 1.0;
+		tubemsg_b.points.push_back(tube_pt1);
 
-	// _tubeVizPub.publish(tube_ma);
+		tubemsg_a.colors.push_back(color_msg);
+		tubemsg_b.colors.push_back(color_msg);
+	}
+
+	visualization_msgs::MarkerArray tube_ma;
+	tube_ma.markers.push_back(tubemsg_a);
+	tube_ma.markers.push_back(tubemsg_b);
+
+	_tubeVizPub.publish(tube_ma);
 }
 
 
@@ -397,15 +405,33 @@ void MPCCROS::cte_ctrl_loop()
 
 	if (trajectory.points.size() != 0)
 	{
+		Eigen::VectorXd state = _mpc_core->get_state();
+		double len_start = state(4);
+		double horizon = _max_linvel * _dt * _mpc_steps;
+
+		if (len_start > _ref_len)
+			len_start = _ref_len;
+
+		if (len_start + horizon > _ref_len)
+			horizon = _ref_len - len_start;
+		
+		ROS_INFO("horizon is %.2f\ts is %.2f", horizon, len_start);
+
 		// generate tubes
 		// std::vector<SplineWrapper> tubes;
-		// bool status = utils::get_tubes(_ref, _ref_len, _grid_map, tubes);
+		bool status = utils::get_tubes(_ref, _ref_len, len_start, horizon, _grid_map, _tubes);
+		if (!status)
+		{
+			ROS_WARN("could not generate tubes, mpc not running");
+			return;
+		}
+
+		_mpc_core->set_tubes(_tubes);
 
 		std::vector<double> mpc_results = _mpc_core->solve();
 
-		ros::Time begin = ros::Time::now();
 		visualizeTubes();
-		ROS_INFO("tube generation time is: %.4f", (ros::Time::now() - begin).toSec());
+		_tubes.clear();
 
 		velMsg.linear.x = mpc_results[0];
 		velMsg.angular.z = mpc_results[1];

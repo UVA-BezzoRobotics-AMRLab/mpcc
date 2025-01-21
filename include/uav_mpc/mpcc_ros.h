@@ -72,6 +72,7 @@ private:
 	std::vector<double> mpc_results;
 	// std::vector<SplineWrapper> _ref;
 	std::vector<Spline1D> _ref;
+	std::vector<Spline1D> _tubes;
 
 	// MPCBase* _mpc;
 	std::unique_ptr<MPCCore> _mpc_core;
