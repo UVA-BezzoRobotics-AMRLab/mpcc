@@ -363,55 +363,69 @@ bool MPCCROS::modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req,
 {
 
 	// dummy time variable to parameterize initial spline
-	double T = 1.0;
-	double dt = T / req.ctrl_pts.size();
+	// double T = 1.0;
+	// double dt = T / req.ctrl_pts.size();
 
-	std::vector<double> tt, xt, yt;
+	// std::vector<double> tt, xt, yt;
 
-	// create initial spline out of the points being sent
-	double t = 0;
-	for(int i = 0; i < req.ctrl_pts.size(); ++i)
-	{
-		tt.push_back(t);
-		xt.push_back(req.ctrl_pts[i].x);
-		yt.push_back(req.ctrl_pts[i].y);
-		t += dt;
-	}
+	// // create initial spline out of the points being sent
+	// double t = 0;
+	// for(int i = 0; i < req.ctrl_pts.size(); ++i)
+	// {
+	// 	tt.push_back(t);
+	// 	xt.push_back(req.ctrl_pts[i].x);
+	// 	yt.push_back(req.ctrl_pts[i].y);
+	// 	t += dt;
+	// }
 
-    tk::spline spline_x(tt, xt, tk::spline::cspline);
-    tk::spline spline_y(tt, yt, tk::spline::cspline);
+        // tk::spline spline_x(tt, xt, tk::spline::cspline);
+        // tk::spline spline_y(tt, yt, tk::spline::cspline);
 
-	std::vector<SplineWrapper> ref;
-	SplineWrapper sx_wrap;
-    sx_wrap.spline = spline_x;
+	// std::vector<SplineWrapper> ref;
+	// SplineWrapper sx_wrap;
+        // sx_wrap.spline = spline_x;
 
-    SplineWrapper sy_wrap;
-    sy_wrap.spline = spline_y;
+        // SplineWrapper sy_wrap;
+        // sy_wrap.spline = spline_y;
 
-	ref.push_back(sx_wrap);
-	ref.push_back(sy_wrap);
+	// ref.push_back(sx_wrap);
+	// ref.push_back(sy_wrap);
 
-	// get points of equal arc length along the trajectory...
+	double total_length = 0;
+	int M = req.ctrl_pts.size();
+	ROS_INFO("%d POINTS RECEIVED", M);
 	std::vector<double> ss, xs, ys;
 
-	double M = 20;
-	ss.resize(M + 1);
-    xs.resize(M + 1);
-    ys.resize(M + 1);
+	for (int i = 1; i < req.ctrl_pts.size(); ++i)
+	{
+	    double x0 = req.ctrl_pts[i-1].x;
+	    double y0 = req.ctrl_pts[i-1].y;
 
-	double total_length = utils::compute_arclen(ref, 0, 1);
-	double ds = total_length / M;
+	    double x1 = req.ctrl_pts[i].x;
+	    double y1 = req.ctrl_pts[i].y;
 
-    for (int i = 0; i <= M; ++i)
-    {
-        double s = i * ds;
+	    double dist2 = (x1 - x0) * (x1 - x0) + (y1 - y0) * (y1 - y0);
+	    ss.push_back(total_length);
+	    xs.push_back(x0);
+	    ys.push_back(y0);
 
-        double ti = utils::binary_search(ref, s, 0, 1, 1e-3);
+	    total_length += sqrt(dist2);
+	}
 
-        ss[i] = s;
-		xs[i] = ref[0].spline(ti);
-		ys[i] = ref[1].spline(ti);
-    }
+        ss.push_back(total_length);
+	xs.push_back(req.ctrl_pts.back().x);
+        ys.push_back(req.ctrl_pts.back().y);
+
+    // for (int i = 0; i <= M; ++i)
+    // {
+    //     double s = i * ds;
+
+    //     double ti = utils::binary_search(ref, s, 0, 1, 1e-3);
+
+    //     ss[i] = s;
+    //     	xs[i] = ref[0].spline(ti);
+    //     	ys[i] = ref[1].spline(ti);
+    // }
 	   
     _requested_ref.clear();
 	_requested_len = ss.back();
