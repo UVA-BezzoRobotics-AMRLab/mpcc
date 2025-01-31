@@ -1,7 +1,7 @@
 # IPOPT Horizon MPC parameters
 frame_id: "map"
 use_vicon: false
-mpc_steps: 20
+mpc_steps: 10
 controller_frequency: 10
 
 # cost function weights
@@ -11,6 +11,10 @@ w_linvel: .8
 w_etheta: 1.0
 w_angvel: 0.15
 w_angvel_d: .7
+
+w_lag_e: 100
+w_contour_e: .3
+w_speed: .2
 
 # constraints
 # max_linvel: 1.8
@@ -24,4 +28,14 @@ cbf_colinear: .05
 cbf_padding: .05
 
 prop_gain: 1.0
-prop_gain_thresh: .174533
+prop_gain_thresh: .349
+
+max_tube_width: 1.5
+
+# recompile after changing all params from here on
+ref_length_size: 4
+mpc_ref_samples: 11
+
+# there will be d+1 variables in the LP formulation
+tube_poly_degree: 8
+tube_num_samples: 100

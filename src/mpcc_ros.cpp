@@ -57,7 +57,10 @@ MPCCROS::MPCCROS(ros::NodeHandle &nh) : _nh("~")
 	_nh.param("w_linvel_d", _w_linvel_d, .5);
 	_nh.param("w_etheta", _w_etheta, 1.0);
 	_nh.param("w_cte", _w_cte, 1.0);
-	_nh.param("w_pos", _w_pos, 1.0);
+
+	_nh.param("w_lag_e", _w_ql, 50.0);
+	_nh.param("w_contour_e", _w_qc, .1);
+	_nh.param("w_speed", _w_q_speed, .3);
 
 	// Constraint params
 	_nh.param("w_max", _max_angvel, 3.0);
@@ -84,7 +87,22 @@ MPCCROS::MPCCROS(ros::NodeHandle &nh) : _nh("~")
 
 	// proportional controller params
 	_nh.param("prop_gain", _prop_gain, .5);
-	_nh.param("prop_angle_thresh", _prop_angle_thresh, 30. * M_PI / 180.);
+	_nh.param("prop_gain_thresh", _prop_angle_thresh, 30. * M_PI / 180.);
+
+	// tube parameters
+	_nh.param("tube_poly_degree", _tube_degree, 6);
+	_nh.param("tube_num_samples", _tube_samples, 50);
+	_nh.param("max_tube_width", _max_tube_width, 2.0);
+
+	_nh.param("ref_length_size", _mpc_ref_len_sz, 4.);
+	_nh.param("mpc_ref_samples", _mpc_ref_samples, 10);
+
+	// num coeffs is tube_W_ANGVELdegree + 1
+	_tube_degree += 1;
+
+	// tube width technically from traj to tube boundary
+	_max_tube_width /= 2;
+
 
 	_dt = 1.0 / freq;
 
@@ -102,6 +120,13 @@ MPCCROS::MPCCROS(ros::NodeHandle &nh) : _nh("~")
 	_mpc_params["BOUND"] = _bound_value;
 	_mpc_params["X_GOAL"] = _x_goal;
 	_mpc_params["Y_GOAL"] = _y_goal;
+
+	_mpc_params["W_LAG"] = _w_ql;
+	_mpc_params["W_CONTOUR"] = _w_qc;
+	_mpc_params["W_SPEED"] = _w_q_speed;
+
+	_mpc_params["REF_LENGTH"] = _mpc_ref_len_sz;
+	_mpc_params["REF_SAMPLES"] = _mpc_ref_samples;
 
 	_mpc_params["USE_CBF"] = _use_cbf;
 	_mpc_params["CBF_ALPHA"] = _cbf_alpha;
@@ -166,11 +191,11 @@ void MPCCROS::visualizeTubes()
 	if(_tubes.size() == 0)
 		return;
 
-	// tk::spline d_above = tubes[0].spline;
-	// tk::spline d_below = tubes[1].spline;
-	
-	Spline1D d_above = _tubes[0];
-	Spline1D d_below = _tubes[1];
+	// Spline1D d_above = _tubes[0];
+	// Spline1D d_below = _tubes[1];
+
+	Eigen::VectorXd abv_coeffs = _tubes[0];
+	Eigen::VectorXd blw_coeffs = _tubes[1];
 
 	visualization_msgs::Marker tubemsg_a;
 	tubemsg_a.header.frame_id = _frame_id;
@@ -212,8 +237,10 @@ void MPCCROS::visualizeTubes()
 		Eigen::Vector2d normal(-ty, tx);
 		normal = normal / normal.norm();
 
-		double da = d_above(s).coeff(0);
-		double db = d_below(s).coeff(0);
+		// double da = d_above(s).coeff(0);
+		// double db = d_below(s).coeff(0);
+		double da = utils::eval_traj(abv_coeffs, s-len_start);
+		double db = utils::eval_traj(blw_coeffs, s-len_start);
 
 		geometry_msgs::Point tube_pt;
 		tube_pt.x = point(0) + normal(0) * da;
@@ -407,7 +434,19 @@ void MPCCROS::cte_ctrl_loop()
 	{
 		Eigen::VectorXd state = _mpc_core->get_state();
 		double len_start = state(4);
-		double horizon = _max_linvel * _dt * _mpc_steps;
+
+		if (fabs(len_start - _ref_len) < .3)
+		{
+			ROS_INFO("Reached end of traj");
+			velMsg.linear.x = 0;
+			velMsg.angular.z = 0;
+
+			trajectory.points.clear();
+
+			return;
+		}
+
+		double horizon = _mpc_ref_len_sz;
 
 		if (len_start > _ref_len)
 			len_start = _ref_len;
@@ -419,7 +458,19 @@ void MPCCROS::cte_ctrl_loop()
 
 		// generate tubes
 		// std::vector<SplineWrapper> tubes;
-		bool status = utils::get_tubes(_ref, _ref_len, len_start, horizon, _grid_map, _tubes);
+		ros::Time now = ros::Time::now();
+		bool status = utils::get_tubes(_tube_degree, 
+									   _tube_samples, 
+									   _max_tube_width, 
+									   _ref, 
+									   _ref_len, 
+									   len_start, 
+									   horizon, 
+									   _grid_map, 
+									   _tubes);
+
+		ROS_INFO("GENERATED TUBES IN %.2f seconds!", (ros::Time::now()-now).toSec());
+
 		if (!status)
 		{
 			ROS_WARN("could not generate tubes, mpc not running");
@@ -431,6 +482,7 @@ void MPCCROS::cte_ctrl_loop()
 		std::vector<double> mpc_results = _mpc_core->solve();
 
 		visualizeTubes();
+		// exit(0);
 		_tubes.clear();
 
 		velMsg.linear.x = mpc_results[0];
@@ -443,14 +495,14 @@ void MPCCROS::cte_ctrl_loop()
 
 void MPCCROS::controlLoop(const ros::TimerEvent &)
 {
-	// don't care about aligning if trajectory short
-	if (_ref_len > 1 && _traj_reset)
+	// don't care about aligning if trajectory is really short
+	if (_ref_len > .1 && _traj_reset)
 	{
 		// calculate heading error between robot and trajectory start
 		// use 1st point as most times first point has 0 velocity
 
-		double traj_heading = atan2(_ref[1].derivatives(1, 1).coeff(1),
-									_ref[0].derivatives(1, 1).coeff(1));
+		double traj_heading = atan2(_ref[1].derivatives(.1, 1).coeff(1),
+									_ref[0].derivatives(.1, 1).coeff(1));
 
 		// wrap between -pi and pi
 		double e = atan2(sin(traj_heading - _odom(THETAI)), cos(traj_heading - _odom(THETAI)));

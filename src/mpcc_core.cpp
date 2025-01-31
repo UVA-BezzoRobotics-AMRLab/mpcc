@@ -102,7 +102,8 @@ void MPCCore::set_trajectory(const std::vector<double> &ss, const std::vector<do
     // _mpc->set_reference(ref, ss[ss.size() - 1]);
 }
 
-void MPCCore::set_tubes(const std::vector<Spline1D>& tubes)
+// void MPCCore::set_tubes(const std::vector<Spline1D>& tubes)
+void MPCCore::set_tubes(const std::vector<Eigen::VectorXd>& tubes)
 {
     _mpc->set_tubes(tubes);
 }
@@ -145,12 +146,12 @@ std::vector<double> MPCCore::solve()
     if (!_is_set)
         return {0,0};
 
-    Eigen::Vector2d end_p((*_splineX)(_ref_length).coeff(0), (*_splineY)(_ref_length).coeff(0));
-    if ((Eigen::Vector2d(_odom(0), _odom(1)) - end_p).norm() < 2e-1)
-    {
-        _is_set = false;
-        return {0,0};
-    }
+    // Eigen::Vector2d end_p((*_splineX)(_ref_length).coeff(0), (*_splineY)(_ref_length).coeff(0));
+    // if ((Eigen::Vector2d(_odom(0), _odom(1)) - end_p).norm() < 4e-1)
+    // {
+    //     _is_set = false;
+    //     return {0,0};
+    // }
 
     // std::cout << "odometry is " << _odom.transpose() << std::endl;
     double new_vel;
@@ -161,9 +162,8 @@ std::vector<double> MPCCore::solve()
     auto start = std::chrono::high_resolution_clock::now();
     Eigen::VectorXd state(4);
     state << _odom(0), _odom(1), _odom(2), _curr_vel;
-    std::cerr << "done loadin state" << std::endl;
     _mpc_results = _mpc->solve(state);
-    std::cerr << "done with mpc impl solve" << std::endl;
+    
     // _mpc_results = _mpc->Solve(_state, _reference);
     auto end = std::chrono::high_resolution_clock::now();
     time_to_solve = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();

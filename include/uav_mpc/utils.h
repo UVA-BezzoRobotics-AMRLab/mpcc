@@ -1,5 +1,5 @@
 #include <tf/tf.h>
-#include <iostream>
+#include <iostream>  
 #include <Eigen/Core>
 
 #include <uav_mpc/types.h>
@@ -8,6 +8,12 @@
 
 #include <distance_map_msgs/DistanceMap.h>
 #include <distance_map_core/distance_map.h>
+
+extern "C"
+{
+    #include <cpg_solve.h>
+    #include <cpg_workspace.h>
+}
 
 
 namespace utils{
@@ -99,66 +105,85 @@ namespace utils{
         return Spline1D(knots, ctrls);
     }
 
-    inline bool get_tubes(const std::vector<Spline1D> &traj, 
+
+    inline void setup_lp(int d, 
+                         int N, 
+                         double traj_arc_len, 
+                         double min_dist, 
+                         const std::vector<double>& dist_vec)
+    {
+
+        // set arc length domain for LP
+        cpg_update_Domain(0, 0.);
+        cpg_update_Domain(1, traj_arc_len);
+
+        double ds = traj_arc_len / (N-1);
+
+        for(int i = 0; i < N; ++i)
+        {
+            double s = i * ds;
+            double s_k = 1;
+            for(int j = 0; j < d; ++j)
+            {
+                // matrices are in column-major order for cpg
+                // index for -polynomial <= -min_dist constraint
+                size_t ind_upper = i + j * 2 * N;
+                // index for polynomial <= obs_dist constraint
+                size_t ind_lower = i + N + j * 2 * N;
+
+                cpg_update_A_mat(ind_upper, -s_k);
+                cpg_update_A_mat(ind_lower, s_k);
+                s_k *= s;
+            }
+
+            // index for -polynomial <= -min_dist constraint
+            cpg_update_b_vec(i, -min_dist);
+            // index for polynomial <= obs_dist constraint
+            cpg_update_b_vec(i + N, dist_vec[i]);
+        }
+
+    }
+
+    inline double eval_traj(const Eigen::VectorXd& coeffs, double x)
+    {
+        double ret = 0;
+        double x_pow = 1;
+
+        for(int i = 0; i < coeffs.size(); ++i)
+        {
+            ret += coeffs[i] * x_pow;
+            x_pow *= x;
+        }
+
+        return ret;
+    }
+
+    inline bool get_tubes(int d,
+                          int N,
+                          double max_dist,
+                          const std::vector<Spline1D> &traj, 
                           double traj_arc_len,
                           double len_start,
                           double horizon,
                           const grid_map::GridMap& grid_map,
-                          std::vector<Spline1D>& tubes)
+                          std::vector<Eigen::VectorXd>& tubes)
     {
         tubes.clear();
 
-        // double horizon = 1;
-        traj_arc_len -= .1;
-        if (len_start > traj_arc_len)
-            return false;
+        /*************************************
+        ********* Get Traj Distances *********
+        **************************************/
+        double min_dist_abv = 1e6;
+        double min_dist_blw = 1e6;
+        // double ds = traj_arc_len / (N-1);
+        double ds = horizon / (N-1);
 
-        if (len_start + horizon > traj_arc_len)
-            horizon = traj_arc_len-len_start;
+        std::vector<double> ds_above;
+        std::vector<double> ds_below;
+        ds_above.resize(N);
+        ds_below.resize(N);
 
-        // iterate over curve to find maximum distance allowed
-        double max_dist = .7;
-        double max_curv = -1;
-        double max_curv_s = 0;
-        double tan_mag_s = 0;
-        for(double s = len_start; s <= len_start + horizon; s += .05)
-        {
-            double px = traj[0](s).coeff(0);
-            double py = traj[1](s).coeff(0);
-            
-            double tx = traj[0].derivatives(s, 1).coeff(1);
-            double ty = traj[1].derivatives(s, 1).coeff(1);
-
-            double nx = traj[0].derivatives(s, 1).coeff(1);
-            double ny = traj[1].derivatives(s, 1).coeff(1);
-
-            Eigen::Vector2d point(px, py);
-            Eigen::Vector2d normal(nx, ny);
-
-            double den = tx * tx + ty * ty;
-            double curvature = fabs(tx*ny - ty*nx) / (den * sqrt(den)); //normal.norm();
-
-            if (curvature > 1 / (2*max_dist))
-                max_dist = 1 / (2*curvature);
-
-            if (curvature > max_curv)
-                max_curv = curvature;
-                max_curv_s = s;
-                tan_mag_s = Eigen::Vector2d(tx, ty).norm();
-        }
-        
-        std::cout << "MAX CURV IS: " << max_curv << " AT " << max_curv_s << " / " << traj_arc_len << std::endl;
-        std::cout << "TAN MAG IS: " << tan_mag_s << std::endl;
-        std::cout << "MAX DIST IS: " << max_dist << std::endl;
-        
-        double ds = .05;
-        int n = horizon / ds;
-        Eigen::RowVectorXd ss, ds_above, ds_below;
-        ss.resize(n);
-        ds_above.resize(n);
-        ds_below.resize(n);
-
-        for(int i = 0; i < n; ++i)
+        for(int i = 0; i < N; ++i)
         {
             double s = len_start + i * ds;
             double px = traj[0](s).coeff(0);
@@ -171,7 +196,7 @@ namespace utils{
             Eigen::Vector2d normal(-ty, tx);
             normal.normalize();
 
-            // now raycast in each normal direction
+            // raycast in direction of normal to find obs dist
             double dist_above;
             if (!raycast_grid(point, normal, grid_map, max_dist, dist_above))
                 return false;
@@ -180,187 +205,111 @@ namespace utils{
             if (!raycast_grid(point, -1*normal, grid_map, max_dist, dist_below))
                 return false;
 
-            // std::cout << "above for " << point.transpose() << " is " << dist_above << std::endl;
-            // std::cout << "below for " << point.transpose() << " is " << dist_below<< std::endl;
-            
-            ss(i) = s;
-            ds_above(i) = dist_above;
-            ds_below(i) = dist_below;
+            if (dist_above < min_dist_abv)
+                min_dist_abv = dist_above;
+
+            if (dist_below < min_dist_blw)
+                min_dist_blw = dist_below;
+
+            ds_above[i] = dist_above;
+            // std::cout << "ds_below is " << dist_below << std::endl;
+            ds_below[i] = dist_below;
         }
 
-        double thresh = .05;
-        // Backward smoothing pass
-        for (int i = 0; i < ds_above.size()-1; ++i)
+        /*************************************
+        ********** Setup & Solve Up **********
+        **************************************/
+
+        // setup_lp(d, N, traj_arc_len, 0, ds_above);
+        setup_lp(d, N, horizon, min_dist_abv/1.1, ds_above);
+        cpg_solve();
+
+        std::string solved_str = "solved";
+        // std::string status = CPG_Info.status;
+        // if(strcmp(CPG_Info.status, solved_str.c_str()) != 0)
+        // if (status.find(solved_str) == std::string::npos)
+        if (CPG_Info.status != 0)
         {
-            if (ds_above[i + 1] - ds_above[i] > thresh) // Threshold for large jump
-            {
-                ds_above[i + 1] = ds_above[i] + thresh/4;
-            }
-            if (ds_below[i + 1] - ds_below[i] > thresh)
-            {
-                ds_below[i + 1] = ds_below[i] + thresh/4;
-            }
+            std::cout << "LP Above Tube Failed: " << CPG_Info.status << std::endl;
+            tubes.push_back(Eigen::VectorXd(d));
+            tubes.push_back(Eigen::VectorXd(d));
+            return false;
         }
 
-        // Forward smoothing pass
-        for (int i = ds_above.size()-2; i >= 0; --i)
+        for(int i = 0; i < d; ++i)
+            std::cout << CPG_Result.prim->var2[i] << ", ";
+        std::cout << std::endl;
+
+        Eigen::VectorXd upper_coeffs;
+        upper_coeffs.resize(d);
+        for(int i = 0; i < d; ++i)
+            upper_coeffs[i] = CPG_Result.prim->var2[i];
+
+
+        // cpg_set_solver_default_settings();
+        /*************************************
+        ********* Setup & Solve Down *********
+        **************************************/
+
+        setup_lp(d, N, horizon, min_dist_blw/1.1, ds_below);
+        cpg_solve();
+
+        // if(strcmp(CPG_Info.status, solved_str.c_str()) != 0)
+        // if (status.find(solved_str) == std::string::npos)
+        if (CPG_Info.status != 0)
         {
-            if (ds_above[i] - ds_above[i + 1] > thresh)
-            {
-                ds_above[i] = ds_above[i + 1] + thresh/4;
-            }
-            if (ds_below[i] - ds_below[i + 1] > thresh)
-            {
-                ds_below[i] = ds_below[i + 1] + thresh/4;
-            }
+            std::cout << "LP Below Tube Failed: " << CPG_Info.status << std::endl;
+            tubes.push_back(Eigen::VectorXd(d));
+            tubes.push_back(Eigen::VectorXd(d));
+            return false;
         }
 
+        for(int i = 0; i < d; ++i)
+            std::cout << CPG_Result.prim->var2[i] << ", ";
+        std::cout << std::endl;
 
-        // tk::spline spline_above(ss, ds_above, tk::spline::cspline);
-        // tk::spline spline_below(ss, ds_below, tk::spline::cspline);
+        Eigen::VectorXd lower_coeffs;
+        lower_coeffs.resize(d);
+        for(int i = 0; i < d; ++i)
+            lower_coeffs[i] = CPG_Result.prim->var2[i];
 
-        // SplineWrapper sw_above, sw_below;
-        // sw_above.spline = spline_above;
-        // sw_below.spline = spline_below;
+        // std::cout << "Result\n" << CPG_Result.info->obj_val << std::endl;
+        // std::cout << "Primal Solution\n";
+        // cpg_set_solver_default_settings();
+
+        
+        // std::cout << std::endl;
+        // Eigen::RowVectorXd ss, ds_abv, ds_blw;
+        // ss.resize(10);
+        // ds_abv.resize(10);
+        // ds_blw.resize(10);
+        // ds = traj_arc_len / 10.;
+
+        // for(int i = 0; i < 11; ++i)
+        // {
+        //     double s = i * ds;
+
+        //     ss(i) = s;
+        //     ds_abv(i) = eval_traj(upper_coeffs, s);
+        //     ds_blw(i) = eval_traj(lower_coeffs, s);
+        // }
 
         // fit splines
-        const auto above_fit = utils::Interp(ds_above, 3, ss);
-        Spline1D spline_above(above_fit);
+        // const auto above_fit = utils::Interp(ds_abv, 3, ss);
+        // Spline1D spline_above(above_fit);
 
-        const auto below_fit = utils::Interp(-1*ds_below, 3, ss);
-        Spline1D spline_below(below_fit);
+        // const auto below_fit = utils::Interp(-1*ds_blw, 3, ss);
+        // Spline1D spline_below(below_fit);
 
-        tubes.push_back(spline_above);
-        tubes.push_back(spline_below);
+
+        // tubes.push_back(spline_above);
+        // tubes.push_back(spline_below);
+        tubes.push_back(upper_coeffs);
+        tubes.push_back(-1*lower_coeffs);
+
+        // ecos_workspace = 0;
 
         return true;
     }
-
-    // inline bool get_tubes(const std::vector<SplineWrapper> &traj, 
-    //                       double traj_arc_len,
-    //                       double len_start,
-    //                       double horizon,
-    //                       const grid_map::GridMap& grid_map,
-    //                       std::vector<SplineWrapper>& tubes)
-    // {
-    //     tubes.clear();
-    //     std::vector<double> ss, ds_above, ds_below;
-
-    //     // double horizon = 1;
-    //     traj_arc_len -= .1;
-    //     if (len_start > traj_arc_len)
-    //         return false;
-
-    //     if (len_start + horizon > traj_arc_len)
-    //         horizon = traj_arc_len-len_start;
-
-    //     // iterate over curve to find maximum distance allowed
-    //     double max_dist = .7;
-    //     double max_curv = -1;
-    //     double max_curv_s = 0;
-    //     double tan_mag_s = 0;
-    //     for(double s = len_start; s <= len_start + horizon; s += .05)
-    //     {
-    //         double px = traj[0].spline(s);
-    //         double py = traj[1].spline(s);
-            
-    //         double tx = traj[0].spline.deriv(1, s);
-    //         double ty = traj[1].spline.deriv(1, s);
-
-    //         double nx = traj[0].spline.deriv(2, s);
-    //         double ny = traj[1].spline.deriv(2, s);
-
-    //         Eigen::Vector2d point(px, py);
-    //         Eigen::Vector2d normal(nx, ny);
-
-    //         double den = tx * tx + ty * ty;
-    //         double curvature = fabs(tx*ny - ty*nx) / (den * sqrt(den)); //normal.norm();
-
-    //         if (curvature > 1 / (2*max_dist))
-    //         {
-    //             max_dist = 1 / (2*curvature);
-    //         }
-
-    //         if (curvature > max_curv)
-    //         {
-    //             max_curv = curvature;
-    //             max_curv_s = s;
-    //             tan_mag_s = Eigen::Vector2d(tx, ty).norm();
-    //         }
-
-    //     }
-        
-    //     std::cout << "MAX CURV IS: " << max_curv << " AT " << max_curv_s << " / " << traj_arc_len << std::endl;
-    //     std::cout << "TAN MAG IS: " << tan_mag_s << std::endl;
-    //     std::cout << "MAX DIST IS: " << max_dist << std::endl;
-    //     for(double s = len_start; s <= len_start + horizon; s += .05)
-    //     {
-    //         double px = traj[0].spline(s);
-    //         double py = traj[1].spline(s);
-
-    //         double tx = traj[0].spline.deriv(1, s);
-    //         double ty = traj[1].spline.deriv(1, s);
-
-    //         Eigen::Vector2d point(px, py);
-    //         Eigen::Vector2d normal(-ty, tx);
-    //         normal.normalize();
-
-    //         // now raycast in each normal direction
-    //         double dist_above;
-    //         if (!raycast_grid(point, normal, grid_map, max_dist, dist_above))
-    //             return false;
-
-    //         double dist_below;
-    //         if (!raycast_grid(point, -1*normal, grid_map, max_dist, dist_below))
-    //             return false;
-
-    //         // std::cout << "above for " << point.transpose() << " is " << dist_above << std::endl;
-    //         // std::cout << "below for " << point.transpose() << " is " << dist_below<< std::endl;
-            
-    //         ss.push_back(s);
-    //         ds_above.push_back(dist_above);
-    //         ds_below.push_back(dist_below);
-    //     }
-
-    //     double thresh = .05;
-    //     // Backward smoothing pass
-    //     for (int i = 0; i < ds_above.size()-1; ++i)
-    //     {
-    //         if (ds_above[i + 1] - ds_above[i] > thresh) // Threshold for large jump
-    //         {
-    //             ds_above[i + 1] = ds_above[i] + thresh/4;
-    //         }
-    //         if (ds_below[i + 1] - ds_below[i] > thresh)
-    //         {
-    //             ds_below[i + 1] = ds_below[i] + thresh/4;
-    //         }
-    //     }
-
-    //     // Forward smoothing pass
-    //     for (int i = ds_above.size()-2; i >= 0; --i)
-    //     {
-    //         if (ds_above[i] - ds_above[i + 1] > thresh)
-    //         {
-    //             ds_above[i] = ds_above[i + 1] + thresh/4;
-    //         }
-    //         if (ds_below[i] - ds_below[i + 1] > thresh)
-    //         {
-    //             ds_below[i] = ds_below[i + 1] + thresh/4;
-    //         }
-    //     }
-
-
-    //     tk::spline spline_above(ss, ds_above, tk::spline::cspline);
-    //     tk::spline spline_below(ss, ds_below, tk::spline::cspline);
-
-    //     SplineWrapper sw_above, sw_below;
-    //     sw_above.spline = spline_above;
-    //     sw_below.spline = spline_below;
-
-    //     tubes.push_back(sw_above);
-    //     tubes.push_back(sw_below);
-
-    //     return true;
-    // }
 
 }

@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.0.2)
-project(uav_mpc)
+project(uav_mpc C CXX)
 
 ## Compile as C++11, supported in ROS Kinetic and newer
-add_compile_options(-std=c++17 -O3)
+# add_compile_options(-std=c++17 -O3)
 
 # add cmake module path
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
@@ -20,6 +20,9 @@ find_package(catkin REQUIRED COMPONENTS
   grid_map_ros
 )
 
+set(CVXPYGEN_OUTPUT ${CMAKE_SOURCE_DIR}/scripts/unicycle_mpcc/LP_codegen/c)
+add_subdirectory(${CVXPYGEN_OUTPUT})
+
 ## System dependencies are found with CMake's conventions
 find_package(Python3 REQUIRED)
 find_package(ACADOS REQUIRED)
@@ -27,6 +30,7 @@ find_package(BLASFEO REQUIRED)
 find_package(HPIPM REQUIRED)
 find_package(nlopt REQUIRED)
 find_package(Eigen3 REQUIRED COMPONENT system)
+
 
 catkin_package(
 #  INCLUDE_DIRS include
@@ -44,12 +48,17 @@ catkin_package(
 include_directories(
   include
   third_party/autodiff
+  ${HPIPM_INCLUDE_DIRS}
+  ${EIGEN3_INCLUDE_DIR}
   ${catkin_INCLUDE_DIRS}
   ${ACADOS_INCLUDE_DIRS}
-  ${HPIPM_INCLUDE_DIRS}
   ${BLASFEO_INCLUDE_DIRS}
-  ${EIGEN3_INCLUDE_DIR}
+  # ${cpg_include}
 )
+
+# message(WARNING "CPG INCLUDE: ${cpg_include}")
+# message(WARNING "CPG HEAD: ${cpg_head}")
+# message(WARNING "CPG SRC: ${cpg_src}")
 
 set(ACADOS_OUTPUT_DIR ${CMAKE_SOURCE_DIR}/scripts/unicycle_mpcc/c_generated_code)
 
@@ -80,6 +89,7 @@ set(ACADOS_OUTPUT_HEADERS
 
 set(ACADOS_OUTPUT_LIB
   ${ACADOS_OUTPUT_DIR}/libacados_ocp_solver_unicycle_model_mpcc.so
+  ${ACADOS_OUTPUT_DIR}/libacados_sim_solver_unicycle_model_mpcc.so
 )
 
 set(ACADOS_OUTPUT_FILES ${ACADOS_OUTPUT_SRC} ${ACADOS_OUTPUT_HEADERS} ${ACADOS_OUTPUT_LIB})
@@ -91,8 +101,8 @@ set(ACADOS_SCRIPTS
 
 add_custom_command(
   OUTPUT ${ACADOS_OUTPUT_FILES}
-  COMMAND ${Python_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/unicycle_mpcc/mpcc_ocp_horizon.py
-  DEPENDS ${ACADOS_SCRIPTS}
+  COMMAND ${Python_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/unicycle_mpcc/mpcc_ocp_horizon.py --yaml ${CMAKE_SOURCE_DIR}/params/mpcc.yaml
+  DEPENDS ${ACADOS_SCRIPTS} ${CMAKE_SOURCE_DIR}/params/mpcc.yaml
   COMMENT "Building MPC code with Acados"
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/scripts/unicycle_mpcc
   VERBATIM
@@ -100,47 +110,24 @@ add_custom_command(
 
 add_custom_target(
   GenerateAcadosCode
-  DEPENDS ${ACADOS_OUTPUT_FILES} ${ACADOS_SCRIPTS}
+  DEPENDS ${ACADOS_OUTPUT_FILES} ${ACADOS_SCRIPTS} ${CMAKE_SOURCE_DIR}/params/mpcc.yaml
 )
 
-## Declare a C++ library
-# add_library(${PROJECT_NAME}
-#   src/${PROJECT_NAME}/uav_mpc.cpp
+# set(CVXPYGEN_OUTPUT_FILES ${CVXPYGEN_OUTPUT}/cpg_solver.py)
+# set(CVXPYGEN_SCRIPT ${CMAKE_SOURCE_DIR}/scripts/unicycle_mpcc/tube_lp_gen.py)
+
+# add_custom_command(
+#   OUTPUT ${CVXPYGEN_OUTPUT}/cpg_solver.py
+#   COMMAND ${Python_EXECUTABLE} ${CVXPYGEN_SCRIPT} --dir ${CVXPYGEN_OUTPUT}
+#   DEPENDS ${CVXPYGEN_SCRIPT}
+#   COMMENT "Building CVXPYGEN LP Code"
+#   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/scripts/unicycle_mpcc
+#   VERBATIM
 # )
 
-## Add cmake target dependencies of the library
-## as an example, code may need to be generated before libraries
-## either from message generation or dynamic reconfigure
-# add_dependencies(${PROJECT_NAME} ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
-
-## Declare a C++ executable
-## With catkin_make all packages are built within a single CMake context
-## The recommended prefix ensures that target names across packages don't collide
-# set(SOURCES
-#     src/unicycle_mpcc.cpp
-#     include/uav_mpc/unicycle_mpcc/acados_solver_unicycle_model.c
-#     include/uav_mpc/unicycle_mpcc/unicycle_model_model/unicycle_model_impl_dae_fun.c
-#     include/uav_mpc/unicycle_mpcc/unicycle_model_model/unicycle_model_impl_dae_fun_jac_x_xdot_u.c
-#     include/uav_mpc/unicycle_mpcc/unicycle_model_model/unicycle_model_impl_dae_fun_jac_x_xdot_u_z.c
-#     include/uav_mpc/unicycle_mpcc/unicycle_model_model/unicycle_model_impl_dae_fun_jac_x_xdot_z.c
-#     include/uav_mpc/unicycle_mpcc/unicycle_model_model/unicycle_model_impl_dae_jac_x_xdot_u_z.c
-# )
-
-# add_executable(unicycle_mpcc ${SOURCES})
-# target_link_libraries(unicycle_mpcc
-#   ${ACADOS_LIBRARIES}
-#   ${BLASFEO_LIBRARIES}
-#   ${HPIPM_LIBRARIES}
-#   ${catkin_LIBRARIES}
-#   ${EIGEN3_LIBRARIES}
-#   m
-# )
-
-# add_executable(casadi_mpc src/mpcc_casadi_impl.cpp)
-# target_link_libraries(casadi_mpc
-#   ${catkin_LIBRARIES}
-#   ${EIGEN3_LIBRARIES}
-#   ${NLOPT_LIBRARIES}
+# add_custom_target(
+#   GenerateCVXPYCode
+#   DEPENDS ${CVXPYGEN_SCRIPT} ${CVXPYGEN_OUTPUT_FILES}
 # )
 
 add_executable(test_reparam src/test.cpp)
@@ -149,36 +136,30 @@ target_link_libraries(test_reparam
   ${EIGEN3_LIBRARIES}
 )
 
+add_library(cvxpy_lib STATIC ${cpg_src})
+target_compile_options(cvxpy_lib PRIVATE -O3 -w)
+target_include_directories(cvxpy_lib PRIVATE ${cpg_include})
+
 add_executable(mpcc_ros 
   src/mpcc_node.cpp
   src/mpcc_ros.cpp
   src/mpcc_core.cpp
   src/mpcc_acados.cpp
-  # src/mpcc_impl.cpp
-  # src/mpcc_nlopt_impl.cpp
+  # ${cpg_src}
+  # ${cpg_head}
 )
 target_link_libraries(mpcc_ros
+  ${HPIPM_LIBRARIES}
   ${catkin_LIBRARIES}
   ${ACADOS_LIBRARIES}
-  ${BLASFEO_LIBRARIES}
-  ${HPIPM_LIBRARIES}
   ${catkin_LIBRARIES}
   ${EIGEN3_LIBRARIES}
   ${ACADOS_OUTPUT_LIB}
-  # ${NLOPT_LIBRARIES}
-  # ipopt
+  ${BLASFEO_LIBRARIES}
+  cvxpy_lib
+  # ${CVXPYGEN_OUTPUT}/build/out/libcpg.a
 )
+target_compile_options(mpcc_ros PRIVATE -std=c++17 -O3)
 add_dependencies(mpcc_ros GenerateAcadosCode)
-target_include_directories(mpcc_ros PRIVATE ${ACADOS_OUTPUT_DIR})
-
-# add_executable(mpcc_acados src/mpcc_acados.cpp)
-# target_link_libraries(mpcc_acados
-#   ${ACADOS_LIBRARIES}
-#   ${BLASFEO_LIBRARIES}
-#   ${HPIPM_LIBRARIES}
-#   ${catkin_LIBRARIES}
-#   ${EIGEN3_LIBRARIES}
-#   ${ACADOS_OUTPUT_LIB}
-# )
-# add_dependencies(mpcc_acados GenerateAcadosCode)
-# target_include_directories(mpcc_acados PRIVATE ${ACADOS_OUTPUT_DIR})
+add_dependencies(mpcc_ros cvxpy_lib)
+target_include_directories(mpcc_ros PRIVATE ${ACADOS_OUTPUT_DIR} ${cpg_include})

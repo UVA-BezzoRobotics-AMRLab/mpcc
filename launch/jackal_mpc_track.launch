@@ -1,9 +1,10 @@
 <launch>
 	<arg name="odomTopic" default="/gmapping/odometry" />
 	<arg name="cmdTopic" default="/cmd_vel" />
+	<!-- <arg name="cmdTopic" default="/mpc" /> -->
 
     <!-- <arg name="mpc_type" value="track_acc_nlopt" /> -->
-    <arg name="mpc_type" value="track_acc_ipopt" />
+    <arg name="mpc_type" value="mpcc" />
 
     <rosparam file="$(find uav_mpc)/params/$(arg mpc_type).yaml" command="load" ns="mpcc/" />
     <rosparam file="$(find uav_mpc)/params/robo_params.yaml" command="load" ns="mpcc/" />

@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 
+import sys
+import yaml
 import time
 import scipy
+import argparse
 import numpy as np
 import casadi as ca
 import matplotlib.pyplot as plt
@@ -108,21 +111,35 @@ def create_ocp():
     return ocp
 
 
-def create_ocp_tube():
+def create_ocp_tube(yaml_file):
 
     ocp = AcadosOcp()
 
+    params = None
+    if yaml_file != "":
+        with open(yaml_file) as stream:
+            try:
+                params = yaml.safe_load(stream)
+            except yaml.YAMLError as e:
+                print("ERROR:", e, file=sys.stderr)
+                exit(1)
+    else:
+        print(
+            "ERROR: YAML file must be provided in order to generate MPC code!",
+            file=sys.stderr,
+        )
+        exit(1)
+
     # set model
     # model = export_mpcc_ode_model(list(ss), list(xs), list(ys))
-    model = export_mpcc_ode_model_spline_tube()
+    model = export_mpcc_ode_model_spline_tube(params)
     ocp.model = model
 
     Tf = 1.0
     nx = model.x.rows()
     nu = model.u.rows()
-    nsh = model.con_h_expr.rows()
     nparams = model.p.rows()
-    N = 20
+    N = 10
 
     ocp.cost.cost_type = "EXTERNAL"
     ocp.cost.cost_type_e = "EXTERNAL"
@@ -139,21 +156,11 @@ def create_ocp_tube():
     ocp.constraints.ubu = np.array([3, np.pi / 2, 3])
     ocp.constraints.idxbu = np.array([0, 1, 2])
 
-    # cost for violating constraints (linear-gradient zl/zu and quadratic-hessian Zl and Zu)
-    # ocp.cost.Zl = np.ones((2,)) * 1e3
-    # ocp.cost.Zu = np.ones((2,)) * 1e3
-    # ocp.cost.zl = np.ones((2,)) * 1e3
-    # ocp.cost.zu = np.ones((2,)) * 1e3
-
-    # ocp.dims.nsh = nsh
+    # constraints
     ocp.constraints.uh = np.array([0.0, 0.0])
     ocp.constraints.lh = np.array([-1e6, -1e6])
     ocp.constraints.uh_e = ocp.constraints.uh
     ocp.constraints.lh_e = ocp.constraints.lh
-    # force slack variables to be small
-    # ocp.constraints.ush = 0.1 * np.ones(ocp.dims.nsh)
-    # ocp.constraints.lsh = -0.1 * np.ones(ocp.dims.nsh)
-    # ocp.constraints.idxsh = np.array([0, 1])
 
     # theta can be whatever
     ocp.constraints.lbx = np.array([-1e6, -1e6, -1e6, 0, 0, 0])
@@ -165,17 +172,29 @@ def create_ocp_tube():
     ocp.solver_options.tf = Tf
     ocp.solver_options.N_horizon = N
     ocp.solver_options.shooting_nodes = np.linspace(0, Tf, N + 1)
+
     # Partial is slightly slower but more stable allegedly than full condensing.
+    # ocp.solver_options.qp_solver = "PARTIAL_CONDENSING_HPIPM"
+    # ocp.solver_options.hessian_approx = "EXACT"
+    # ocp.solver_options.integrator_type = "ERK"
+    # ocp.solver_options.nlp_solver_type = "SQP"
+    # # sometimes solver failed due to NaNs, regularizing Hessian helped
+    # ocp.solver_options.regularize_method = "MIRROR"
+    # # ocp.solver_options.tol = 1e-4
+
     ocp.solver_options.qp_solver = "PARTIAL_CONDENSING_HPIPM"
-    # ocp.solver_options.qp_solver = "FULL_CONDENSING_HPIPM"
     ocp.solver_options.hessian_approx = "EXACT"
     ocp.solver_options.integrator_type = "ERK"
     ocp.solver_options.nlp_solver_type = "SQP_RTI"
     # sometimes solver failed due to NaNs, regularizing Hessian helped
     ocp.solver_options.regularize_method = "MIRROR"
-    # ocp.solver_options.tol = 1e-4
+    ocp.solver_options.globalization = "MERIT_BACKTRACKING"
+    ocp.solver_options.globalization_line_search_use_sufficient_descent = True
+    # ocp.solver_options.levenberg_marquardt = 1e-4
+    # ocp.solver_options.warm_start_first_qp = 1
 
-    ocp.solver_options.nlp_solver_tol_ineq = 1e-6
+    # ocp.solver_options.alpha_min = 0.05  # Default is 0.1, reduce if flickering
+    # ocp.solver_options.alpha_reduction = 0.5  # Reduce aggressive steps
 
     # used these previously and they didn't help anything too much
     # ocp.solver_options.globalization = "MERIT_BACKTRACKING"
@@ -192,7 +211,12 @@ def create_ocp_tube():
 if __name__ == "__main__":
     # ocp = create_ocp()
     # acados_ocp_solver = AcadosOcpSolver(ocp)
-    # acados_integrator = AcadosSimSolver(ocp)
 
-    ocp = create_ocp_tube()
+    parser = argparse.ArgumentParser(description="test BARN navigation challenge")
+    parser.add_argument("--yaml", type=str, default="")
+
+    args = parser.parse_args()
+
+    ocp = create_ocp_tube(args.yaml)
     acados_ocp_solver = AcadosOcpSolver(ocp)
+    acados_integrator = AcadosSimSolver(ocp)

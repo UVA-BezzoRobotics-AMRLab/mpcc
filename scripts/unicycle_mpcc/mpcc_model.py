@@ -131,7 +131,7 @@ def export_mpcc_ode_model_spline_param() -> AcadosModel:
     return model
 
 
-def export_mpcc_ode_model_spline_tube() -> AcadosModel:
+def export_mpcc_ode_model_spline_tube(params) -> AcadosModel:
 
     model_name = "unicycle_model_mpcc"
 
@@ -152,22 +152,23 @@ def export_mpcc_ode_model_spline_tube() -> AcadosModel:
     u = vertcat(a, w, sddot)
 
     v = MX.sym("v")
-    x_coeff = MX.sym("x_coeffs", 11)
-    y_coeff = MX.sym("y_coeffs", 11)
-    d_abv_coeff = MX.sym("d_above_coeffs", 11)
-    d_blw_coeff = MX.sym("d_below_coeffs", 11)
+    x_coeff = MX.sym("x_coeffs", params["mpc_ref_samples"])
+    y_coeff = MX.sym("y_coeffs", params["mpc_ref_samples"])
+    # d_abv_coeff = MX.sym("d_above_coeffs", 11)
+    # d_blw_coeff = MX.sym("d_below_coeffs", 11)
+    d_abv_coeff = MX.sym("d_above_coeffs", params["tube_poly_degree"] + 1)
+    d_blw_coeff = MX.sym("d_below_coeffs", params["tube_poly_degree"] + 1)
 
     # arc_len_knots = DM([1.0] * 11)
     # arc_len_knots = MX.sym("knots", 11)
-    p = vertcat(x_coeff, y_coeff, d_abv_coeff, d_blw_coeff)
 
-    arc_len_knots = np.linspace(0, 4, 11)
+    arc_len_knots = np.linspace(0, params["ref_length_size"], params["mpc_ref_samples"])
     # arc_len_knots = np.linspace(0, 17.0385372, 11)
     arc_len_knots = np.concatenate(
         (
-            np.ones((4,)) * arc_len_knots[0],
+            np.ones((params["ref_length_size"],)) * arc_len_knots[0],
             arc_len_knots[2:-2],
-            np.ones((4,)) * arc_len_knots[-1],
+            np.ones((params["ref_length_size"],)) * arc_len_knots[-1],
         )
     )
 
@@ -176,14 +177,20 @@ def export_mpcc_ode_model_spline_tube() -> AcadosModel:
     x_spline_mx = bspline(v, x_coeff, [list(arc_len_knots)], [3], 1, {})
     y_spline_mx = bspline(v, y_coeff, [list(arc_len_knots)], [3], 1, {})
 
-    d_abv_spline_mx = bspline(v, d_abv_coeff, [list(arc_len_knots)], [3], 1, {})
-    d_blw_spline_mx = bspline(v, d_blw_coeff, [list(arc_len_knots)], [3], 1, {})
+    # d_abv_spline_mx = bspline(v, d_abv_coeff, [list(arc_len_knots)], [3], 1, {})
+    # d_blw_spline_mx = bspline(v, d_blw_coeff, [list(arc_len_knots)], [3], 1, {})
+
+    d_abv = 0
+    d_blw = 0
+    for i in range(params["tube_poly_degree"] + 1):
+        d_abv = d_abv + (d_abv_coeff[i] * s1**i)
+        d_blw = d_blw + (d_blw_coeff[i] * s1**i)
 
     spline_x = Function("xr", [v, x_coeff], [x_spline_mx], {})
     spline_y = Function("yr", [v, y_coeff], [y_spline_mx], {})
 
-    d_abv_spline = Function("d_abv", [v, d_abv_coeff], [d_abv_spline_mx], {})
-    d_blw_spline = Function("d_blw", [v, d_blw_coeff], [d_blw_spline_mx], {})
+    # d_abv_spline = Function("d_abv", [v, d_abv_coeff], [d_abv_spline_mx], {})
+    # d_blw_spline = Function("d_blw", [v, d_blw_coeff], [d_blw_spline_mx], {})
 
     xr = spline_x(s1, x_coeff)
     yr = spline_y(s1, y_coeff)
@@ -191,22 +198,19 @@ def export_mpcc_ode_model_spline_tube() -> AcadosModel:
     xr_dot = jacobian(xr, s1)
     yr_dot = jacobian(yr, s1)
 
-    xr_ddot = jacobian(xr_dot, s1)
-    yr_ddot = jacobian(yr_dot, s1)
+    # xr_ddot = jacobian(xr_dot, s1)
+    # yr_ddot = jacobian(yr_dot, s1)
 
     phi_r = atan2(xr_dot, yr_dot)
 
     e_c = sin(phi_r) * (x1 - xr) - cos(phi_r) * (y1 - yr)
     e_l = -cos(phi_r) * (x1 - xr) - sin(phi_r) * (y1 - yr)
 
-    Q_c = 3.0  # 50
-    Q_l = 100  # 3
-    Q_s = 0.3
-    Q_mat = np.diag([Q_c, Q_l, 1e-1, 4e-1, 1e-1])
-    Q_mat_e = np.diag([Q_c, Q_l])  # / 10
+    # Q_mat = np.diag([Q_c, Q_l, 1e-1, 4e-1, 1e-1])
+    # Q_mat_e = np.diag([Q_c, Q_l])  # / 10
 
-    y_expr = vertcat(e_c, e_l, a, w, sddot)
-    y_expr_e = vertcat(e_c, e_l)
+    # y_expr = vertcat(e_c, e_l, a, w, sddot)
+    # y_expr_e = vertcat(e_c, e_l)
 
     # xdot
     x1_dot = MX.sym("x1_dot")
@@ -232,13 +236,40 @@ def export_mpcc_ode_model_spline_tube() -> AcadosModel:
 
     f_impl = xdot - f_expl
 
-    signed_d = ((x1 - xr) * xr_ddot + (y1 - yr) * yr_ddot) / sqrt(
-        xr_ddot**2 + yr_ddot**2
+    # cost
+    Q_c = MX.sym("Q_c")  # 0.1
+    Q_l = MX.sym("Q_l")  # 100
+    Q_s = MX.sym("Q_s")  # 0.5
+    Q_a = 1e-1
+    Q_w = 4e-1
+    Q_sdd = 1e-1
+
+    cost_expr = (
+        Q_c * e_c**2
+        + Q_l * e_l**2
+        + Q_a * a**2
+        + Q_w * w**2
+        + Q_sdd * sddot**2
+        - Q_s * sdot1
     )
 
+    cost_expr_e = Q_c * e_c**2 + Q_l * e_l**2 - Q_s * sdot1
+    # cost_expr = y_expr.T @ Q_mat @ y_expr - Q_s * sdot1
+    # cost_expr_e = y_expr_e.T @ Q_mat_e @ y_expr_e - Q_s * sdot1
+
+    p = vertcat(x_coeff, y_coeff, d_abv_coeff, d_blw_coeff, Q_c, Q_l, Q_s)
+
     # constraints
-    con_abv = signed_d - d_abv_spline(s1, d_abv_coeff)
-    con_blw = d_blw_spline(s1, d_blw_coeff) - signed_d
+    # con_abv = signed_d - d_abv_spline(s1, d_abv_coeff)
+    # con_blw = d_blw_spline(s1, d_blw_coeff) - signed_d
+    # signed_d = ((x1 - xr) * xr_ddot + (y1 - yr) * yr_ddot) / sqrt(
+    #     xr_ddot**2 + yr_ddot**2
+    # )
+
+    signed_d = (-(x1 - xr) * yr_dot + (y1 - yr) * xr_dot) / sqrt(xr_dot**2 + yr_dot**2)
+
+    con_abv = signed_d - d_abv
+    con_blw = d_blw - signed_d
 
     model = AcadosModel()
 
@@ -249,11 +280,10 @@ def export_mpcc_ode_model_spline_tube() -> AcadosModel:
     model.p = p
     model.con_h_expr = vertcat(con_abv, con_blw)
     model.con_h_expr_e = vertcat(con_abv, con_blw)
+    model.cost_expr_ext_cost = cost_expr
+    model.cost_expr_ext_cost_e = cost_expr_e
     model.xdot = xdot
     model.name = model_name
-
-    model.cost_expr_ext_cost = y_expr.T @ Q_mat @ y_expr - Q_s * sdot1
-    model.cost_expr_ext_cost_e = y_expr_e.T @ Q_mat_e @ y_expr_e - Q_s * sdot1
 
     # store meta information
     model.x_labels = [

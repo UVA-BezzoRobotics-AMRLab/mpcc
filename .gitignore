@@ -4,3 +4,4 @@ __pycache__
 .vscode
 *.json
 c_generated_code/
+LP_codegen/

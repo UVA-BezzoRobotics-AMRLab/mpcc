@@ -8,11 +8,13 @@
 #include <uav_mpc/types.h>
 
 // acados
-#include "acados/utils/print.h"
 #include "acados/utils/math.h"
+#include "acados/utils/print.h"
+#include "acados_c/sim_interface.h"
 #include "acados_c/ocp_nlp_interface.h"
-#include "acados_c/external_function_interface.h"
 #include "acados_solver_unicycle_model_mpcc.h"
+#include "acados_c/external_function_interface.h"
+#include "acados_sim_solver_unicycle_model_mpcc.h"
 
 // blasfeo
 #include "blasfeo/include/blasfeo_d_aux_ext_dep.h"
@@ -30,7 +32,8 @@ public:
 
     std::vector<double> solve(const Eigen::VectorXd &state);
     // void set_tubes(const std::vector<SplineWrapper> &tubes);
-    void set_tubes(const std::vector<Spline1D> &tubes);
+    // void set_tubes(const std::vector<Spline1D> &tubes);
+    void set_tubes(const std::vector<Eigen::VectorXd> &tubes);
     void load_params(const std::map<std::string, double> &params);
     void set_reference(const std::vector<Spline1D> &reference, double arclen);
 
@@ -49,14 +52,24 @@ public:
 
 protected:
 
-    double get_s_from_state(const Eigen::VectorXd &state);
     std::vector<Spline1D> get_ref_from_s(double s);
+    double get_s_from_state(const Eigen::VectorXd &state);
+    Eigen::VectorXd next_state(const Eigen::VectorXd& current_state, const Eigen::VectorXd& control);
+
+    void warm_start_no_u(double *x_init);
+    void warm_start_shifted_u();
+    void process_solver_output();
+
+    bool set_solver_parameters(const std::vector<Spline1D> &ref);
 
     std::map<std::string, double> _params;
-    std::vector<double> _prev_x0;
+    // std::vector<double> _prev_x0;
+    // std::vector<double> _prev_u0;
+    Eigen::VectorXd _prev_x0;
+    Eigen::VectorXd _prev_u0;
 
     std::vector<Spline1D> _reference;
-    std::vector<Spline1D> _tubes;
+    std::vector<Eigen::VectorXd> _tubes;
 
     Eigen::VectorXd _state;
 
@@ -72,6 +85,8 @@ protected:
     int _s_ddot_start;
     int _ind_state_inc;
     int _ind_input_inc;
+    
+    int _ref_samples;
 
     double _dt;
     double _ds;
@@ -91,15 +106,28 @@ protected:
     double _w_angvel;
     double _w_angvel_d;
     double _w_linvel_d;
+    double _w_ql;
+    double _w_qc;
+    double _w_q_speed;
+    
+    double _ref_len_sz;
 
     unsigned int iterations;
 
     bool _use_cbf;
     bool _use_eigen;
+    bool _is_shift_warm;
 
     double *_new_time_steps;
 
+    unicycle_model_mpcc_sim_solver_capsule *_acados_sim_capsule;
     unicycle_model_mpcc_solver_capsule *_acados_ocp_capsule;
+
+    sim_config *_sim_config;
+    sim_in *_sim_in;
+    sim_out *_sim_out;
+    void *_sim_dims;
+
     ocp_nlp_in *_nlp_in;
     ocp_nlp_out *_nlp_out;
     ocp_nlp_dims *_nlp_dims;

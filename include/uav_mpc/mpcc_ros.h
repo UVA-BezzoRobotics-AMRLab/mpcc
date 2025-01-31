@@ -72,7 +72,8 @@ private:
 	std::vector<double> mpc_results;
 	// std::vector<SplineWrapper> _ref;
 	std::vector<Spline1D> _ref;
-	std::vector<Spline1D> _tubes;
+	// std::vector<Spline1D> _tubes;
+	std::vector<Eigen::VectorXd> _tubes;
 
 	// MPCBase* _mpc;
 	std::unique_ptr<MPCCore> _mpc_core;
@@ -80,7 +81,7 @@ private:
 
 	double _mpc_steps, _w_vel, _w_angvel, _w_linvel, _w_angvel_d, _w_linvel_d, _w_etheta,
 		_max_angvel, _max_linvel, _bound_value, _x_goal, _y_goal, _theta_goal, _tol,
-		_max_linacc, _max_anga, _w_cte, _w_pos;
+		_max_linacc, _max_anga, _w_cte, _w_pos, _w_qc, _w_ql, _w_q_speed;
 
 	double _cbf_alpha, _cbf_colinear, _cbf_padding;
 
@@ -89,6 +90,8 @@ private:
 	double _min_alpha;
 	double _max_alpha;
 	double _ref_len;
+	double _mpc_ref_len_sz;
+	double _max_tube_width;
 
 	const int XI = 0;
 	const int YI = 1;
@@ -97,6 +100,10 @@ private:
 	double _dt, _curr_vel, _curr_ang_vel, _vel_pub_freq;
 	bool _is_init, _is_goal, _teleop, _traj_reset, _use_vicon, _estop,
 		_is_at_goal, _use_cbf, _use_dynamic_alpha;
+
+	int _tube_degree;
+	int _tube_samples;
+	int _mpc_ref_samples;
 
 	grid_map::GridMap _grid_map;
 

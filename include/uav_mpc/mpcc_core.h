@@ -28,7 +28,8 @@ public:
     void set_trajectory(const std::vector<double> &ss, const std::vector<double> &xs, const std::vector<double> &ys);
     void set_dist_map(const std::shared_ptr<distmap::DistanceMap> &dist_map);
     // void set_segments(const std::vector<Segment_t> &segments);
-    void set_tubes(const std::vector<Spline1D>& tubes);
+    // void set_tubes(const std::vector<Spline1D>& tubes);
+    void set_tubes(const std::vector<Eigen::VectorXd>& tubes);
 
     Eigen::VectorXd get_state();
     std::vector<Eigen::VectorXd> get_horizon();
