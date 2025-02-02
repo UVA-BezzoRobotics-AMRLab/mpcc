@@ -130,7 +130,7 @@ MPCCROS::MPCCROS(ros::NodeHandle &nh) : _nh("~")
 	_mpc_core->load_params(_mpc_params);
 	ROS_INFO("done loading params!");
 
-	_odomSub = nh.subscribe("/odometry/filtered", 1, &MPCCROS::odomcb, this);
+	_odomSub = nh.subscribe("/oculus/RController", 1, &MPCCROS::odomcb, this);
 	_trajSub = nh.subscribe("/reference_trajectory", 1, &MPCCROS::trajectorycb, this);
 	_distMapSub = nh.subscribe("/distance_map_node/distance_field_obstacles", 1, &MPCCROS::distmapcb, this);
 
