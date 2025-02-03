@@ -334,9 +334,9 @@ void MPCCROS::cte_ctrl_loop()
 		_traj_reset = false;
 	}
 
-	ROS_ERROR("is_executing is %d", _is_executing);
-	ROS_ERROR("is_executing is %d", _in_transition);
-	ROS_ERROR("is_executing is %d", _traj_reset);
+	// ROS_ERROR("is_executing is %d", _is_executing);
+	// ROS_ERROR("is_executing is %d", _in_transition);
+	// ROS_ERROR("is_executing is %d", _traj_reset);
 	if (!_is_executing) {
         return;
     }
@@ -393,7 +393,7 @@ bool MPCCROS::modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req,
 
 	double total_length = 0;
 	int M = req.ctrl_pts.size();
-	ROS_INFO("%d POINTS RECEIVED", M);
+	ROS_ERROR("%d POINTS RECEIVED", M);
 	std::vector<double> ss, xs, ys;
 
 	for (int i = 1; i < req.ctrl_pts.size(); ++i)
@@ -405,11 +405,16 @@ bool MPCCROS::modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req,
 	    double y1 = req.ctrl_pts[i].y;
 
 	    double dist2 = (x1 - x0) * (x1 - x0) + (y1 - y0) * (y1 - y0);
+	    double new_length = total_length + sqrt(dist2);
+	    if (fabs(total_length - new_length) < 1e-2)
+		continue;
+
 	    ss.push_back(total_length);
 	    xs.push_back(x0);
 	    ys.push_back(y0);
 
 	    total_length += sqrt(dist2);
+
 	}
 
         ss.push_back(total_length);
@@ -430,6 +435,10 @@ bool MPCCROS::modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req,
     _requested_ref.clear();
 	_requested_len = ss.back();
 
+	for(int i = 0; i < ss.size(); ++i)
+	{
+		ROS_ERROR("%.2f\t%.2f\t%.2f", ss[i], xs[i], ys[i]);
+	}
 	tk::spline refx_spline(ss, xs, tk::spline::cspline);
 	tk::spline refy_spline(ss, ys, tk::spline::cspline);
 
@@ -445,7 +454,8 @@ bool MPCCROS::modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req,
 	_requested_ss = ss;
 	_requested_xs = xs;
 	_requested_ys = ys;
- 	if (_is_executing)
+
+    if (_is_executing)
     {
         // Store old trajectory for blending
         _old_ref = _ref;
