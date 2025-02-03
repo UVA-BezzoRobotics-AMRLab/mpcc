@@ -1,5 +1,5 @@
 <launch>
-	<arg name="odomTopic" default="/gmapping/odometry" />
+	<arg name="odomTopic" default="/oculus/RController" />
 	<arg name="cmdTopic" default="/cmd_vel" />
 
     <!-- <arg name="mpc_type" value="track_acc_nlopt" /> -->
