@@ -257,6 +257,12 @@ void MPCCROS::viconCb(const geometry_msgs::TransformStamped::ConstPtr &msg)
     // Pass the updated pose to the MPC core
     _mpc_core->set_odom(_odom);
 
+	// Print big, bold red message
+    ROS_ERROR("\033[1;31mCURRENT ODOM => x=%.2f, y=%.2f, yaw=%.2f\033[0m",
+              _odom(XI),
+              _odom(YI),
+              _odom(THETAI));
+
     // If this is the first message, mark as initialized
     if (!_is_init)
     {
