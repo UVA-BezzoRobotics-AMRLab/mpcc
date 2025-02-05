@@ -134,6 +134,7 @@ private:
 
 	void alphacb(const std_msgs::Float64::ConstPtr &msg);
 	void odomcb(const nav_msgs::Odometry::ConstPtr &msg);
+	void viconCb(const geometry_msgs::TransformStamped::ConstPtr& msg);
 	void goalcb(const geometry_msgs::PoseStamped::ConstPtr &msg);
 	void distmapcb(const distance_map_msgs::DistanceMap::ConstPtr& msg);
 	void trajectorycb(const trajectory_msgs::JointTrajectory::ConstPtr &msg);

@@ -130,7 +130,8 @@ MPCCROS::MPCCROS(ros::NodeHandle &nh) : _nh("~")
 	_mpc_core->load_params(_mpc_params);
 	ROS_INFO("done loading params!");
 
-	_odomSub = nh.subscribe("/oculus/RController", 1, &MPCCROS::odomcb, this);
+	//_odomSub = nh.subscribe("/vicon/jackal4/jackal4", 1, &MPCCROS::odomcb, this);
+	_viconSub = nh.subscribe("/vicon/jackal4/jackal4", 1, &MPCCROS::odomcb, this);
 	_trajSub = nh.subscribe("/reference_trajectory", 1, &MPCCROS::trajectorycb, this);
 	_distMapSub = nh.subscribe("/distance_map_node/distance_field_obstacles", 1, &MPCCROS::distmapcb, this);
 
@@ -225,6 +226,43 @@ void MPCCROS::odomcb(const nav_msgs::Odometry::ConstPtr &msg)
 		_is_init = true;
 		ROS_INFO("tracker initialized");
 	}
+}
+
+
+void MPCCROS::viconCb(const geometry_msgs::TransformStamped::ConstPtr &msg)
+{
+    // Debug print for the incoming Vicon transform
+    ROS_DEBUG("Received Vicon transform: x=%.2f, y=%.2f", 
+              msg->transform.translation.x, 
+              msg->transform.translation.y);
+
+    // Extract the quaternion
+    tf::Quaternion q(
+        msg->transform.rotation.x,
+        msg->transform.rotation.y,
+        msg->transform.rotation.z,
+        msg->transform.rotation.w);
+
+    // Convert quaternion to RPY (roll, pitch, yaw)
+    tf::Matrix3x3 m(q);
+    double roll, pitch, yaw;
+    m.getRPY(roll, pitch, yaw);
+
+    // Store the pose in your _odom vector, same indexing as before
+    _odom = Eigen::VectorXd(3);
+    _odom(XI)     = msg->transform.translation.x;
+    _odom(YI)     = msg->transform.translation.y;
+    _odom(THETAI) = yaw;
+
+    // Pass the updated pose to the MPC core
+    _mpc_core->set_odom(_odom);
+
+    // If this is the first message, mark as initialized
+    if (!_is_init)
+    {
+        _is_init = true;
+        ROS_INFO("Vicon tracker initialized");
+    }
 }
 
 // TODO: Support appending trajectories
