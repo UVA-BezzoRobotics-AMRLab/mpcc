@@ -614,6 +614,11 @@ void MPCCROS::controlLoop(const ros::TimerEvent &)
         ROS_DEBUG("Not initialized yet. Waiting for odom...");
         return;
     }
+
+	    ROS_ERROR("\033[1;31mCURRENT ODOM => x=%.2f, y=%.2f, yaw=%.2f\033[0m",
+              _odom(XI),
+              _odom(YI),
+              _odom(THETAI));
 	//if 
     if (_in_transition) {
         double current_time = ros::Time::now().toSec();
