@@ -13,22 +13,23 @@ w_angvel: 0.15
 w_angvel_d: .7
 
 w_lag_e: 100
-w_contour_e: .3
-w_speed: .2
+w_contour_e: .8
+w_speed: .3
 
-# constraints
-# max_linvel: 1.8
-# max_linacc: 3.3
-# max_angvel: 1.5
+# CLF Params
+w_lyap_lag_e: 1
+w_lyap_contour_e: 1
+clf_gamma: .5
 
 # CBF params
-use_cbf: true
-cbf_alpha: .5
+use_cbf: false
+cbf_alpha: 2.0
 cbf_colinear: .05
 cbf_padding: .05
 
 prop_gain: 1.0
 prop_gain_thresh: .349
+# prop_gain_thresh: 2.0
 
 max_tube_width: 1.5
 

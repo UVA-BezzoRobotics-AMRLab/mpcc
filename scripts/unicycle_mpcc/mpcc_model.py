@@ -3,10 +3,12 @@ from acados_template import AcadosModel
 from casadi import (
     MX,
     vertcat,
+    horzcat,
     sin,
     cos,
     atan2,
     sqrt,
+    exp,
     jacobian,
     interpolant,
     bspline,
@@ -159,16 +161,13 @@ def export_mpcc_ode_model_spline_tube(params) -> AcadosModel:
     d_abv_coeff = MX.sym("d_above_coeffs", params["tube_poly_degree"] + 1)
     d_blw_coeff = MX.sym("d_below_coeffs", params["tube_poly_degree"] + 1)
 
-    # arc_len_knots = DM([1.0] * 11)
-    # arc_len_knots = MX.sym("knots", 11)
-
     arc_len_knots = np.linspace(0, params["ref_length_size"], params["mpc_ref_samples"])
     # arc_len_knots = np.linspace(0, 17.0385372, 11)
     arc_len_knots = np.concatenate(
         (
-            np.ones((params["ref_length_size"],)) * arc_len_knots[0],
+            np.ones((4,)) * arc_len_knots[0],
             arc_len_knots[2:-2],
-            np.ones((params["ref_length_size"],)) * arc_len_knots[-1],
+            np.ones((4,)) * arc_len_knots[-1],
         )
     )
 
@@ -176,9 +175,6 @@ def export_mpcc_ode_model_spline_tube(params) -> AcadosModel:
     # don't need clamped so leave as 1
     x_spline_mx = bspline(v, x_coeff, [list(arc_len_knots)], [3], 1, {})
     y_spline_mx = bspline(v, y_coeff, [list(arc_len_knots)], [3], 1, {})
-
-    # d_abv_spline_mx = bspline(v, d_abv_coeff, [list(arc_len_knots)], [3], 1, {})
-    # d_blw_spline_mx = bspline(v, d_blw_coeff, [list(arc_len_knots)], [3], 1, {})
 
     d_abv = 0
     d_blw = 0
@@ -189,28 +185,16 @@ def export_mpcc_ode_model_spline_tube(params) -> AcadosModel:
     spline_x = Function("xr", [v, x_coeff], [x_spline_mx], {})
     spline_y = Function("yr", [v, y_coeff], [y_spline_mx], {})
 
-    # d_abv_spline = Function("d_abv", [v, d_abv_coeff], [d_abv_spline_mx], {})
-    # d_blw_spline = Function("d_blw", [v, d_blw_coeff], [d_blw_spline_mx], {})
-
     xr = spline_x(s1, x_coeff)
     yr = spline_y(s1, y_coeff)
 
     xr_dot = jacobian(xr, s1)
     yr_dot = jacobian(yr, s1)
 
-    # xr_ddot = jacobian(xr_dot, s1)
-    # yr_ddot = jacobian(yr_dot, s1)
-
     phi_r = atan2(xr_dot, yr_dot)
 
     e_c = sin(phi_r) * (x1 - xr) - cos(phi_r) * (y1 - yr)
     e_l = -cos(phi_r) * (x1 - xr) - sin(phi_r) * (y1 - yr)
-
-    # Q_mat = np.diag([Q_c, Q_l, 1e-1, 4e-1, 1e-1])
-    # Q_mat_e = np.diag([Q_c, Q_l])  # / 10
-
-    # y_expr = vertcat(e_c, e_l, a, w, sddot)
-    # y_expr_e = vertcat(e_c, e_l)
 
     # xdot
     x1_dot = MX.sym("x1_dot")
@@ -257,33 +241,83 @@ def export_mpcc_ode_model_spline_tube(params) -> AcadosModel:
     # cost_expr = y_expr.T @ Q_mat @ y_expr - Q_s * sdot1
     # cost_expr_e = y_expr_e.T @ Q_mat_e @ y_expr_e - Q_s * sdot1
 
-    p = vertcat(x_coeff, y_coeff, d_abv_coeff, d_blw_coeff, Q_c, Q_l, Q_s)
+    # Control Barrier Function
+    alpha = MX.sym("alpha")
 
-    # constraints
-    # con_abv = signed_d - d_abv_spline(s1, d_abv_coeff)
-    # con_blw = d_blw_spline(s1, d_blw_coeff) - signed_d
-    # signed_d = ((x1 - xr) * xr_ddot + (y1 - yr) * yr_ddot) / sqrt(
-    #     xr_ddot**2 + yr_ddot**2
-    # )
+    # vector pointing towards the obstacle from the robot
+    # roughly equal to norm of trajectory derivative since
+    # lag error is nearly 0
+    obs_dirx = -yr_dot / sqrt(xr_dot**2 + yr_dot**2)
+    obs_diry = xr_dot / sqrt(xr_dot**2 + yr_dot**2)
 
-    signed_d = (-(x1 - xr) * yr_dot + (y1 - yr) * xr_dot) / sqrt(xr_dot**2 + yr_dot**2)
+    signed_d = (x1 - xr) * obs_dirx + (y1 - yr) * obs_diry
 
-    con_abv = signed_d - d_abv
-    con_blw = d_blw - signed_d
+    p_abv = obs_dirx * cos_theta + obs_diry * sin_theta + v1 * 0.05
+    h_abv = (d_abv - signed_d) * exp(-p_abv)
+
+    p_blw = -obs_dirx * cos_theta - obs_diry * sin_theta + v1 * 0.05
+    h_blw = (signed_d - d_blw) * exp(-p_blw)
+
+    f = vertcat(v1 * cos_theta, v1 * sin_theta, 0, 0, sdot1, 0)
+    g = vertcat(
+        horzcat(0, 0, 0),
+        horzcat(0, 0, 0),
+        horzcat(0, 1, 0),
+        horzcat(1, 0, 0),
+        horzcat(0, 0, 0),
+        horzcat(0, 0, 1),
+    )
+
+    # g_u = vertcat(0, 0, w, a, 0, sddot)
+    h_dot_abv = jacobian(h_abv, x)
+    Lfh_abv = h_dot_abv @ f
+
+    h_dot_blw = jacobian(h_blw, x)
+    Lfh_blw = h_dot_blw @ f
+
+    # con_abv = signed_d - d_abv
+    # con_blw = d_blw - signed_d
+    con_abv = Lfh_abv + h_dot_abv @ g @ u + alpha * h_abv
+    con_blw = Lfh_blw + h_dot_blw @ g @ u + alpha * h_blw
+
+    # Control Lyapunov Function
+    Ql_c = MX.sym("Ql_c")
+    Ql_l = MX.sym("Ql_l")
+    gamma = MX.sym("gamma")
+
+    v = Ql_c * e_c**2 + Ql_l * e_l**2
+    v_dot = jacobian(v, x) @ f + jacobian(v, x) @ g @ u
+
+    lyap_con = v_dot + gamma * v
+
+    p = vertcat(
+        x_coeff,
+        y_coeff,
+        d_abv_coeff,
+        d_blw_coeff,
+        Q_c,
+        Q_l,
+        Q_s,
+        alpha,
+        Ql_c,
+        Ql_l,
+        gamma,
+    )
 
     model = AcadosModel()
-
     model.f_impl_expr = f_impl
     model.f_expl_expr = f_expl
     model.x = x
     model.u = u
     model.p = p
-    model.con_h_expr = vertcat(con_abv, con_blw)
-    model.con_h_expr_e = vertcat(con_abv, con_blw)
     model.cost_expr_ext_cost = cost_expr
     model.cost_expr_ext_cost_e = cost_expr_e
     model.xdot = xdot
     model.name = model_name
+
+    # no setting cbf for con_h_expr_e since no u in final step
+    model.con_h_expr_0 = vertcat(con_abv, con_blw, lyap_con)
+    model.con_h_expr = vertcat(con_abv, con_blw, lyap_con)
 
     # store meta information
     model.x_labels = [

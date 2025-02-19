@@ -1,5 +1,5 @@
 #include <tf/tf.h>
-#include <iostream>  
+#include <iostream>
 #include <Eigen/Core>
 
 #include <uav_mpc/types.h>
@@ -11,32 +11,32 @@
 
 extern "C"
 {
-    #include <cpg_solve.h>
-    #include <cpg_workspace.h>
+#include <cpg_solve.h>
+#include <cpg_workspace.h>
 }
 
-
-namespace utils{
+namespace utils
+{
     inline distmap::DistanceMap distmap_from_msg(const distance_map_msgs::DistanceMap &msg)
     {
         distmap::DistanceMap grid(distmap::DistanceMap::Dimension(msg.info.width, msg.info.height),
-                                msg.info.resolution,
-                                distmap::DistanceMap::Origin(msg.info.origin.position.x,
-                                                            msg.info.origin.position.y,
-                                                            tf::getYaw(msg.info.origin.orientation)));
+                                  msg.info.resolution,
+                                  distmap::DistanceMap::Origin(msg.info.origin.position.x,
+                                                               msg.info.origin.position.y,
+                                                               tf::getYaw(msg.info.origin.orientation)));
 
         std::copy(msg.data.data(),
-                msg.data.data() + (msg.info.width * msg.info.height),
-                grid.data());
+                  msg.data.data() + (msg.info.width * msg.info.height),
+                  grid.data());
 
         return grid;
     }
 
-    inline bool raycast_grid(const Eigen::Vector2d& start, 
-                             const Eigen::Vector2d& dir, 
-                             const grid_map::GridMap& grid_map,
+    inline bool raycast_grid(const Eigen::Vector2d &start,
+                             const Eigen::Vector2d &dir,
+                             const grid_map::GridMap &grid_map,
                              double max_dist,
-                             double& actual_dist)
+                             double &actual_dist)
     {
         grid_map::Position end = start + max_dist * dir;
 
@@ -50,10 +50,10 @@ namespace utils{
             return false;
 
         Eigen::Vector2d ray_end = end;
-        for(grid_map::LineIterator iterator(grid_map, start_ind, end_ind);
-            !iterator.isPastEnd(); ++iterator)
+        for (grid_map::LineIterator iterator(grid_map, start_ind, end_ind);
+             !iterator.isPastEnd(); ++iterator)
         {
-            if(grid_map.at("layer", *iterator) == 100)
+            if (grid_map.at("layer", *iterator) == 100)
             {
 
                 // I'm pretty sure this isn't possible
@@ -71,7 +71,7 @@ namespace utils{
     inline Spline1D Interp(const Eigen::RowVectorXd &pts, Eigen::DenseIndex degree, const Eigen::RowVectorXd &knot_parameters)
     {
         using namespace Eigen;
-        
+
         typedef typename Spline1D::KnotVectorType::Scalar Scalar;
         typedef typename Spline1D::ControlPointVectorType ControlPointVectorType;
 
@@ -105,25 +105,25 @@ namespace utils{
         return Spline1D(knots, ctrls);
     }
 
-
-    inline void setup_lp(int d, 
-                         int N, 
-                         double traj_arc_len, 
-                         double min_dist, 
-                         const std::vector<double>& dist_vec)
+    inline void setup_lp(int d,
+                         int N,
+                         double len_start,
+                         double traj_arc_len,
+                         double min_dist,
+                         const std::vector<double> &dist_vec)
     {
 
         // set arc length domain for LP
-        cpg_update_Domain(0, 0.);
+        cpg_update_Domain(0, 0);
         cpg_update_Domain(1, traj_arc_len);
 
-        double ds = traj_arc_len / (N-1);
+        double ds = traj_arc_len / (N - 1);
 
-        for(int i = 0; i < N; ++i)
+        for (int i = 0; i < N; ++i)
         {
             double s = i * ds;
             double s_k = 1;
-            for(int j = 0; j < d; ++j)
+            for (int j = 0; j < d; ++j)
             {
                 // matrices are in column-major order for cpg
                 // index for -polynomial <= -min_dist constraint
@@ -141,15 +141,14 @@ namespace utils{
             // index for polynomial <= obs_dist constraint
             cpg_update_b_vec(i + N, dist_vec[i]);
         }
-
     }
 
-    inline double eval_traj(const Eigen::VectorXd& coeffs, double x)
+    inline double eval_traj(const Eigen::VectorXd &coeffs, double x)
     {
         double ret = 0;
         double x_pow = 1;
 
-        for(int i = 0; i < coeffs.size(); ++i)
+        for (int i = 0; i < coeffs.size(); ++i)
         {
             ret += coeffs[i] * x_pow;
             x_pow *= x;
@@ -161,12 +160,12 @@ namespace utils{
     inline bool get_tubes(int d,
                           int N,
                           double max_dist,
-                          const std::vector<Spline1D> &traj, 
+                          const std::vector<Spline1D> &traj,
                           double traj_arc_len,
                           double len_start,
                           double horizon,
-                          const grid_map::GridMap& grid_map,
-                          std::vector<Eigen::VectorXd>& tubes)
+                          const grid_map::GridMap &grid_map,
+                          std::vector<Eigen::VectorXd> &tubes)
     {
         tubes.clear();
 
@@ -176,14 +175,14 @@ namespace utils{
         double min_dist_abv = 1e6;
         double min_dist_blw = 1e6;
         // double ds = traj_arc_len / (N-1);
-        double ds = horizon / (N-1);
+        double ds = horizon / (N - 1);
 
         std::vector<double> ds_above;
         std::vector<double> ds_below;
         ds_above.resize(N);
         ds_below.resize(N);
 
-        for(int i = 0; i < N; ++i)
+        for (int i = 0; i < N; ++i)
         {
             double s = len_start + i * ds;
             double px = traj[0](s).coeff(0);
@@ -192,9 +191,15 @@ namespace utils{
             double tx = traj[0].derivatives(s, 1).coeff(1);
             double ty = traj[1].derivatives(s, 1).coeff(1);
 
+            double nx = traj[0].derivatives(s, 2).coeff(2);
+            double ny = traj[1].derivatives(s, 2).coeff(2);
+
             Eigen::Vector2d point(px, py);
             Eigen::Vector2d normal(-ty, tx);
             normal.normalize();
+
+            double den = tx * tx + ty * ty;
+            double curvature = fabs(tx * ny - ty * nx) / (den * sqrt(den)); // normal.norm();
 
             // raycast in direction of normal to find obs dist
             double dist_above;
@@ -202,8 +207,19 @@ namespace utils{
                 return false;
 
             double dist_below;
-            if (!raycast_grid(point, -1*normal, grid_map, max_dist, dist_below))
+            if (!raycast_grid(point, -1 * normal, grid_map, max_dist, dist_below))
                 return false;
+
+            if (curvature > 1e-1 && curvature > 1 / (2 * max_dist))
+            {
+                Eigen::Vector2d n_vec(nx, ny);
+                Eigen::Vector2d abv_n_vec(-ty, tx);
+
+                if (n_vec.dot(abv_n_vec) > 0)
+                    dist_above = std::min(dist_above, 1 / (2 * curvature));
+                else
+                    dist_below = std::min(dist_above, 1 / (2 * curvature));
+            }
 
             if (dist_above < min_dist_abv)
                 min_dist_abv = dist_above;
@@ -221,7 +237,8 @@ namespace utils{
         **************************************/
 
         // setup_lp(d, N, traj_arc_len, 0, ds_above);
-        setup_lp(d, N, horizon, min_dist_abv/1.1, ds_above);
+        setup_lp(d, N, len_start, horizon,  min_dist_abv / 1.1, ds_above);
+        // setup_lp(d, N, horizon, 0, ds_above);
         cpg_solve();
 
         std::string solved_str = "solved";
@@ -233,25 +250,29 @@ namespace utils{
             std::cout << "LP Above Tube Failed: " << CPG_Info.status << std::endl;
             tubes.push_back(Eigen::VectorXd(d));
             tubes.push_back(Eigen::VectorXd(d));
+            // for (int i = 0; i < ds_above.size(); ++i)
+            // {
+            //     std::cout << ds_above[i] << std::endl;
+            // }
             return false;
         }
 
-        for(int i = 0; i < d; ++i)
+        for (int i = 0; i < d; ++i)
             std::cout << CPG_Result.prim->var2[i] << ", ";
         std::cout << std::endl;
 
         Eigen::VectorXd upper_coeffs;
         upper_coeffs.resize(d);
-        for(int i = 0; i < d; ++i)
+        for (int i = 0; i < d; ++i)
             upper_coeffs[i] = CPG_Result.prim->var2[i];
-
 
         // cpg_set_solver_default_settings();
         /*************************************
         ********* Setup & Solve Down *********
         **************************************/
 
-        setup_lp(d, N, horizon, min_dist_blw/1.1, ds_below);
+        setup_lp(d, N, len_start, horizon, min_dist_blw / 1.1, ds_below);
+        // setup_lp(d, N, horizon, 0, ds_below);
         cpg_solve();
 
         // if(strcmp(CPG_Info.status, solved_str.c_str()) != 0)
@@ -261,23 +282,26 @@ namespace utils{
             std::cout << "LP Below Tube Failed: " << CPG_Info.status << std::endl;
             tubes.push_back(Eigen::VectorXd(d));
             tubes.push_back(Eigen::VectorXd(d));
+            // for (int i = 0; i < ds_below.size(); ++i)
+            // {
+            //     std::cout << ds_below[i] << std::endl;
+            // }
             return false;
         }
 
-        for(int i = 0; i < d; ++i)
+        for (int i = 0; i < d; ++i)
             std::cout << CPG_Result.prim->var2[i] << ", ";
         std::cout << std::endl;
 
         Eigen::VectorXd lower_coeffs;
         lower_coeffs.resize(d);
-        for(int i = 0; i < d; ++i)
+        for (int i = 0; i < d; ++i)
             lower_coeffs[i] = CPG_Result.prim->var2[i];
 
         // std::cout << "Result\n" << CPG_Result.info->obj_val << std::endl;
         // std::cout << "Primal Solution\n";
         // cpg_set_solver_default_settings();
 
-        
         // std::cout << std::endl;
         // Eigen::RowVectorXd ss, ds_abv, ds_blw;
         // ss.resize(10);
@@ -301,11 +325,10 @@ namespace utils{
         // const auto below_fit = utils::Interp(-1*ds_blw, 3, ss);
         // Spline1D spline_below(below_fit);
 
-
         // tubes.push_back(spline_above);
         // tubes.push_back(spline_below);
         tubes.push_back(upper_coeffs);
-        tubes.push_back(-1*lower_coeffs);
+        tubes.push_back(-1 * lower_coeffs);
 
         // ecos_workspace = 0;
 

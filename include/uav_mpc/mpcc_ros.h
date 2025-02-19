@@ -63,8 +63,7 @@ private:
 
 	Eigen::VectorXd _odom;
 
-	trajectory_msgs::JointTrajectory trajectory;
-	trajectory_msgs::JointTrajectoryPoint current_reference;
+	trajectory_msgs::JointTrajectory _trajectory;
 
 	costmap_2d::Costmap2DROS *_local_costmap;
 
@@ -72,6 +71,7 @@ private:
 	std::vector<double> mpc_results;
 	// std::vector<SplineWrapper> _ref;
 	std::vector<Spline1D> _ref;
+	std::vector<Spline1D> _prev_ref;
 	// std::vector<Spline1D> _tubes;
 	std::vector<Eigen::VectorXd> _tubes;
 
@@ -87,11 +87,20 @@ private:
 
 	double _prop_gain, _prop_angle_thresh;
 
+	double _clf_gamma;
+	double _w_ql_lyap;
+	double _w_qc_lyap;
+
 	double _min_alpha;
 	double _max_alpha;
 	double _ref_len;
+	double _prev_ref_len;
+	double _true_ref_len;
 	double _mpc_ref_len_sz;
 	double _max_tube_width;
+
+	double _s_dot;
+	double _prev_s;
 
 	const int XI = 0;
 	const int YI = 1;
@@ -124,15 +133,16 @@ private:
 	void publishMPCTrajectory();
 	void publishReference();
 
+	void mpcc_ctrl_loop();
 
-	void cte_ctrl_loop();
-	void pos_ctrl_loop();
+	double get_s_from_state();
+	double get_s_from_state(const std::vector<Spline1D> &ref, double ref_len);
 
 	void alphacb(const std_msgs::Float64::ConstPtr &msg);
 	void odomcb(const nav_msgs::Odometry::ConstPtr &msg);
 	void mapcb(const nav_msgs::OccupancyGrid::ConstPtr &msg);
 	void goalcb(const geometry_msgs::PoseStamped::ConstPtr &msg);
-	void distmapcb(const distance_map_msgs::DistanceMap::ConstPtr& msg);
+	void distmapcb(const distance_map_msgs::DistanceMap::ConstPtr &msg);
 	void trajectorycb(const trajectory_msgs::JointTrajectory::ConstPtr &msg);
 
 	// void publishVel(const ros::TimerEvent&);

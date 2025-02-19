@@ -144,7 +144,7 @@ def create_ocp_tube(yaml_file):
     ocp.cost.cost_type = "EXTERNAL"
     ocp.cost.cost_type_e = "EXTERNAL"
 
-    ocp.dims.nh = 0
+    # ocp.dims.nh = 0
     ocp.dims.N = N
     ocp.parameter_values = np.zeros((nparams,))
 
@@ -157,10 +157,40 @@ def create_ocp_tube(yaml_file):
     ocp.constraints.idxbu = np.array([0, 1, 2])
 
     # constraints
-    ocp.constraints.uh = np.array([0.0, 0.0])
-    ocp.constraints.lh = np.array([-1e6, -1e6])
-    ocp.constraints.uh_e = ocp.constraints.uh
-    ocp.constraints.lh_e = ocp.constraints.lh
+    # con_upper_bounds = np.array([0, 0])
+    # con_lower_bounds = np.array([-1e6, -1e6])
+
+    con_upper_bounds = np.array([1e6, 1e6, 0])
+    con_lower_bounds = np.array([0, 0, 1e-6])
+
+    # hard constraint
+    ocp.constraints.uh_0 = con_upper_bounds
+    ocp.constraints.lh_0 = con_lower_bounds
+    ocp.constraints.uh = con_upper_bounds
+    ocp.constraints.lh = con_lower_bounds
+
+    # soft constraint
+
+    ocp.constraints.lsh_0 = np.zeros((1,))
+    ocp.constraints.ush_0 = np.zeros((1,))
+    ocp.constraints.idxsh_0 = np.array([2])
+
+    ocp.constraints.lsh = np.zeros((1,))
+    ocp.constraints.ush = np.zeros((1,))
+    ocp.constraints.idxsh = np.array([2])
+
+    grad_cost = 100
+    hess_cost = 1
+
+    ocp.cost.Zl_0 = hess_cost * np.ones((1,))
+    ocp.cost.Zu_0 = hess_cost * np.ones((1,))
+    ocp.cost.zl_0 = grad_cost * np.ones((1,))
+    ocp.cost.zu_0 = grad_cost * np.ones((1,))
+
+    ocp.cost.Zl = hess_cost * np.ones((1,))
+    ocp.cost.Zu = hess_cost * np.ones((1,))
+    ocp.cost.zl = grad_cost * np.ones((1,))
+    ocp.cost.zu = grad_cost * np.ones((1,))
 
     # theta can be whatever
     ocp.constraints.lbx = np.array([-1e6, -1e6, -1e6, 0, 0, 0])
@@ -185,6 +215,7 @@ def create_ocp_tube(yaml_file):
     ocp.solver_options.qp_solver = "PARTIAL_CONDENSING_HPIPM"
     ocp.solver_options.hessian_approx = "EXACT"
     ocp.solver_options.integrator_type = "ERK"
+    # ocp.solver_options.nlp_solver_type = "SQP"
     ocp.solver_options.nlp_solver_type = "SQP_RTI"
     # sometimes solver failed due to NaNs, regularizing Hessian helped
     ocp.solver_options.regularize_method = "MIRROR"
@@ -201,7 +232,7 @@ def create_ocp_tube(yaml_file):
     # ocp.solver_options.nlp_solver_max_iter = 100
     # ocp.solver_options.sim_method_num_stages = 4
     # ocp.solver_options.sim_method_num_steps = 3
-    # ocp.solver_options.hpipm_mode = "ROBUST"
+    ocp.solver_options.hpipm_mode = "ROBUST"
     # ocp.solver_options.qp_solver_iter_max = 100
     # ocp.solver_options.globalization_line_search_use_sufficient_descent = True
 

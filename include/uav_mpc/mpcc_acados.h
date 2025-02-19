@@ -20,6 +20,9 @@
 #include "blasfeo/include/blasfeo_d_aux_ext_dep.h"
 
 #define NX UNICYCLE_MODEL_MPCC_NX
+#ifdef UNICYCLE_MODEL_MPCC_NS
+#define NS UNICYCLE_MODEL_MPCC_NS
+#endif
 #define NP UNICYCLE_MODEL_MPCC_NP
 #define NU UNICYCLE_MODEL_MPCC_NU
 #define NBX0 UNICYCLE_MODEL_MPCC_NBX0
@@ -31,11 +34,13 @@ public:
     ~MPCC();
 
     std::vector<double> solve(const Eigen::VectorXd &state);
-    // void set_tubes(const std::vector<SplineWrapper> &tubes);
-    // void set_tubes(const std::vector<Spline1D> &tubes);
+
+    void set_odom(const Eigen::VectorXd &odom);
     void set_tubes(const std::vector<Eigen::VectorXd> &tubes);
     void load_params(const std::map<std::string, double> &params);
     void set_reference(const std::vector<Spline1D> &reference, double arclen);
+
+    void reset_horizon();
 
     Eigen::VectorXd get_state();
 
@@ -51,14 +56,13 @@ public:
     std::vector<double> mpc_s_ddots;
 
 protected:
-
     std::vector<Spline1D> get_ref_from_s(double s);
     double get_s_from_state(const Eigen::VectorXd &state);
-    Eigen::VectorXd next_state(const Eigen::VectorXd& current_state, const Eigen::VectorXd& control);
+    Eigen::VectorXd next_state(const Eigen::VectorXd &current_state, const Eigen::VectorXd &control);
 
     void warm_start_no_u(double *x_init);
-    void warm_start_shifted_u();
-    void process_solver_output();
+    void warm_start_shifted_u(bool correct_perturb, const Eigen::VectorXd &state);
+    void process_solver_output(double s);
 
     bool set_solver_parameters(const std::vector<Spline1D> &ref);
 
@@ -72,6 +76,7 @@ protected:
     std::vector<Eigen::VectorXd> _tubes;
 
     Eigen::VectorXd _state;
+    Eigen::VectorXd _odom;
 
     int _mpc_steps;
     int _x_start;
@@ -85,7 +90,7 @@ protected:
     int _s_ddot_start;
     int _ind_state_inc;
     int _ind_input_inc;
-    
+
     int _ref_samples;
 
     double _dt;
@@ -103,13 +108,17 @@ protected:
     double _s_dot;
     double _ref_length;
 
+    double _gamma;
+    double _w_ql_lyap;
+    double _w_qc_lyap;
+
     double _w_angvel;
     double _w_angvel_d;
     double _w_linvel_d;
     double _w_ql;
     double _w_qc;
     double _w_q_speed;
-    
+
     double _ref_len_sz;
 
     unsigned int iterations;

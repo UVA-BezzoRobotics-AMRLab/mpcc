@@ -1,6 +1,7 @@
 #include <iostream>
 
 #include <uav_mpc/utils.h>
+#include <uav_mpc/termcolor.hpp>
 #include <uav_mpc/mpcc_acados.h>
 
 MPCC::MPCC()
@@ -16,6 +17,10 @@ MPCC::MPCC()
     _w_ql = 50.0;
     _w_qc = .1;
     _w_q_speed = .3;
+
+    _gamma = .5;
+    _w_ql_lyap = 1;
+    _w_qc_lyap = 1;
 
     _use_cbf = false;
     _alpha = 1.0;
@@ -50,6 +55,17 @@ MPCC::MPCC()
     // _linacc_start = _angvel_start + _mpc_steps - 1;
     // _s_ddot_start = _linacc_start + _mpc_steps - 1;
 
+    mpc_x.resize(_mpc_steps);
+    mpc_y.resize(_mpc_steps);
+    mpc_theta.resize(_mpc_steps);
+    mpc_linvels.resize(_mpc_steps);
+    mpc_s.resize(_mpc_steps);
+    mpc_s_dot.resize(_mpc_steps);
+
+    mpc_angvels.resize(_mpc_steps - 1);
+    mpc_linaccs.resize(_mpc_steps - 1);
+    mpc_s_ddots.resize(_mpc_steps - 1);
+
     _x_start = 0;
     _y_start = 1;
     _theta_start = 2;
@@ -63,6 +79,8 @@ MPCC::MPCC()
     _ind_input_inc = 3;
 
     _is_shift_warm = false;
+
+    _odom = Eigen::VectorXd(3);
 
     // cpg_update_A_mat(0, -1.1);
 }
@@ -104,6 +122,10 @@ void MPCC::load_params(const std::map<std::string, double> &params)
 
     _ref_len_sz = params.find("REF_LENGTH") != params.end() ? params.at("REF_LENGTH") : _ref_len_sz;
     _ref_samples = params.find("REF_SAMPLES") != params.end() ? params.at("REF_SAMPLES") : _ref_samples;
+
+    _gamma = params.find("CLF_GAMMA") != params.end() ? params.at("CLF_GAMMA") : _gamma;
+    _w_ql_lyap = params.find("CLF_W_LAG") != params.end() ? params.at("CLF_W_LAG") : _w_ql_lyap;
+    _w_qc_lyap = params.find("CLF_W_CONTOUR") != params.end() ? params.at("CLF_W_CONTOUR") : _w_ql_lyap;
 
     _use_cbf = params.find("USE_CBF") != params.end() ? params.at("USE_CBF") : _use_cbf;
     _alpha = params.find("CBF_ALPHA") != params.end() ? params.at("CBF_ALPHA") : _alpha;
@@ -162,6 +184,17 @@ void MPCC::load_params(const std::map<std::string, double> &params)
     // _linacc_start = _angvel_start + _mpc_steps - 1;
     // _s_ddot_start = _linacc_start + _mpc_steps - 1;
 
+    mpc_x.resize(_mpc_steps);
+    mpc_y.resize(_mpc_steps);
+    mpc_theta.resize(_mpc_steps);
+    mpc_linvels.resize(_mpc_steps);
+    mpc_s.resize(_mpc_steps);
+    mpc_s_dot.resize(_mpc_steps);
+
+    mpc_angvels.resize(_mpc_steps - 1);
+    mpc_linaccs.resize(_mpc_steps - 1);
+    mpc_s_ddots.resize(_mpc_steps - 1);
+
     _prev_x0.resize((_mpc_steps + 1) * NX);
     _prev_u0.resize(_mpc_steps * NU);
 
@@ -176,6 +209,8 @@ void MPCC::load_params(const std::map<std::string, double> &params)
     _s_ddot_start = 8;
     _ind_state_inc = 6;
     _ind_input_inc = 3;
+    
+    _odom = Eigen::VectorXd(3);
 
     std::cout << "!! MPC Obj parameters updated !! " << std::endl;
     std::cout << "!! ACADOS model instantiated !! " << std::endl;
@@ -210,6 +245,11 @@ double MPCC::get_s_from_state(const Eigen::VectorXd &state)
     return s;
 }
 
+void MPCC::set_odom(const Eigen::VectorXd& odom)
+{
+    _odom = odom;
+}
+
 Eigen::VectorXd MPCC::get_state()
 {
     return _state;
@@ -236,9 +276,9 @@ Eigen::VectorXd MPCC::next_state(const Eigen::VectorXd &current_state, const Eig
     ret(0) = x1 + v1 * cos(theta1) * _dt;
     ret(1) = y1 + v1 * sin(theta1) * _dt;
     ret(2) = theta1 + w * _dt;
-    ret(3) = v1 + a * _dt;
+    ret(3) = std::max(std::min(v1 + a * _dt, _max_linvel), -_max_linvel);
     ret(4) = s1 + sdot1 * _dt;
-    ret(5) = sdot1 + sddot * _dt;
+    ret(5) = std::max(std::min(sdot1 + sddot * _dt, _max_linvel), -_max_linvel);
 
     return ret;
 }
@@ -314,58 +354,58 @@ void MPCC::warm_start_no_u(double *x_init)
 }
 
 // From linear to nonlinear MPC: bridging the gap via the real-time iteration, Gros et. al.
-void MPCC::warm_start_shifted_u()
+void MPCC::warm_start_shifted_u(bool correct_perturb, const Eigen::VectorXd &state)
 {
-    double starting_s = _prev_x0[1 * NX + 4];
-    for (int i = 1; i < _mpc_steps; ++i)
+
+    if (correct_perturb)
     {
-        Eigen::VectorXd warm_state = _prev_x0.segment(i * NX, NX);
-        warm_state(4) -= starting_s;
+        std::cout << termcolor::red << "[MPCC] Guess pos. too far, correcting" << termcolor::reset << std::endl;
 
-        ocp_nlp_out_set(_nlp_config, _nlp_dims, _nlp_out, i - 1, "x", &warm_state[0]);
-        ocp_nlp_out_set(_nlp_config, _nlp_dims, _nlp_out, i - 1, "u", &_prev_u0[i * NU]);
+        Eigen::VectorXd curr = state;
 
-        // double xr = ref[0](warm_state(4)).coeff(0);
-        // double yr = ref[1](warm_state(4)).coeff(0);
-        // double tx = ref[0].derivatives(warm_state(4), 1).coeff(1);
-        // double ty = ref[1].derivatives(warm_state(4), 1).coeff(1);
+        // project forward previous control inputs, starting from true current state
+        for (int i = 0; i < _mpc_steps - 1; ++i)
+        {
+            ocp_nlp_out_set(_nlp_config, _nlp_dims, _nlp_out, i, "x", &curr[0]);
+            ocp_nlp_out_set(_nlp_config, _nlp_dims, _nlp_out, i, "u", &_prev_u0[(i + 1) * NU]);
+            curr = next_state(curr, _prev_u0.segment((i + 1) * NU, NU));
+            // std::cout << curr.transpose() << std::endl;
+        }
 
-        // double signed_d = (-(warm_state[0] - xr) * ty + (warm_state[1] - yr) * tx) / sqrt(tx*tx + ty*ty);
-        // double cons_upper = signed_d - utils::eval_traj(_tubes[0], warm_state(4));
-        // double cons_lower = utils::eval_traj(_tubes[1], warm_state(4)) - signed_d;
+        ocp_nlp_out_set(_nlp_config, _nlp_dims, _nlp_out, _mpc_steps - 1, "x", &curr[0]);
+        ocp_nlp_out_set(_nlp_config, _nlp_dims, _nlp_out, _mpc_steps - 1, "u", &_prev_u0[(_mpc_steps - 1) * NU]);
 
-        // if (cons_upper > -1e-1 || cons_lower > -1e-1)
-        // {
-        //     std::cout << "upper constraint value is: " << cons_upper << std::endl;
-        //     std::cout << "lower constraint value is: " << cons_lower << std::endl;
-        // }
+        curr = next_state(curr, _prev_u0.tail(NU));
+        // std::cout << curr.transpose() << std::endl;
+
+        ocp_nlp_out_set(_nlp_config, _nlp_dims, _nlp_out, _mpc_steps, "x", &curr[0]);
+        // exit(0);
     }
 
-    Eigen::VectorXd xN_prev = _prev_x0.tail(NX);
-    xN_prev(4) -= starting_s;
+    else
+    {
+        double starting_s = _prev_x0[1 * NX + 4];
 
-    ocp_nlp_out_set(_nlp_config, _nlp_dims, _nlp_out, _mpc_steps - 1, "x", &xN_prev[0]);
-    ocp_nlp_out_set(_nlp_config, _nlp_dims, _nlp_out, _mpc_steps - 1, "u", &_prev_u0[(_mpc_steps - 1) * NU]);
+        for (int i = 1; i < _mpc_steps; ++i)
+        {
+            Eigen::VectorXd warm_state = _prev_x0.segment(i * NX, NX);
+            warm_state(4) -= starting_s;
 
-    Eigen::VectorXd uN_prev = _prev_u0.tail(NU);
-    Eigen::VectorXd xN = next_state(xN_prev, uN_prev);
+            ocp_nlp_out_set(_nlp_config, _nlp_dims, _nlp_out, i - 1, "x", &warm_state[0]);
+            ocp_nlp_out_set(_nlp_config, _nlp_dims, _nlp_out, i - 1, "u", &_prev_u0[i * NU]);
+        }
 
-    // double xr = ref[0](xN(4)).coeff(0);
-    // double yr = ref[1](xN(4)).coeff(0);
-    // double tx = ref[0].derivatives(xN(4), 1).coeff(1);
-    // double ty = ref[1].derivatives(xN(4), 1).coeff(1);
+        Eigen::VectorXd xN_prev = _prev_x0.tail(NX);
+        xN_prev(4) -= starting_s;
 
-    // double signed_d = (-(xN[0] - xr) * ty + (xN[1] - yr) * tx) / sqrt(tx*tx + ty*ty);
-    // double cons_upper = signed_d - utils::eval_traj(_tubes[0], xN(4));
-    // double cons_lower = utils::eval_traj(_tubes[1], xN(4)) - signed_d;
+        ocp_nlp_out_set(_nlp_config, _nlp_dims, _nlp_out, _mpc_steps - 1, "x", &xN_prev[0]);
+        ocp_nlp_out_set(_nlp_config, _nlp_dims, _nlp_out, _mpc_steps - 1, "u", &_prev_u0[(_mpc_steps - 1) * NU]);
 
-    // if (cons_upper > -1e-1 || cons_lower > -1e-1)
-    // {
-    //     std::cout << "upper constraint value is: " << cons_upper << std::endl;
-    //     std::cout << "lower constraint value is: " << cons_lower << std::endl;
-    // }
+        Eigen::VectorXd uN_prev = _prev_u0.tail(NU);
+        Eigen::VectorXd xN = next_state(xN_prev, uN_prev);
 
-    ocp_nlp_out_set(_nlp_config, _nlp_dims, _nlp_out, _mpc_steps, "x", &xN[0]);
+        ocp_nlp_out_set(_nlp_config, _nlp_dims, _nlp_out, _mpc_steps, "x", &xN[0]);
+    }
 }
 
 bool MPCC::set_solver_parameters(const std::vector<Spline1D> &ref)
@@ -374,16 +414,20 @@ bool MPCC::set_solver_parameters(const std::vector<Spline1D> &ref)
     auto ctrls_x = ref[0].ctrls();
     auto ctrls_y = ref[1].ctrls();
 
-    int num_params = ctrls_x.size() + ctrls_y.size() + _tubes[0].size() + _tubes[1].size() + 3;
+    int num_params = ctrls_x.size() + ctrls_y.size() + _tubes[0].size() + _tubes[1].size() + 7;
     if (num_params != NP)
     {
-        std::cout << "reference size " << num_params << " does not match acados parameter size " << NP << std::endl;
+        std::cout << "[MPCC] reference size " << num_params << " does not match acados parameter size " << NP << std::endl;
         return false;
     }
 
-    params[NP - 3] = _w_qc;
-    params[NP - 2] = _w_ql;
-    params[NP - 1] = _w_q_speed;
+    params[NP - 7] = _w_qc;
+    params[NP - 6] = _w_ql;
+    params[NP - 5] = _w_q_speed;
+    params[NP - 4] = _alpha;
+    params[NP - 3] = _w_qc_lyap;
+    params[NP - 2] = _w_ql_lyap;
+    params[NP - 1] = _gamma;
 
     // std::cout << "w_qc: " << _w_qc << std::endl;
     // std::cout << "w_ql: " << _w_ql << std::endl;
@@ -407,8 +451,7 @@ bool MPCC::set_solver_parameters(const std::vector<Spline1D> &ref)
     return true;
 }
 
-
-void MPCC::process_solver_output()
+void MPCC::process_solver_output(double s)
 {
     // stored as x0, y0,..., x1, y1, ..., xN, yN, ...
     Eigen::VectorXd xtraj((_mpc_steps + 1) * NX);
@@ -421,39 +464,68 @@ void MPCC::process_solver_output()
 
     ocp_nlp_out_get(_nlp_config, _nlp_dims, _nlp_out, _mpc_steps, "x", &xtraj[_mpc_steps * NX]);
 
+    #ifdef NS
+    Eigen::VectorXd slacks(NS);
+    // std::cout << "getting slacks " << NS << std::endl;
+    ocp_nlp_out_get(_nlp_config, _nlp_dims, _nlp_out, 1, "sl", &slacks[0]);
+
+    std::cout << "[MPCC] Slack values are: " << slacks.transpose() << std::endl;
+    #endif
+
     // for (int i = 0; i < xtraj.size(); ++i)
     //     _prev_x0[i] = xtraj[i];
 
     _prev_x0 = xtraj;
     _prev_u0 = utraj;
 
-    mpc_x = {};
-    mpc_y = {};
-    mpc_theta = {};
-    mpc_linvels = {};
-    mpc_s = {};
-    mpc_s_dot = {};
-    for (int i = 0; i < _mpc_steps; i++)
+    // mpc_x = {};
+    // mpc_y = {};
+    // mpc_theta = {};
+    // mpc_linvels = {};
+    // mpc_s = {};
+    // mpc_s_dot = {};
+    for (int i = 0; i < _mpc_steps; ++i)
     {
-        mpc_x.push_back(xtraj[_x_start + i * _ind_state_inc]);
-        mpc_y.push_back(xtraj[_y_start + i * _ind_state_inc]);
-        mpc_theta.push_back(xtraj[_theta_start + i * _ind_state_inc]);
-        mpc_linvels.push_back(xtraj[_v_start + i * _ind_state_inc]);
-        mpc_s.push_back(xtraj[_s_start + i * _ind_state_inc]);
-        mpc_s_dot.push_back(xtraj[_s_dot_start + i * _ind_state_inc]);
+        mpc_x[i] = xtraj[_x_start + i * _ind_state_inc];
+        mpc_y[i] = xtraj[_y_start + i * _ind_state_inc];
+        mpc_theta[i] = xtraj[_theta_start + i * _ind_state_inc];
+        mpc_linvels[i] = xtraj[_v_start + i * _ind_state_inc];
+        mpc_s[i] = xtraj[_s_start + i * _ind_state_inc] + s;
+        mpc_s_dot[i] = xtraj[_s_dot_start + i * _ind_state_inc];
     }
 
-    mpc_angvels = {};
-    mpc_linaccs = {};
-    mpc_s_ddots = {};
-    for (int i = 0; i < _mpc_steps - 1; i++)
+    // mpc_angvels = {};
+    // mpc_linaccs = {};
+    // mpc_s_ddots = {};
+    for (int i = 0; i < _mpc_steps - 1; ++i)
     {
-        mpc_angvels.push_back(xtraj[_angvel_start + i * _ind_input_inc]);
-        mpc_linaccs.push_back(xtraj[_linacc_start + i * _ind_input_inc]);
-        mpc_s_ddots.push_back(xtraj[_s_ddot_start + i * _ind_input_inc]);
+        // mpc_angvels.push_back(xtraj[_angvel_start + i * _ind_input_inc]);
+        // mpc_linaccs.push_back(xtraj[_linacc_start + i * _ind_input_inc]);
+        // mpc_s_ddots.push_back(xtraj[_s_ddot_start + i * _ind_input_inc]);
+        mpc_angvels[i] = xtraj[_angvel_start + i * _ind_input_inc];
+        mpc_linaccs[i] = xtraj[_linacc_start + i * _ind_input_inc];
+        mpc_s_ddots[i] = xtraj[_s_ddot_start + i * _ind_input_inc];
+    }
+}
+
+void MPCC::reset_horizon()
+{
+    for (int i = 0; i < _mpc_steps; ++i)
+    {
+        mpc_x[i] = _odom(0);
+        mpc_y[i] = _odom(1);
+        mpc_theta[i] = 0;
+        mpc_linvels[i] = 0;
+        mpc_s[i] = 0;
+        mpc_s_dot[i] = 0;
     }
 
-
+    for (int i = 0; i < _mpc_steps - 1; ++i)
+    {
+        mpc_angvels[i] = 0;
+        mpc_linaccs[i] = 0;
+        mpc_s_ddots[i] = 0;
+    }
 }
 
 std::vector<double> MPCC::solve(const Eigen::VectorXd &state)
@@ -461,7 +533,7 @@ std::vector<double> MPCC::solve(const Eigen::VectorXd &state)
 
     if (_tubes.size() == 0)
     {
-        std::cout << "tubes are not set yet, mpc cannot run" << std::endl;
+        std::cout << "[MPCC] tubes are not set yet, mpc cannot run" << std::endl;
         return {0, 0};
     }
 
@@ -469,11 +541,19 @@ std::vector<double> MPCC::solve(const Eigen::VectorXd &state)
     ********** INITIAL CONDITION *********
     **************************************/
 
+    // _s_dot = std::min(std::max((s - _state(5)) / _dt, 0.), _max_linvel);
+    if (state.size() != NBX0)
+    {
+        std::cout << termcolor::yellow << "[MPCC] state sized passed has size " << state.size() << " but should be " << NBX0 << termcolor::reset << std::endl;
+        return {0, 0};
+    }
+
     double lbx0[NBX0];
     double ubx0[NBX0];
 
-    Eigen::VectorXd x0(NBX0);
-    x0 << state(0), state(1), state(2), state(3), 0, _s_dot;
+    // Eigen::VectorXd x0(NBX0);
+    // x0 << state(0), state(1), state(2), state(3), 0, _s_dot;
+    Eigen::VectorXd x0 = state;
 
     memcpy(lbx0, &x0[0], NBX0 * sizeof(double));
     memcpy(ubx0, &x0[0], NBX0 * sizeof(double));
@@ -498,11 +578,25 @@ std::vector<double> MPCC::solve(const Eigen::VectorXd &state)
     double s = get_s_from_state(state);
     std::vector<Spline1D> ref = get_ref_from_s(s);
 
+    Eigen::Vector2d prev_pos = _prev_x0.head(2);
+    Eigen::Vector2d curr_pos = state.head(2);
+
+    double dist = (prev_pos-curr_pos).norm();
+    if (_is_shift_warm && dist > 1e-1)
+    {
+        std::cout << termcolor::red << "[MPCC] Pos too far (" << dist <<  "), turning off shifted warm start" << std::endl;
+        std::cout << "[MPCC] x0: " << x0.transpose() << termcolor::reset << std::endl;
+        _is_shift_warm = false;
+    }
+
     double starting_s = _prev_x0[1 * NX + 4];
-    if (mpc_x.size() == 0)
+    if (!_is_shift_warm)
         warm_start_no_u(x_init);
     else
-        warm_start_shifted_u();
+    {
+        warm_start_shifted_u(false, x0);
+        // warm_start_shifted_u((prev_pos - curr_pos).norm() > 1e-1, x0);
+    }
 
     /*************************************
     ********* SET REFERENCE PARAMS *******
@@ -519,7 +613,7 @@ std::vector<double> MPCC::solve(const Eigen::VectorXd &state)
     double timer;
 
     // run at most 2 times, if first fails, try with simple initialization
-    for(int i = 0; i < 2; ++i)
+    for (int i = 0; i < 2; ++i)
     {
         int status = unicycle_model_mpcc_acados_solve(_acados_ocp_capsule);
         ocp_nlp_get(_nlp_config, _nlp_solver, "time_tot", &timer);
@@ -527,34 +621,62 @@ std::vector<double> MPCC::solve(const Eigen::VectorXd &state)
 
         if (status == ACADOS_SUCCESS)
         {
-            std::cout << "unicycle_model_mpcc_acados_solve(): SUCCESS! " << elapsed_time * 1000 << std::endl;
+            std::cout << "[MPCC] unicycle_model_mpcc_acados_solve(): SUCCESS! " << elapsed_time * 1000 << std::endl;
+            _is_shift_warm = true;
             break;
         }
-        else if (!_is_shift_warm)
+        else
         {
-            std::cout << "unicycle_model_mpcc_acados_solve() failed with status " << status << std::endl;
+            _is_shift_warm = false;
+            std::cout << "[MPCC] unicycle_model_mpcc_acados_solve() failed with status " << status << std::endl;
+            std::cout << "[MPCC] using simple warm start procedure" << std::endl;
+            std::cout << "[MPCC] xinit is: " << x0.transpose() << std::endl;
             warm_start_no_u(x_init);
         }
     }
-
-    // unicycle_model_mpcc_acados_print_stats(_acados_ocp_capsule);
 
     /*************************************
     *********** PROCESS OUTPUT ***********
     **************************************/
 
-    process_solver_output();
+    process_solver_output(s);
 
-    _s_dot = _prev_x0[_s_dot_start + 1 * _ind_state_inc];
+    // unicycle_model_mpcc_acados_print_stats(_acados_ocp_capsule);
+    for (int i = 0; i < mpc_x.size(); ++i)
+    {
+        double x = mpc_x[i];
+        double y = mpc_y[i];
+
+        double si = mpc_s[i];
+
+        double xr = ref[0](si).coeff(0);
+        double yr = ref[1](si).coeff(0);
+
+        double xr_dot = ref[0].derivatives(si, 1).coeff(1);
+        double yr_dot = ref[1].derivatives(si, 1).coeff(1);
+
+        double den = xr_dot * xr_dot + yr_dot * yr_dot;
+        double obs_dirx = -yr_dot / den;
+        double obs_diry = xr_dot / den;
+
+        double signed_d = (x - xr) * obs_dirx + (y - yr) * obs_diry;
+
+        // if (signed_d > .75 || signed_d < -.75)
+        // {
+        //     std::cout << "VIOLATED @ i = " << i << ": d is: " << signed_d << std::endl;
+        //     std::cout << "ref is: (" << xr << ", " << yr << ")" << std::endl;
+        //     std::cout << "xi is: (" << x << ", " << y << ")" << std::endl;
+        // }
+    }
+
+    // _s_dot = _prev_x0[_s_dot_start + 1 * _ind_state_inc];
 
     _state << _prev_x0[_x_start],
-              _prev_x0[_y_start],
-              _prev_x0[_theta_start],
-              _prev_x0[_v_start],
-              s,
-              _prev_x0[_s_dot_start];
-
-    _is_shift_warm = true;
+        _prev_x0[_y_start],
+        _prev_x0[_theta_start],
+        _prev_x0[_v_start],
+        s,
+        _prev_x0[_s_dot_start];
 
     return {_prev_u0[1], _prev_u0[0]};
 }
