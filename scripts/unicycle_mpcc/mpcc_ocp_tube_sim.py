@@ -525,7 +525,7 @@ def simulation():
     # get_footprint(0, 0, 0)
     # exit(0)
 
-    yaml_file = "/home/bezzo/catkin_ws/src/uav_mpc/params/mpcc.yaml"
+    yaml_file = "/home/bezzo/catkin_ws/src/mpcc/params/mpcc.yaml"
     ocp = create_ocp_tube(yaml_file)
 
     ss, xs, ys = create_reference_circle()
@@ -661,7 +661,7 @@ def simulation():
                         y_spline_coeff,
                         d_abv_coeffs,
                         d_blw_coeffs,
-                        [0.0, 100, 0.3, 1.0],
+                        [0.0, 100, 0.3, 1.0, 1.0, 1.0, 0.5],
                     )
                     # (x_spline_coeff, y_spline_coeff, d_abv_spline.c, d_blw_spline.c)
                 ),
@@ -732,25 +732,25 @@ def simulation():
         u_sol = acados_ocp_solver.get(0, "u")
         p_sol = acados_ocp_solver.get(0, "p")
         constraint_val = constraint_fun(x_sol, u_sol, p_sol)
-        if constraint_val[0] < -sl[0] or constraint_val[1] < -sl[1]:
-            print("constraints violated", constraint_val)
-            compute_intermediate_values(
-                x1,
-                y1,
-                xcurrent[2],
-                xcurrent[3],
-                xcurrent[4],
-                xcurrent[5],
-                simU[i, 0],
-                simU[i, 1],
-                simU[i, 2],
-                x_spline_coeff,
-                y_spline_coeff,
-                d_abv_coeffs,
-                d_blw_coeffs,
-            )
-            # exit(0)
-            break
+        # if constraint_val[0] < -sl[0] or constraint_val[1] < -sl[1]:
+        #     print("constraints violated", constraint_val)
+        #     compute_intermediate_values(
+        #         x1,
+        #         y1,
+        #         xcurrent[2],
+        #         xcurrent[3],
+        #         xcurrent[4],
+        #         xcurrent[5],
+        #         simU[i, 0],
+        #         simU[i, 1],
+        #         simU[i, 2],
+        #         x_spline_coeff,
+        #         y_spline_coeff,
+        #         d_abv_coeffs,
+        #         d_blw_coeffs,
+        #     )
+        #     # exit(0)
+        #       break
 
         print("contraint value", constraint_val)
 
