@@ -251,7 +251,7 @@ Eigen::VectorXd MPCC::next_state(const Eigen::VectorXd& current_state,
     return ret;
 }
 
-std::vector<Spline1D> MPCC::get_ref_from_s(double s)
+std::array<Spline1D, 2> MPCC::compute_adjusted_ref(double s)
 {
     // get reference for next _ref_len_sz meters, indexing from s=0 onwards
     // need to also down sample the tubes
@@ -367,11 +367,11 @@ void MPCC::warm_start_shifted_u(bool correct_perturb, const Eigen::VectorXd& sta
     }
 }
 
-bool MPCC::set_solver_parameters(const std::vector<Spline1D>& ref)
+bool MPCC::set_solver_parameters(const std::array<Spline1D, 2>& adjusted_ref)
 {
     double params[NP];
-    auto ctrls_x = ref[0].ctrls();
-    auto ctrls_y = ref[1].ctrls();
+    auto ctrls_x = adjusted_ref[0].ctrls();
+    auto ctrls_y = adjusted_ref[1].ctrls();
 
     int num_params = ctrls_x.size() + ctrls_y.size() + _tubes[0].size() + _tubes[1].size() + 7;
     if (num_params != NP)
@@ -516,8 +516,8 @@ std::array<double, 2> MPCC::solve(const Eigen::VectorXd& state)
     u_init[2] = 0.0;
 
     // generate params from reference trajectory starting at current s
-    double s                  = get_s_from_state(state);
-    std::vector<Spline1D> ref = get_ref_from_s(s);
+    double s                             = get_s_from_state(state);
+    std::array<Spline1D, 2> adjusted_ref = compute_adjusted_ref(s);
 
     Eigen::Vector2d prev_pos = _prev_x0.head(2);
     Eigen::Vector2d curr_pos = state.head(2);
@@ -544,7 +544,7 @@ std::array<double, 2> MPCC::solve(const Eigen::VectorXd& state)
     ********* SET REFERENCE PARAMS *******
     **************************************/
 
-    if (!set_solver_parameters(ref)) return {0, 0};
+    if (!set_solver_parameters(adjusted_ref)) return {0, 0};
 
     /*************************************
     ************* RUN SOLVER *************
@@ -591,10 +591,10 @@ std::array<double, 2> MPCC::solve(const Eigen::VectorXd& state)
         double si     = mpc_s[i];
         double x      = mpc_x[i];
         double y      = mpc_y[i];
-        double xr     = ref[0](si).coeff(0);
-        double yr     = ref[1](si).coeff(0);
-        double xr_dot = ref[0].derivatives(si, 1).coeff(1);
-        double yr_dot = ref[1].derivatives(si, 1).coeff(1);
+        double xr     = adjusted_ref[0](si).coeff(0);
+        double yr     = adjusted_ref[1](si).coeff(0);
+        double xr_dot = adjusted_ref[0].derivatives(si, 1).coeff(1);
+        double yr_dot = adjusted_ref[1].derivatives(si, 1).coeff(1);
 
         double den      = xr_dot * xr_dot + yr_dot * yr_dot;
         double obs_dirx = -yr_dot / den;

@@ -28,15 +28,30 @@ class MPCC
 
     std::array<double, 2> solve(const Eigen::VectorXd &state);
 
+    void load_params(const std::map<std::string, double> &params);
+    /**********************************************************************
+     * Function: MPCC::load_params()
+     * Description: Loads parameters for the MPC controller
+     * Parameters:
+     * @param params: const std::map<std::string, double>&
+     * Returns:
+     * N/A
+     * Notes:
+     * This function loads parameters for the MPC controller, including
+     * the time step, maximum angular and body rates, weights for the
+     * mpcc cost function, and CBF/CLF parameters
+     **********************************************************************/
+
+    /***********************
+     * Setters and Getters
+     ***********************/
+    void reset_horizon();
     void set_odom(const Eigen::VectorXd &odom);
     void set_tubes(const std::array<Eigen::VectorXd, 2> &tubes);
-    void load_params(const std::map<std::string, double> &params);
     void set_reference(const std::array<Spline1D, 2> &reference, double arclen);
-
-    void reset_horizon();
-
     Eigen::VectorXd get_state();
 
+    // TOOD: make getter for these
     std::vector<double> mpc_x;
     std::vector<double> mpc_y;
     std::vector<double> mpc_theta;
@@ -49,16 +64,90 @@ class MPCC
     std::vector<double> mpc_s_ddots;
 
    protected:
-    std::vector<Spline1D> get_ref_from_s(double s);
+    std::array<Spline1D, 2> compute_adjusted_ref(double s);
+    /**********************************************************************
+     * Function: MPCC::get_ref_from_s()
+     * Description: Generates a reference trajectory from a given arc length
+     * Parameters:
+     * @param s: double
+     * Returns:
+     * a reparameterized trajectory starting at arc length s=0
+     * Notes:
+     * If the trajectory is shorter than required mpc size, then the
+     * last point is repeated for spline generation.
+     **********************************************************************/
+
     double get_s_from_state(const Eigen::VectorXd &state);
+    /**********************************************************************
+     * Function: MPCC::get_s_from_state()
+     * Description: Get the arc length of closest point on reference trajectory
+     * Parameters:
+     * @param state: const Eigen::VectorXd&
+     * Returns:
+     * arc length value of closest point to state
+     **********************************************************************/
+
     Eigen::VectorXd next_state(const Eigen::VectorXd &current_state,
                                const Eigen::VectorXd &control);
+    /**********************************************************************
+     * Function: MPCC::next_state()
+     * Description: Calculates the next state of the robot given current
+     * state and control input
+     * Parameters:
+     * @param current_state: const Eigen::VectorXd&
+     * @param control: const Eigen::VectorXd&
+     * Returns:
+     * Next state of the robot
+     **********************************************************************/
 
     void warm_start_no_u(double *x_init);
-    void warm_start_shifted_u(bool correct_perturb, const Eigen::VectorXd &state);
-    void process_solver_output(double s);
+    /**********************************************************************
+     * Function: MPCC::warm_start_no_u()
+     * Description: Warm starts the MPC solver with no control inputs
+     * Parameters:
+     * @param x_init: double*
+     * Returns:
+     * N/A
+     * Notes:
+     * This function sets the initial state for the MPC solver assuming
+     * a 0 control input
+     **********************************************************************/
 
-    bool set_solver_parameters(const std::vector<Spline1D> &ref);
+    void warm_start_shifted_u(bool correct_perturb, const Eigen::VectorXd &state);
+    /**********************************************************************
+     * Function: MPCC::warm_start_shifted_u()
+     * Description: Warm starts the MPC solver with shifted control inputs
+     * Parameters:
+     * @param correct_perturb: bool
+     * @param state: const Eigen::VectorXd&
+     * Returns:
+     * N/A
+     * Notes:
+     * This function sets the initial state for the MPC solver by shifting
+     * the control inputs and states from the previous solution.
+     * See From linear to nonlinear MPC: bridging the gap via the
+     * real-time iteration, Gros et. al. for more details.
+     **********************************************************************/
+
+    void process_solver_output(double s);
+    /**********************************************************************
+     * Function: MPCC::process_solver_output()
+     * Description: Processes the output of the MPC solver
+     * Parameters:
+     * @param s: double
+     * Returns:
+     * N/A
+     **********************************************************************/
+
+    bool set_solver_parameters(const std::array<Spline1D, 2> &adjusted_ref);
+    /**********************************************************************
+     * Function: MPCC::set_solver_parameters()
+     * Description: Sets the parameters for the MPC solver
+     * Parameters:
+     * @param ref: const std::vector<Spline1D>&
+     * Returns:
+     * bool - true if successful, false otherwise
+     **********************************************************************/
 
     std::map<std::string, double> _params;
 
