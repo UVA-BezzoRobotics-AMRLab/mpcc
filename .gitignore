@@ -3,5 +3,8 @@
 __pycache__
 .vscode
 *.json
+.cache/
+.clang-format*
 c_generated_code/
 LP_codegen/
+build/

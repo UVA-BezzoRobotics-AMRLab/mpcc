@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.0.2)
-project(uav_mpc C CXX)
+project(mpcc C CXX)
 
 ## Compile as C++11, supported in ROS Kinetic and newer
 # add_compile_options(-std=c++17 -O3)
@@ -20,7 +20,7 @@ find_package(catkin REQUIRED COMPONENTS
   grid_map_ros
 )
 
-set(CVXPYGEN_OUTPUT ${CMAKE_SOURCE_DIR}/scripts/unicycle_mpcc/LP_codegen/c)
+set(CVXPYGEN_OUTPUT ${CMAKE_SOURCE_DIR}/scripts/tube_gen/LP_codegen/c)
 add_subdirectory(${CVXPYGEN_OUTPUT})
 
 ## System dependencies are found with CMake's conventions
@@ -34,7 +34,7 @@ find_package(Eigen3 REQUIRED COMPONENT system)
 
 catkin_package(
 #  INCLUDE_DIRS include
-#  LIBRARIES uav_mpc
+#  LIBRARIES mpcc
 #  CATKIN_DEPENDS geometry_msgs roscpp rospy std_msgs trajectory_msgs
 #  DEPENDS system_lib
 )
@@ -53,12 +53,7 @@ include_directories(
   ${catkin_INCLUDE_DIRS}
   ${ACADOS_INCLUDE_DIRS}
   ${BLASFEO_INCLUDE_DIRS}
-  # ${cpg_include}
 )
-
-# message(WARNING "CPG INCLUDE: ${cpg_include}")
-# message(WARNING "CPG HEAD: ${cpg_head}")
-# message(WARNING "CPG SRC: ${cpg_src}")
 
 set(ACADOS_OUTPUT_DIR ${CMAKE_SOURCE_DIR}/scripts/unicycle_mpcc/c_generated_code)
 
@@ -113,40 +108,21 @@ add_custom_target(
   DEPENDS ${ACADOS_OUTPUT_FILES} ${ACADOS_SCRIPTS} ${CMAKE_SOURCE_DIR}/params/mpcc.yaml
 )
 
-# set(CVXPYGEN_OUTPUT_FILES ${CVXPYGEN_OUTPUT}/cpg_solver.py)
-# set(CVXPYGEN_SCRIPT ${CMAKE_SOURCE_DIR}/scripts/unicycle_mpcc/tube_lp_gen.py)
-
-# add_custom_command(
-#   OUTPUT ${CVXPYGEN_OUTPUT}/cpg_solver.py
-#   COMMAND ${Python_EXECUTABLE} ${CVXPYGEN_SCRIPT} --dir ${CVXPYGEN_OUTPUT}
-#   DEPENDS ${CVXPYGEN_SCRIPT}
-#   COMMENT "Building CVXPYGEN LP Code"
-#   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/scripts/unicycle_mpcc
-#   VERBATIM
+# add_executable(test_reparam src/test.cpp)
+# target_link_libraries(test_reparam
+#   ${catkin_LIBRARIES}
+#   ${EIGEN3_LIBRARIES}
 # )
-
-# add_custom_target(
-#   GenerateCVXPYCode
-#   DEPENDS ${CVXPYGEN_SCRIPT} ${CVXPYGEN_OUTPUT_FILES}
-# )
-
-add_executable(test_reparam src/test.cpp)
-target_link_libraries(test_reparam
-  ${catkin_LIBRARIES}
-  ${EIGEN3_LIBRARIES}
-)
 
 add_library(cvxpy_lib STATIC ${cpg_src})
 target_compile_options(cvxpy_lib PRIVATE -O3 -w)
 target_include_directories(cvxpy_lib PRIVATE ${cpg_include})
 
 add_executable(mpcc_ros 
-  src/mpcc_node.cpp
-  src/mpcc_ros.cpp
-  src/mpcc_core.cpp
-  src/mpcc_acados.cpp
-  # ${cpg_src}
-  # ${cpg_head}
+  src/mpcc/mpcc_node.cpp
+  src/mpcc/mpcc_ros.cpp
+  src/mpcc/mpcc_core.cpp
+  src/mpcc/mpcc_acados.cpp
 )
 target_link_libraries(mpcc_ros
   ${HPIPM_LIBRARIES}
@@ -157,9 +133,18 @@ target_link_libraries(mpcc_ros
   ${ACADOS_OUTPUT_LIB}
   ${BLASFEO_LIBRARIES}
   cvxpy_lib
-  # ${CVXPYGEN_OUTPUT}/build/out/libcpg.a
 )
 target_compile_options(mpcc_ros PRIVATE -std=c++17 -O3)
 add_dependencies(mpcc_ros GenerateAcadosCode)
 add_dependencies(mpcc_ros cvxpy_lib)
 target_include_directories(mpcc_ros PRIVATE ${ACADOS_OUTPUT_DIR} ${cpg_include})
+
+add_executable(publish_pf_pose src/utils/publish_pf_pose.cpp)
+target_link_libraries(publish_pf_pose
+  ${catkin_LIBRARIES}
+)
+
+add_executable(local_costmap src/utils/local_costmap.cpp)
+target_link_libraries(local_costmap
+    ${catkin_LIBRARIES}
+)
