@@ -1,7 +1,5 @@
 #pragma once
 
-#include <distance_map_core/distance_map_converter_base.h>
-#include <distance_map_core/distance_map_converter_instantiater.h>
 #include <mpcc/mpcc_acados.h>
 #include <mpcc/types.h>
 
@@ -106,8 +104,6 @@ class MPCCore
 
     Eigen::Vector3d _odom;
     Eigen::Vector2d _goal;
-
-    std::shared_ptr<distmap::DistanceMap> _dist_grid_ptr;
 
     // learning states
     Eigen::VectorXd _prev_rl_state;

@@ -4,7 +4,6 @@
 
 #include <Eigen/Dense>
 #include <map>
-#include <nlopt.hpp>
 #include <vector>
 
 // acados

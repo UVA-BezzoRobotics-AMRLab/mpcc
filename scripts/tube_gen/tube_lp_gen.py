@@ -48,7 +48,7 @@ def main():
 
     problem = cp.Problem(cp.Minimize(-cost), [A @ x <= b])
 
-    cpg.generate_code(problem, code_dir=args.dir)
+    cpg.generate_code(problem, code_dir=args.dir, solver=cp.ECOS)
 
 
 if __name__ == "__main__":

@@ -550,20 +550,22 @@ std::array<double, 2> MPCC::solve(const Eigen::VectorXd& state)
     ************* RUN SOLVER *************
     **************************************/
 
-    double elapsed_time = 0.0;
+    // double elapsed_time = 0.0;
     double timer;
 
     // run at most 2 times, if first fails, try with simple initialization
     for (int i = 0; i < 2; ++i)
     {
         int status = unicycle_model_mpcc_acados_solve(_acados_ocp_capsule);
-        ocp_nlp_get(_nlp_config, _nlp_solver, "time_tot", &timer);
-        elapsed_time += timer;
+        // for some reason this causes problems in docker container, commenting 
+        // out for now
+        // ocp_nlp_get(_nlp_config, _nlp_solver, "time_tot", &timer);
+        // elapsed_time += timer;
 
         if (status == ACADOS_SUCCESS)
         {
-            std::cout << "[MPCC] unicycle_model_mpcc_acados_solve(): SUCCESS! "
-                      << elapsed_time * 1000 << std::endl;
+            std::cout << "[MPCC] unicycle_model_mpcc_acados_solve(): SUCCESS!" << std::endl;
+            //          << elapsed_time * 1000 << std::endl;
             _is_shift_warm = true;
             break;
         }

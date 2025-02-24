@@ -11,7 +11,7 @@ RUN apt-get update && apt-get upgrade -y && \
     apt-get install -y --no-install-recommends git wget vim build-essential && \
     apt-get install -y gcc g++ gfortran patch pkg-config liblapack-dev && \
     apt-get install -y libmetis-dev cppad ca-certificates ginac-tools libginac-dev && \
-    apt-get install -y python3-catkin-tools
+    apt-get install -y python3-catkin-tools python3-pip
 
 # install ACADOS
 WORKDIR /home
@@ -21,7 +21,13 @@ RUN git clone https://github.com/acados/acados.git && \
     mkdir -p build && \
     cd build && \
     cmake -DACADOS_WITH_QPOASES=ON -DACADOS_INSTALL_DIR=/usr/local/ .. && \
-    make install
+    make install && cd .. && \
+    pip install --upgrade importlib_metadata && \
+    pip install "setuptools>=61" && \
+    pip install -e interfaces/acados_template
+
+ENV ACADOS_SOURCE_DIR=/home/acados
+ENV LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$ACADOS_SOURCE_DIR/lib
     
 # install GUROBI
 WORKDIR /opt
@@ -41,18 +47,22 @@ RUN make && \
     cp libgurobi_c++.a /opt/gurobi/linux/lib && \
     mkdir -p /home/catkin_ws/src
 
-ENV GUROBI_HOME /opt/gurobi/linux
-ENV PATH $PATH:$GUROBI_HOME/bin
-ENV LD_LIBRARY_PATH $GUROBI_HOME/lib
+ENV GUROBI_HOME=/opt/gurobi/linux
+ENV PATH=$PATH:$GUROBI_HOME/bin
+ENV LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$GUROBI_HOME/lib
 
 
 # install ROS packages and dependencies
 RUN apt-get install -y --no-install-recommends ros-noetic-costmap-2d ros-noetic-tf2-geometry-msgs ros-noetic-gmapping && \
-    apt-get install -y --no-install-recommends ros-noetic-rviz ros-noetic-backward-ros ros-noetic-pcl-ros sqlite3 python3-pip
+    apt-get install -y --no-install-recommends ros-noetic-rviz ros-noetic-backward-ros ros-noetic-pcl-ros ros-noetic-cv-bridge ros-noetic-filters
 
 WORKDIR /home/catkin_ws
 
-RUN git clone https://github.com/ANYbotics/grid_map.git src/grid_map
+RUN git clone https://github.com/nocholasrift/robust_fast_navigation.git src/robust_fast_navigation 
+
+RUN git clone https://github.com/ANYbotics/grid_map.git src/grid_map && \
+    rm -rf src/grid_map/grid_map_octomap && \
+    rm -rf src/grid_map/grid_map_demos
 
 # copy the package to the workspace and build
 COPY . ./src/mpcc
@@ -62,14 +72,15 @@ RUN pip install -r src/mpcc/requirements.txt
 WORKDIR /home/catkin_ws/src/mpcc/scripts/tube_gen
 
 # generate code to build tubes
-RUN python tube_lp_gen.py --yaml=/home/catkin_ws/src/mpcc/params/mpcc.yaml
+RUN python3 tube_lp_gen.py --yaml=/home/catkin_ws/src/mpcc/params/mpcc.yaml
 
 WORKDIR /home/catkin_ws
 
-RUN /bin/bash -c "source /opt/ros/noetic/setup.bash && catkin build"
+RUN /bin/bash -c "source /opt/ros/noetic/setup.bash && catkin build -DCMAKE_BUILD_TYPE=Release"
 
 RUN echo "source /opt/ros/noetic/setup.bash" >> /root/.bashrc && \
-    echo "source /home/catkin_ws/devel/setup.bash" >> /root/.bashrc
+    echo "source /home/catkin_ws/devel/setup.bash" >> /root/.bashrc && \
+    echo "set -o vi" >> /root/.bashrc
 
 ENTRYPOINT ["/bin/bash"]
 

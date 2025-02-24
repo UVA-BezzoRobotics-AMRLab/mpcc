@@ -1,5 +1,3 @@
-#include <distance_map_core/distance_map.h>
-#include <distance_map_msgs/DistanceMap.h>
 #include <mpcc/types.h>
 #include <tf/tf.h>
 
