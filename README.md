@@ -7,7 +7,7 @@ To build the image, run the following command in the top level directory of this
 docker build --tag=mpcc . # this will take a while :)
 ```
 
-A trajectory generation repository is also cloned into the container for testing and demonstration purposes. In order to run the trajectory generation nodes, you will need to get a WLS Gurobi license file from the [Gurobi Web License Manager](https://license.gurobi.com/manager/licenses). Place the `gurobi.lic` file in the top level directory of the repository and then execute the following command to spin up a container:
+A trajectory generation repository is also cloned into the container for testing and demonstration purposes (found [here](https://github.com/nocholasrift/robust_fast_navigation.git)). In order to run the trajectory generation nodes, you will need to get a WLS Gurobi license file from the [Gurobi Web License Manager](https://license.gurobi.com/manager/licenses). Place the `gurobi.lic` file in the top level directory of the repository and then execute the following command to spin up a container:
 
 ```bash
 docker run --volume=$PWD/gurobi.lic:/opt/gurobi/gurobi.lic --network=host -it mpcc
