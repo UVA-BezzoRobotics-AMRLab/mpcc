@@ -1,6 +1,3 @@
-# Filesystem Structure
-This package contains code for a ROS Model Predictive Contour Controller which can track geometric trajectories on any unicycle-like robot.
-
 # Installation
 You can install the package either with or without docker. Since there are several required pacakges and solvers needed to support everything in this repository, it is suggested to install with Docker as everything will be done automatically. 
 
