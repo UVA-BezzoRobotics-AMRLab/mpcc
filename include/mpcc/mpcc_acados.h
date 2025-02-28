@@ -149,6 +149,22 @@ class MPCC
      * bool - true if successful, false otherwise
      **********************************************************************/
 
+    void apply_affine_transform(Eigen::VectorXd &state, const Eigen::Vector2d &rot_point,
+                                const Eigen::MatrixXd &m_affine);
+    /**********************************************************************
+     * Function: MPCC::apply_affine_transform()
+     * Description: Applies an affine transformation to state in place
+     * Parameters:
+     * @param state: const Eigen::VectorXd&
+     * @param rot_point: const Eigen::Vector2d&
+     * @param m_affine: const Eigen::MatrixXd&
+     * Returns:
+     * Eigen::VectorXd - Transformed state
+     * Notes:
+     * Applies affine transformation defined my m_affine to state,
+     * rotation occurs about rot_point
+     ***********************************************************************/
+
     std::map<std::string, double> _params;
 
     Eigen::VectorXd _prev_x0;

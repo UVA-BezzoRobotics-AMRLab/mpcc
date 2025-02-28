@@ -5,6 +5,8 @@
 #include <iostream>
 #include <mpcc/termcolor.hpp>
 
+#include "Eigen/src/Core/Matrix.h"
+
 MPCC::MPCC()
 {
     // Set default value
@@ -312,6 +314,7 @@ void MPCC::warm_start_no_u(double* x_init)
 // Gros et. al.
 void MPCC::warm_start_shifted_u(bool correct_perturb, const Eigen::VectorXd& state)
 {
+    double starting_s = _prev_x0[1 * NX + 4];
     if (correct_perturb)
     {
         std::cout << termcolor::red << "[MPCC] Guess pos. too far, correcting"
@@ -339,11 +342,82 @@ void MPCC::warm_start_shifted_u(bool correct_perturb, const Eigen::VectorXd& sta
         ocp_nlp_out_set(_nlp_config, _nlp_dims, _nlp_out, _mpc_steps, "x", &curr[0]);
         // exit(0);
     }
+    // if (correct_perturb)
+    // {
+    //     std::cout << termcolor::red << "[MPCC] Guess pos. too far, correcting"
+    //               << termcolor::reset << std::endl;
 
+    //     Eigen::VectorXd curr         = state;
+    //     Eigen::VectorXd mpc_curr_est = _prev_x0.segment(NX, NX);
+    //     Eigen::Vector2d trans        = curr.head(2) - mpc_curr_est.head(2);
+    //     double d_theta               = curr(2) - mpc_curr_est(2);
+    //     double d_s_dot               = curr(5) - mpc_curr_est(5);  // s_dot
+
+    //     // translate and rotate previous solution to current state
+
+    //     Eigen::MatrixXd affine = Eigen::MatrixXd::Identity(3, 3);
+    //     affine(0, 0)           = cos(d_theta);
+    //     affine(0, 1)           = -sin(d_theta);
+    //     affine(0, 2)           = trans(0);
+    //     affine(1, 0)           = sin(d_theta);
+    //     affine(1, 1)           = cos(d_theta);
+    //     affine(1, 2)           = trans(1);
+
+    //     std::cout << curr.transpose() << std::endl;
+    //     std::cout << mpc_curr_est.transpose() << std::endl;
+    //     std::cout << affine << std::endl;
+
+    //     Eigen::VectorXd tmp = mpc_curr_est;
+    //     apply_affine_transform(tmp, mpc_curr_est.head(2), affine);
+    //     tmp(2) += d_theta;
+
+    //     std::cout << "curr after affine " << tmp.transpose() << std::endl;
+
+    //     // exit(0);
+
+    //     Eigen::VectorXd warm_state;
+    //     for (int i = 1; i < _mpc_steps; ++i)
+    //     {
+    //         warm_state = _prev_x0.segment(i * NX, NX);
+    //         warm_state(2) += d_theta;
+    //         warm_state(4) -= starting_s;
+    //         warm_state(5) += d_s_dot;
+
+    //         // transforming warm_state based on current true robot state
+    //         apply_affine_transform(warm_state, mpc_curr_est.head(2), affine);
+
+    //         // set transformed state as warm start
+    //         ocp_nlp_out_set(_nlp_config, _nlp_dims, _nlp_out, i - 1, "x", &warm_state[0]);
+    //         ocp_nlp_out_set(_nlp_config, _nlp_dims, _nlp_out, i - 1, "u", &_prev_u0[i * NU]);
+    //     }
+
+    //     warm_state = _prev_x0.tail(NX);
+    //     warm_state(2) += d_theta;
+    //     warm_state(4) -= starting_s;
+    //     warm_state(5) += d_s_dot;
+
+    //     apply_affine_transform(warm_state, mpc_curr_est.head(2), affine);
+
+    //     ocp_nlp_out_set(_nlp_config, _nlp_dims, _nlp_out, _mpc_steps - 1, "x",
+    //     &warm_state[0]); ocp_nlp_out_set(_nlp_config, _nlp_dims, _nlp_out, _mpc_steps - 1,
+    //     "u",
+    //                     &_prev_u0[(_mpc_steps - 1) * NU]);
+
+    //     Eigen::VectorXd uN_prev = _prev_u0.tail(NU);
+    //     warm_state              = next_state(warm_state, uN_prev);
+
+    //     ocp_nlp_out_set(_nlp_config, _nlp_dims, _nlp_out, _mpc_steps, "x", &warm_state[0]);
+
+    //     // std::cout << termcolor::red << "warm state is " << warm_state.transpose() <<
+    //     // std::endl; std::cout << "second to last state is "
+    //     //           << _prev_x0.segment((_mpc_steps - 1) * NX, NX).transpose() << std::endl;
+    //     // std::cout << "final state is " << _prev_x0.tail(NX).transpose() <<
+    //     // termcolor::reset
+    //     //           << std::endl;
+    //     // exit(0);
+    // }
     else
     {
-        double starting_s = _prev_x0[1 * NX + 4];
-
         for (int i = 1; i < _mpc_steps; ++i)
         {
             Eigen::VectorXd warm_state = _prev_x0.segment(i * NX, NX);
@@ -519,7 +593,8 @@ std::array<double, 2> MPCC::solve(const Eigen::VectorXd& state)
     double s                             = get_s_from_state(state);
     std::array<Spline1D, 2> adjusted_ref = compute_adjusted_ref(s);
 
-    Eigen::Vector2d prev_pos = _prev_x0.head(2);
+    // Eigen::Vector2d prev_pos = _prev_x0.head(2);
+    Eigen::Vector2d prev_pos = _prev_x0.segment(NX, 2);
     Eigen::Vector2d curr_pos = state.head(2);
 
     double dist = (prev_pos - curr_pos).norm();
@@ -528,7 +603,7 @@ std::array<double, 2> MPCC::solve(const Eigen::VectorXd& state)
         std::cout << termcolor::red << "[MPCC] Pos too far (" << dist
                   << "), turning off shifted warm start" << std::endl;
         std::cout << "[MPCC] x0: " << x0.transpose() << termcolor::reset << std::endl;
-        _is_shift_warm = false;
+        // _is_shift_warm = false;
     }
 
     double starting_s = _prev_x0[1 * NX + 4];
@@ -536,8 +611,8 @@ std::array<double, 2> MPCC::solve(const Eigen::VectorXd& state)
         warm_start_no_u(x_init);
     else
     {
-        warm_start_shifted_u(false, x0);
-        // warm_start_shifted_u((prev_pos - curr_pos).norm() > 1e-1, x0);
+        // warm_start_shifted_u(false, x0);
+        warm_start_shifted_u((prev_pos - curr_pos).norm() > 5e-2, x0);
     }
 
     /*************************************
@@ -584,6 +659,9 @@ std::array<double, 2> MPCC::solve(const Eigen::VectorXd& state)
     **************************************/
 
     process_solver_output(s);
+    std::cout << "mpc x[0] is " << _prev_x0.head(NX).transpose() << std::endl;
+    std::cout << "true x[0] is " << x0.transpose() << std::endl;
+    std::cout << "mpc x[1] is " << _prev_x0.segment(NX, NX).transpose() << std::endl;
 
     // unicycle_model_mpcc_acados_print_stats(_acados_ocp_capsule);
     for (int i = 0; i < mpc_x.size(); ++i)
@@ -607,4 +685,18 @@ std::array<double, 2> MPCC::solve(const Eigen::VectorXd& state)
         _prev_x0[_v_start], s, _prev_x0[_s_dot_start];
 
     return {_prev_u0[1], _prev_u0[0]};
+}
+
+// utility
+void MPCC::apply_affine_transform(Eigen::VectorXd& state, const Eigen::Vector2d& rot_point,
+                                  const Eigen::MatrixXd& m_affine)
+{
+    Eigen::Vector3d state_ext(0, 0, 1);
+    state_ext.head(2) = state.head(2);
+
+    state_ext.head(2) -= rot_point;
+    state_ext = m_affine * state_ext;
+    state_ext.head(2) += rot_point;
+
+    state.head(2) = state_ext.head(2);
 }

@@ -75,7 +75,7 @@ def export_mpcc_ode_model_spline_param() -> AcadosModel:
 
     Q_c = 4.0  # 50
     Q_l = 100  # 3
-    Q_mat = np.diag([Q_c, Q_l, 1e-1, 4e-1, 1e-1])
+    Q_mat = np.diag([Q_c, Q_l, 1e-1, 5e-1, 1e-1])
     Q_mat_e = np.diag([Q_c, Q_l])  # / 10
 
     y_expr = vertcat(e_c, e_l, a, w, sddot)
@@ -225,7 +225,7 @@ def export_mpcc_ode_model_spline_tube(params) -> AcadosModel:
     Q_l = MX.sym("Q_l")  # 100
     Q_s = MX.sym("Q_s")  # 0.5
     Q_a = 1e-1
-    Q_w = 4e-1
+    Q_w = 1  # 4e-1
     Q_sdd = 1e-1
 
     cost_expr = (
@@ -252,11 +252,14 @@ def export_mpcc_ode_model_spline_tube(params) -> AcadosModel:
 
     signed_d = (x1 - xr) * obs_dirx + (y1 - yr) * obs_diry
 
+    # h_abv = d_abv - signed_d
+    # h_blw = signed_d - d_blw
+
     p_abv = obs_dirx * cos_theta + obs_diry * sin_theta + v1 * 0.05
-    h_abv = (d_abv - signed_d) * exp(-p_abv)
+    h_abv = (d_abv - signed_d - 0.2) * exp(-p_abv)
 
     p_blw = -obs_dirx * cos_theta - obs_diry * sin_theta + v1 * 0.05
-    h_blw = (signed_d - d_blw) * exp(-p_blw)
+    h_blw = (signed_d - d_blw - 0.2) * exp(-p_blw)
 
     f = vertcat(v1 * cos_theta, v1 * sin_theta, 0, 0, sdot1, 0)
     g = vertcat(
@@ -267,6 +270,15 @@ def export_mpcc_ode_model_spline_tube(params) -> AcadosModel:
         horzcat(0, 0, 0),
         horzcat(0, 0, 1),
     )
+
+    # HOCBF (second order)
+    # dot_h_abv = jacobian(h_abv, x) @ f
+    # dot_h_blw = jacobian(h_blw, x) @ f
+
+    # ddot_h_abv = jacobian(dot_h_abv, x) @ f + jacobian(dot_h_abv, x) @ g @ u
+    # ddot_h_blw = jacobian(dot_h_blw, x) @ f + jacobian(dot_h_blw, x) @ g @ u
+
+    # ddot{h} >= -\Kappa * \eta, where \eta = {h, \dot{h}}
 
     # g_u = vertcat(0, 0, w, a, 0, sddot)
     h_dot_abv = jacobian(h_abv, x)
@@ -280,12 +292,15 @@ def export_mpcc_ode_model_spline_tube(params) -> AcadosModel:
     con_abv = Lfh_abv + h_dot_abv @ g @ u + alpha * h_abv
     con_blw = Lfh_blw + h_dot_blw @ g @ u + alpha * h_blw
 
+    # con_abv = ddot_h_abv + 0.5 * dot_h_abv + alpha * h_abv
+    # con_blw = ddot_h_blw + 0.5 * dot_h_blw + alpha * h_blw
+
     # Control Lyapunov Function
     Ql_c = MX.sym("Ql_c")
     Ql_l = MX.sym("Ql_l")
     gamma = MX.sym("gamma")
 
-    v = Ql_c * e_c**2 + Ql_l * e_l**2
+    v = Ql_c * e_c**2 + Ql_l * e_l**2  # + Q_s * (sdot1 - v1) ** 2
     v_dot = jacobian(v, x) @ f + jacobian(v, x) @ g @ u
 
     lyap_con = v_dot + gamma * v

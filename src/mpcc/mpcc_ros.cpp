@@ -19,6 +19,7 @@
 #include <algorithm>
 
 #include "mpcc/utils.h"
+#include "ros/param.h"
 
 MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~")
 {
@@ -224,6 +225,8 @@ void MPCCROS::visualizeTubes()
     visualization_msgs::Marker normals_below_msg = normals_msg;
     normals_below_msg.ns                         = "traj_normals_below";
     normals_below_msg.id                         = 238;
+    normals_below_msg.color.r                    = 0.0;
+    normals_below_msg.color.b                    = 1.0;
 
     // if horizon is that small, too small to visualize anyway
     if (horizon < .05) return;
@@ -244,7 +247,7 @@ void MPCCROS::visualizeTubes()
 
         Eigen::Vector2d point(px, py);
         Eigen::Vector2d normal(-ty, tx);
-        normal = normal / normal.norm();
+        normal.normalize();
 
         double da = utils::eval_traj(abv_coeffs, s - len_start);
         double db = utils::eval_traj(blw_coeffs, s - len_start);
@@ -274,22 +277,19 @@ void MPCCROS::visualizeTubes()
         normal_pt.y = point(1);
         normal_pt.z = 1.0;
 
-        geometry_msgs::Point normal_pt1;
-        normal_pt1.x = point(0) + normal(0) * da;
-        normal_pt1.y = point(1) + normal(1) * da;
-        normal_pt1.z = 1.0;
-
         normals_msg.points.push_back(normal_pt);
-        normals_msg.points.push_back(normal_pt1);
+        normals_msg.points.push_back(pt_a);
 
         normals_below_msg.points.push_back(normal_pt);
-        normals_below_msg.points.push_back(normal_pt1);
+        normals_below_msg.points.push_back(pt_b);
     }
 
     visualization_msgs::MarkerArray tube_ma;
     tube_ma.markers.reserve(2);
     tube_ma.markers.push_back(std::move(tubemsg_a));
     tube_ma.markers.push_back(std::move(tubemsg_b));
+    // tube_ma.markers.push_back(std::move(normals_msg));
+    // tube_ma.markers.push_back(std::move(normals_below_msg));
 
     _tubeVizPub.publish(tube_ma);
 }
@@ -495,9 +495,6 @@ void MPCCROS::mpcc_ctrl_loop()
 
         _prev_s = len_start;
 
-        Eigen::VectorXd state(6);
-        state << _odom(0), _odom(1), _odom(2), _vel_msg.linear.x, 0, _s_dot;
-
         if (len_start > _true_ref_len - 2e-1)
         {
             ROS_INFO("Reached end of traj %.2f / %.2f", len_start, _true_ref_len);
@@ -522,7 +519,7 @@ void MPCCROS::mpcc_ctrl_loop()
         if (_use_cbf)
         {
             status = utils::get_tubes(_tube_degree, _tube_samples, _max_tube_width, _ref,
-                                      _ref_len, len_start, horizon, _grid_map, _tubes);
+                                      _ref_len, len_start, horizon, _odom, _grid_map, _tubes);
         }
         else
         {
@@ -544,6 +541,9 @@ void MPCCROS::mpcc_ctrl_loop()
             visualizeTubes();
 
         _mpc_core->set_tubes(_tubes);
+
+        Eigen::VectorXd state(6);
+        state << _odom(0), _odom(1), _odom(2), _vel_msg.linear.x, 0, _s_dot;
 
         std::array<double, 2> mpc_results = _mpc_core->solve(state);
 
@@ -627,19 +627,14 @@ void MPCCROS::publishMPCTrajectory()
 
     for (int i = 0; i < horizon.size(); ++i)
     {
+        // don't visualize mpc horizon past end of reference trajectory
+        if (horizon[i](6) > _true_ref_len) break;
+
         Eigen::VectorXd state = horizon[i];
         geometry_msgs::PoseStamped tmp;
-        tmp.header = pathMsg.header;
-        if (state.size() == 6)
-        {
-            tmp.pose.position.x = state(1);
-            tmp.pose.position.y = state(2);
-        }
-        else
-        {
-            tmp.pose.position.x = state(0);
-            tmp.pose.position.y = state(1);
-        }
+        tmp.header             = pathMsg.header;
+        tmp.pose.position.x    = state(1);
+        tmp.pose.position.y    = state(2);
         tmp.pose.position.z    = .1;
         tmp.pose.orientation.w = 1;
         pathMsg.poses.push_back(tmp);

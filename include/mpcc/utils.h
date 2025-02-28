@@ -34,29 +34,44 @@ inline bool raycast_grid(const Eigen::Vector2d& start, const Eigen::Vector2d& di
                          const grid_map::GridMap& grid_map, double max_dist,
                          double& actual_dist)
 {
-    grid_map::Position end = start + max_dist * dir;
-
     // get indices in map
     grid_map::Index start_ind;
     if (!grid_map.getIndex(start, start_ind)) return false;
 
-    grid_map::Index end_ind;
-    if (!grid_map.getIndex(end, end_ind)) return false;
+    // raycast several times with small purturbations in direction to ensure
+    // thin obstacles are detected
+    double min_dist  = 1e6;
+    double theta_dir = atan2(dir(1), dir(0));
 
-    Eigen::Vector2d ray_end = end;
-    for (grid_map::LineIterator iterator(grid_map, start_ind, end_ind); !iterator.isPastEnd();
-         ++iterator)
+    for (int i = -2; i < 3; ++i)
     {
-        if (grid_map.at("layer", *iterator) == 100)
-        {
-            // I'm pretty sure this isn't possible
-            if (!grid_map.getPosition(*iterator, ray_end)) return false;
+        // purturb by degrees each time
+        double theta        = theta_dir + i * M_PI / 180;
+        Eigen::Vector2d end = start + max_dist * Eigen::Vector2d(cos(theta), sin(theta));
 
-            break;
+        grid_map::Index end_ind;
+        if (!grid_map.getIndex(end, end_ind)) return false;
+
+        // raycast
+        Eigen::Vector2d ray_end = end;
+        for (grid_map::LineIterator iterator(grid_map, start_ind, end_ind);
+             !iterator.isPastEnd(); ++iterator)
+        {
+            Eigen::Vector2d tmp;
+            if (grid_map.at("layer", *iterator) > .5)
+            {
+                // I'm pretty sure this isn't possible
+                if (!grid_map.getPosition(*iterator, ray_end)) return false;
+
+                break;
+            }
         }
+
+        double dist = (start - ray_end).norm();
+        if (dist < min_dist) min_dist = dist;
     }
 
-    actual_dist = (start - ray_end).norm();
+    actual_dist = min_dist;
     return true;
 }
 
@@ -160,6 +175,7 @@ inline void setup_lp(int d, int N, double len_start, double traj_arc_len, double
 
         // index for -polynomial <= -min_dist constraint
         cpg_update_b_vec(i, -min_dist);
+        // cpg_update_b_vec(i, 0);
         // index for polynomial <= obs_dist constraint
         cpg_update_b_vec(i + N, dist_vec[i]);
     }
@@ -188,7 +204,8 @@ inline void setup_lp(int d, int N, double len_start, double traj_arc_len, double
  **********************************************************************/
 inline bool get_tubes(int d, int N, double max_dist, const std::array<Spline1D, 2>& traj,
                       double traj_arc_len, double len_start, double horizon,
-                      const grid_map::GridMap& grid_map, std::array<Eigen::VectorXd, 2>& tubes)
+                      const Eigen::VectorXd& odom, const grid_map::GridMap& grid_map,
+                      std::array<Eigen::VectorXd, 2>& tubes)
 {
     /*************************************
     ********* Get Traj Distances *********
@@ -212,20 +229,72 @@ inline bool get_tubes(int d, int N, double max_dist, const std::array<Spline1D, 
         double tx = traj[0].derivatives(s, 1).coeff(1);
         double ty = traj[1].derivatives(s, 1).coeff(1);
 
-        double nx = traj[0].derivatives(s, 2).coeff(2);
-        double ny = traj[1].derivatives(s, 2).coeff(2);
+        // normals are not stable in Eigen, calculate manually
+        double curvature, nx, ny;
+        if (i < N - 1)
+        {
+            double sp     = s + 1e-1;
+            double txp    = traj[0].derivatives(sp, 1).coeff(1);
+            double typ    = traj[1].derivatives(sp, 1).coeff(1);
+            double theta1 = atan2(ty, tx);
+            double theta2 = atan2(typ, txp);
+            curvature     = (theta2 - theta1) / 1e-1;
+
+            // if (theta2 - theta1 > 0)
+            // {
+            //     nx = -ty;
+            //     ny = tx;
+            // }
+            // else
+            // {
+            //     nx = ty;
+            //     ny = -tx;
+            // }
+        }
+        else
+        {
+            double sp     = s - 1e-1;
+            double txp    = traj[0].derivatives(sp, 1).coeff(1);
+            double typ    = traj[1].derivatives(sp, 1).coeff(1);
+            double theta1 = atan2(ty, tx);
+            double theta2 = atan2(typ, txp);
+            curvature     = (theta1 - theta2) / 1e-1;
+
+            // if (theta1 - theta2 > 0)
+            // {
+            //     nx = -ty;
+            //     ny = tx;
+            // }
+            // else
+            // {
+            //     nx = ty;
+            //     ny = -tx;
+            // }
+        }
+
+        // double nx = traj[0].derivatives(s, 2).coeff(2);
+        // double ny = traj[1].derivatives(s, 2).coeff(2);
 
         Eigen::Vector2d point(px, py);
         Eigen::Vector2d normal(-ty, tx);
         normal.normalize();
 
-        double den       = tx * tx + ty * ty;
-        double curvature = fabs(tx * ny - ty * nx) / (den * sqrt(den));  // normal.norm();
+        // if (Eigen::Vector2d(-ty, tx).dot(normal) < 0) normal *= -1;
+        // Eigen::Vector2d normal(-ty, tx);
+        // normal.normalize();
+
+        // double den       = tx * tx + ty * ty;
+        // double curvature = fabs(tx * ny - ty * nx) / (den * sqrt(den));  // normal.norm();
 
         // raycast in direction of normal to find obs dist
+        // std::cout << "RAYCASTING ABOVE!" << std::endl;
         double dist_above;
         if (!raycast_grid(point, normal, grid_map, max_dist, dist_above)) return false;
 
+        /*std::cout << "raycast distance for " << point.transpose() << " is " << dist_above*/
+        /*          << std::endl;*/
+
+        // std::cout << "RAYCASTING BELOW!" << std::endl;
         double dist_below;
         if (!raycast_grid(point, -1 * normal, grid_map, max_dist, dist_below)) return false;
 
@@ -243,6 +312,24 @@ inline bool get_tubes(int d, int N, double max_dist, const std::array<Spline1D, 
         if (dist_above < min_dist_abv) min_dist_abv = dist_above;
 
         if (dist_below < min_dist_blw) min_dist_blw = dist_below;
+
+        // check if odom above or below traj, ensure odom
+        // is within tube
+        if (i == 0)
+        {
+            Eigen::Vector2d pos = odom.head(2);
+            Eigen::Vector2d dp  = pos - point;
+            double dot_prod     = dp.dot(normal);
+            double odom_dist    = dp.norm();
+
+            if (dot_prod > 0 && dist_above < odom_dist)
+            {
+                std::cout << "forcefully setting dist_above to be " << dp.norm() << std::endl;
+                dist_above = dp.norm();
+            }
+            else if (dot_prod < 0 && dist_below < odom_dist)
+                dist_below = dp.norm();
+        }
 
         ds_above[i] = dist_above;
         // std::cout << "ds_below is " << dist_below << std::endl;
@@ -275,7 +362,25 @@ inline bool get_tubes(int d, int N, double max_dist, const std::array<Spline1D, 
 
     Eigen::VectorXd upper_coeffs;
     upper_coeffs.resize(d);
-    for (int i = 0; i < d; ++i) upper_coeffs[i] = CPG_Result.prim->var2[i];
+    bool is_straight = true;
+    for (int i = 0; i < d; ++i)
+    {
+        double val = CPG_Result.prim->var2[i];
+        if (i == 0 && fabs(1 - val) > 1e-1)
+            is_straight = false;
+        else if (fabs(val) > 1e-1)
+            is_straight = false;
+
+        upper_coeffs[i] = CPG_Result.prim->var2[i];
+    }
+
+    if (!is_straight)
+    {
+        // print out dist abv as a row vector
+        std::cout << "dist_above = [";
+        for (int i = 0; i < N; ++i) std::cout << ds_above[i] << ", ";
+        std::cout << "];" << std::endl;
+    }
 
     // cpg_set_solver_default_settings();
     /*************************************

@@ -150,9 +150,9 @@ std::vector<Eigen::VectorXd> MPCCore::get_horizon()
     double t = 0;
     for (int i = 0; i < _mpc->mpc_x.size() - 1; ++i)
     {
-        ret.emplace_back(6);
+        ret.emplace_back(7);
         ret.back() << t, _mpc->mpc_x[i], _mpc->mpc_y[i], _mpc->mpc_theta[i],
-            _mpc->mpc_linvels[i], _mpc->mpc_linaccs[i];
+            _mpc->mpc_linvels[i], _mpc->mpc_linaccs[i], _mpc->mpc_s[i];
         t += _dt;
     }
 
