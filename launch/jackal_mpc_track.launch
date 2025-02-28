@@ -1,5 +1,5 @@
 <launch>
-	<arg name="odomTopic" default="/vicon/jackal4/jackal4" />
+	<arg name="viconTopic" default="/vicon/jackal4/jackal4" />
 	<arg name="cmdTopic" default="/cmd_vel" />
 
     <!-- <arg name="mpc_type" value="track_acc_nlopt" /> -->
@@ -27,7 +27,7 @@
 		<param name="pos_mpc_max_angvel" value="1.0" />
 
 
-		<remap from="/odometry/filtered" to="$(arg odomTopic)" />
+		<remap from="/vicon/jackal4/jackal4" to="$(arg viconTopic)" />
 		<remap from="/cmd_vel" to="$(arg cmdTopic)" />
 	</node>
 

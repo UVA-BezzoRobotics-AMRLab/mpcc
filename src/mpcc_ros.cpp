@@ -84,7 +84,7 @@ MPCCROS::MPCCROS(ros::NodeHandle &nh) : _nh("~")
 
 	// Teleop params
 	_nh.param("teleop", _teleop, false);
-	_nh.param<std::string>("frame_id", _frame_id, "odom");
+	_nh.param<std::string>("frame_id", _frame_id, "vicon/world");
 
 	// cbf params
 	_nh.param("use_cbf", _use_cbf, false);
@@ -130,8 +130,8 @@ MPCCROS::MPCCROS(ros::NodeHandle &nh) : _nh("~")
 	_mpc_core->load_params(_mpc_params);
 	ROS_INFO("done loading params!");
 
-	_odomSub = nh.subscribe("/vicon/Jackal4/Jackal4", 1, &MPCCROS::viconCb, this);
-	//_viconSub = nh.subscribe("/vicon/jackal4/jackal4", 1, &MPCCROS::viconCb, this);
+	//_odomSub = nh.subscribe("/vicon/jackal4/jackal4", 1, &MPCCROS::viconCb, this);
+	_viconSub = nh.subscribe("/vicon/jackal4/jackal4", 1, &MPCCROS::viconCb, this);
 	_trajSub = nh.subscribe("/reference_trajectory", 1, &MPCCROS::trajectorycb, this);
 	_distMapSub = nh.subscribe("/distance_map_node/distance_field_obstacles", 1, &MPCCROS::distmapcb, this);
 
