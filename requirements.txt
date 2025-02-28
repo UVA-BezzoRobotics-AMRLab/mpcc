@@ -2,10 +2,8 @@ wheel
 rospkg
 pyyaml
 defusedxml
-tensorboard
-torch==2.3.1
-gymnasium==0.29.1
-tqdm==4.66.4
+setuptools>=61
 gtimer==1.0.0b5
-torchvision==0.18.1
 casadi==3.5.5
+cvxpy==1.5.2
+cvxpygen==0.3.6

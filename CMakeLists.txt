@@ -16,8 +16,8 @@ find_package(catkin REQUIRED COMPONENTS
   rospy
   std_msgs
   trajectory_msgs
-  distance_map_core
   grid_map_ros
+  costmap_2d
 )
 
 set(CVXPYGEN_OUTPUT ${CMAKE_SOURCE_DIR}/scripts/tube_gen/LP_codegen/c)
@@ -28,7 +28,6 @@ find_package(Python3 REQUIRED)
 find_package(ACADOS REQUIRED)
 find_package(BLASFEO REQUIRED)
 find_package(HPIPM REQUIRED)
-find_package(nlopt REQUIRED)
 find_package(Eigen3 REQUIRED COMPONENT system)
 
 
@@ -54,6 +53,8 @@ include_directories(
   ${ACADOS_INCLUDE_DIRS}
   ${BLASFEO_INCLUDE_DIRS}
 )
+
+message(WARNING "BLASFEO_INCLUDE_DIRS: ${ACADOS_INCLUDE_DIRS}")
 
 set(ACADOS_OUTPUT_DIR ${CMAKE_SOURCE_DIR}/scripts/unicycle_mpcc/c_generated_code)
 
@@ -96,7 +97,7 @@ set(ACADOS_SCRIPTS
 
 add_custom_command(
   OUTPUT ${ACADOS_OUTPUT_FILES}
-  COMMAND ${Python_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/unicycle_mpcc/mpcc_ocp_horizon.py --yaml ${CMAKE_SOURCE_DIR}/params/mpcc.yaml
+  COMMAND echo "y" | ${Python_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/unicycle_mpcc/mpcc_ocp_horizon.py --yaml ${CMAKE_SOURCE_DIR}/params/mpcc.yaml
   DEPENDS ${ACADOS_SCRIPTS} ${CMAKE_SOURCE_DIR}/params/mpcc.yaml
   COMMENT "Building MPC code with Acados"
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/scripts/unicycle_mpcc

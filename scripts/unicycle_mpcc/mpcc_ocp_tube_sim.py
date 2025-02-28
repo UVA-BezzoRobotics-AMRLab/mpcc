@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 
+import sys
 import time
-import scipy
+import yaml
+import argparse
 import numpy as np
 import casadi as ca
 import matplotlib.pyplot as plt
@@ -520,12 +522,27 @@ def get_footprint(x, y, theta):
     plt.show()
 
 
-def simulation():
+def simulation(args):
 
     # get_footprint(0, 0, 0)
     # exit(0)
+    yaml_file = args.yaml
 
-    yaml_file = "/home/bezzo/catkin_ws/src/mpcc/params/mpcc.yaml"
+    params = None
+    if yaml_file != "":
+        with open(yaml_file) as stream:
+            try:
+                params = yaml.safe_load(stream)
+            except yaml.YAMLError as e:
+                print("ERROR:", e, file=sys.stderr)
+                exit(1)
+    else:
+        print(
+            "ERROR: YAML file must be provided in order to generate MPC code!",
+            file=sys.stderr,
+        )
+        exit(1)
+
     ocp = create_ocp_tube(yaml_file)
 
     ss, xs, ys = create_reference_circle()
@@ -769,4 +786,9 @@ def simulation():
 
 
 if __name__ == "__main__":
-    simulation()
+    parser = argparse.ArgumentParser(description="test BARN navigation challenge")
+    parser.add_argument("--yaml", type=str, default="")
+
+    args = parser.parse_args()
+
+    simulation(args)
