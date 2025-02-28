@@ -35,6 +35,7 @@ private:
 	ros::Subscriber _obsSub;
 	ros::Subscriber _alphaSub;
 	ros::Subscriber _odomSub;
+	ros::Subscriber _viconSub;
 	ros::Subscriber _collisionSub;
 	ros::Subscriber _mapSub;
 	double _x_goal_euclid = 0;
