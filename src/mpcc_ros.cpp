@@ -156,7 +156,7 @@ MPCCROS::MPCCROS(ros::NodeHandle &nh) : _nh("~")
 
 	timer_thread = std::thread(&MPCCROS::publishVel, this);
 }
-/*
+/**/
 void MPCCROS::splinePathCb(const  nav_msgs::Path &msg)
 {
 	double x0,x1,y0,y1;
@@ -231,7 +231,7 @@ void MPCCROS::splinePathCb(const  nav_msgs::Path &msg)
 	
 		return true;
 }
-*/ 
+
 
 MPCCROS::~MPCCROS()
 {

@@ -1,5 +1,5 @@
 # IPOPT Horizon MPC parameters
-frame_id: "map"
+frame_id: "vicon/world"
 use_vicon: false
 mpc_steps: 15
 controller_frequency: 10
