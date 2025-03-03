@@ -34,8 +34,8 @@
 	<rosparam file="$(find cbf_tracking)/params/local_costmap_params.yaml" command="load" ns="local_costmap/local_costmap/" />
 	<node name="local_costmap" pkg="cbf_tracking" type="local_costmap" output="screen" />
 
-    <include file="$(find cbf_tracking)/launch/gmapping.launch" />
+    <!-- <include file="$(find cbf_tracking)/launch/gmapping.launch" />
 
-    <node name="publish_pf_pose" pkg="cbf_tracking" type="publish_pf_pose" output="screen" />
+    <node name="publish_pf_pose" pkg="cbf_tracking" type="publish_pf_pose" output="screen" /> -->
 
 </launch>
