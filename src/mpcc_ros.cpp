@@ -150,13 +150,13 @@ MPCCROS::MPCCROS(ros::NodeHandle &nh) : _nh("~")
 	_horizonPub = nh.advertise<trajectory_msgs::JointTrajectory>("/mpc_horizon", 0);
 	_refPub = nh.advertise<trajectory_msgs::JointTrajectoryPoint>("/current_reference", 10);
 
-	_splinePathSub = nh.subscribe("/spline_path", 1, &MPCCROS::splinePathCb, this);
+	//_splinePathSub = nh.subscribe("/spline_path", 1, &MPCCROS::splinePathCb, this);
 	_modify_traj_srv = nh.advertiseService("/modify_trajectory", &MPCCROS::modifyTrajSrv, this);
 	_execute_traj_srv = nh.advertiseService("/execute_trajectory", &MPCCROS::executeTrajSrv, this);
 
 	timer_thread = std::thread(&MPCCROS::publishVel, this);
 }
-
+/*
 void MPCCROS::splinePathCb(const  nav_msgs::Path &msg)
 {
 	double x0,x1,y0,y1;
@@ -231,7 +231,7 @@ void MPCCROS::splinePathCb(const  nav_msgs::Path &msg)
 	
 		return true;
 }
-
+*/ 
 
 MPCCROS::~MPCCROS()
 {
