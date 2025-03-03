@@ -140,6 +140,7 @@ MPCCROS::MPCCROS(ros::NodeHandle &nh) : _nh("~")
 	_timer = nh.createTimer(ros::Duration(_dt), &MPCCROS::controlLoop, this);
 	// _velPubTimer = nh.createTimer(ros::Duration(1./_vel_pub_freq), &MPCCROS::publishVel, this);
 
+	_odomPub = nh.advertise<nav_msgs::Odometry>("/odometry", 10);
 	_pathPub = nh.advertise<nav_msgs::Path>("/reference_path", 10);
 	_velPub = nh.advertise<geometry_msgs::Twist>("/cmd_vel", 10);
 	_trajPub = nh.advertise<nav_msgs::Path>("/mpc_prediction", 10);
@@ -157,80 +158,80 @@ MPCCROS::MPCCROS(ros::NodeHandle &nh) : _nh("~")
 	timer_thread = std::thread(&MPCCROS::publishVel, this);
 }
 /**/
-void MPCCROS::splinePathCb(const  nav_msgs::Path &msg)
-{
-	double x0,x1,y0,y1;
-	double total_length = 0;
-	int M = req.ctrl_pts.size();
-	ROS_ERROR("%d POINTS RECEIVED", M);
-	std::vector<double> ss, xs, ys;
-   // Extract data from the Path msg 
-	xs.clear();
-	ys.clear();
-	ss.clear();
-   // GET: x y and total length along the curve (euclid)
-   for (size_t i = 0; i < msg.poses.size()-1; i++)
-   {
-	   //geometry_msgs/PoseStamped[] poses
-	   	const geometry_msgs::PoseStamped &pose0 = msg.poses[i];
-	   	x0 = pose0.pose.position.x;
-		y0 = pose0.pose.position.y;
-		const geometry_msgs::PoseStamped &pose1 = msg.poses[i+1];
-		x1 = pose1.pose.position.x;
-		y1 = pose1.pose.position.y;
-
-		double dist2 = (x1 - x0) * (x1 - x0) + (y1 - y0) * (y1 - y0);
-	    double new_length = total_length + sqrt(dist2);
-	    if (fabs(total_length - new_length) < 1e-2)
-		continue;
-
-	    ss.push_back(total_length);
-	    xs.push_back(x0);
-	    ys.push_back(y0);
-
-	    total_length += sqrt(dist2);
-   }
-
-
-   		//store final data point in the vectors
-   		ss.push_back(total_length);
-		xs.push_back(req.ctrl_pts.back().x);
-        ys.push_back(req.ctrl_pts.back().y);
-
-   		//clear the traj 
-		_requested_ref.clear();
-		_requested_len = ss.back();
-	
-		for(int i = 0; i < ss.size(); ++i)
-		{
-			ROS_ERROR("%.2f\t%.2f\t%.2f", ss[i], xs[i], ys[i]);
-		}
-
-		//construct the splines
-		tk::spline refx_spline(ss, xs, tk::spline::cspline);
-		tk::spline refy_spline(ss, ys, tk::spline::cspline);
-	
-		SplineWrapper refx;
-		refx.spline = refx_spline;
-	
-		SplineWrapper refy;
-		refy.spline = refy_spline;
-	
-		_requested_ref.push_back(refx);
-		_requested_ref.push_back(refy);
-	
-		_requested_ss = ss;
-		_requested_xs = xs;
-		_requested_ys = ys;
-
-	
-		publishReference(_requested_ref, _requested_len);
-	
-		ROS_ERROR("SPLINE RECEIVED OK!!!!!!!");
-		ROS_ERROR("******************REFERENCE GENERATED******************");
-	
-		return true;
-}
+// void MPCCROS::splinePathCb(const  nav_msgs::Path &msg)
+// {
+// 	double x0,x1,y0,y1;
+// 	double total_length = 0;
+// 	int M = req.ctrl_pts.size();
+// 	ROS_ERROR("%d POINTS RECEIVED", M);
+// 	std::vector<double> ss, xs, ys;
+//    // Extract data from the Path msg 
+// 	xs.clear();
+// 	ys.clear();
+// 	ss.clear();
+//    // GET: x y and total length along the curve (euclid)
+//    for (size_t i = 0; i < msg.poses.size()-1; i++)
+//    {
+// 	   //geometry_msgs/PoseStamped[] poses
+// 	   	const geometry_msgs::PoseStamped &pose0 = msg.poses[i];
+// 	   	x0 = pose0.pose.position.x;
+// 		y0 = pose0.pose.position.y;
+// 		const geometry_msgs::PoseStamped &pose1 = msg.poses[i+1];
+// 		x1 = pose1.pose.position.x;
+// 		y1 = pose1.pose.position.y;
+// 
+// 		double dist2 = (x1 - x0) * (x1 - x0) + (y1 - y0) * (y1 - y0);
+// 	    double new_length = total_length + sqrt(dist2);
+// 	    if (fabs(total_length - new_length) < 1e-2)
+// 		continue;
+// 
+// 	    ss.push_back(total_length);
+// 	    xs.push_back(x0);
+// 	    ys.push_back(y0);
+// 
+// 	    total_length += sqrt(dist2);
+//    }
+// 
+// 
+//    		//store final data point in the vectors
+//    		ss.push_back(total_length);
+// 		xs.push_back(req.ctrl_pts.back().x);
+//         ys.push_back(req.ctrl_pts.back().y);
+// 
+//    		//clear the traj 
+// 		_requested_ref.clear();
+// 		_requested_len = ss.back();
+// 	
+// 		for(int i = 0; i < ss.size(); ++i)
+// 		{
+// 			ROS_ERROR("%.2f\t%.2f\t%.2f", ss[i], xs[i], ys[i]);
+// 		}
+// 
+// 		//construct the splines
+// 		tk::spline refx_spline(ss, xs, tk::spline::cspline);
+// 		tk::spline refy_spline(ss, ys, tk::spline::cspline);
+// 	
+// 		SplineWrapper refx;
+// 		refx.spline = refx_spline;
+// 	
+// 		SplineWrapper refy;
+// 		refy.spline = refy_spline;
+// 	
+// 		_requested_ref.push_back(refx);
+// 		_requested_ref.push_back(refy);
+// 	
+// 		_requested_ss = ss;
+// 		_requested_xs = xs;
+// 		_requested_ys = ys;
+// 
+// 	
+// 		publishReference(_requested_ref, _requested_len);
+// 	
+// 		ROS_ERROR("SPLINE RECEIVED OK!!!!!!!");
+// 		ROS_ERROR("******************REFERENCE GENERATED******************");
+// 	
+// 		return true;
+// }
 
 
 MPCCROS::~MPCCROS()
@@ -322,6 +323,18 @@ void MPCCROS::viconCb(const geometry_msgs::TransformStamped::ConstPtr &msg)
         msg->transform.rotation.z,
         msg->transform.rotation.w);
 
+    nav_msgs::Odometry odom_msg;
+    odom_msg.header.stamp = ros::Time::now();
+    odom_msg.header.frame_id = _frame_id;
+    odom_msg.pose.pose.position.x = msg->transform.translation.x;
+    odom_msg.pose.pose.position.y = msg->transform.translation.y;
+    odom_msg.pose.pose.orientation.x = msg->transform.rotation.x;
+    odom_msg.pose.pose.orientation.y = msg->transform.rotation.y;
+    odom_msg.pose.pose.orientation.z = msg->transform.rotation.z;
+    odom_msg.pose.pose.orientation.w = msg->transform.rotation.w;
+
+    _odomPub.publish(odom_msg);
+
     // Convert quaternion to RPY (roll, pitch, yaw)
     tf::Matrix3x3 m(q);
     double roll, pitch, yaw;
@@ -337,10 +350,10 @@ void MPCCROS::viconCb(const geometry_msgs::TransformStamped::ConstPtr &msg)
     _mpc_core->set_odom(_odom);
 
 	// Print big, bold red message
-    ROS_ERROR("\033[1;31mCURRENT ODOM => x=%.2f, y=%.2f, yaw=%.2f\033[0m",
-              _odom(XI),
-              _odom(YI),
-              _odom(THETAI));
+    // ROS_ERROR("\033[1;31mCURRENT ODOM => x=%.2f, y=%.2f, yaw=%.2f\033[0m",
+    //           _odom(XI),
+    //           _odom(YI),
+    //           _odom(THETAI));
 
     // If this is the first message, mark as initialized
     if (!_is_init)

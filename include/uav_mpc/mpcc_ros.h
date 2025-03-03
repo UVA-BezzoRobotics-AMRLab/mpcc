@@ -38,8 +38,7 @@ private:
 	ros::Subscriber _viconSub;
 	ros::Subscriber _collisionSub;
 	ros::Subscriber _mapSub;
-	double _x_goal_euclid = 0;
-	double _y_goal_euclid =0;
+
 	ros::Publisher _velPub;
 	ros::Publisher _trajPub;
 	ros::Publisher _pathPub;
@@ -82,6 +81,9 @@ private:
 	// MPCBase* _mpc;
 	std::unique_ptr<MPCCore> _mpc_core;
 	std::map<std::string, double> _mpc_params;
+
+	double _x_goal_euclid = 0;
+	double _y_goal_euclid =0;
 
 	double _mpc_steps, _w_vel, _w_angvel, _w_linvel, _w_angvel_d, _w_linvel_d, _w_etheta,
 		_max_angvel, _max_linvel, _bound_value, _x_goal, _y_goal, _theta_goal, _tol,
