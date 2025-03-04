@@ -158,21 +158,30 @@ MPCCROS::MPCCROS(ros::NodeHandle &nh) : _nh("~")
 
 	timer_thread = std::thread(&MPCCROS::publishVel, this);
 }
-/**/
-void MPCCROS::splinePathCb(const nav_msgs::Path::ConstPtr &msg)
+/**/void MPCCROS::splinePathCb(const nav_msgs::Path::ConstPtr& msg)
 {
     double x0, x1, y0, y1;
     double total_length = 0;
     std::vector<double> ss, xs, ys;
 
-    // Log the number of poses received
-    ROS_ERROR("%ld POSES RECEIVED", msg.poses.size());
+    if (!msg) {
+        ROS_ERROR("Received null pointer in splinePathCb");
+        return;
+    }
 
-    // Compute cumulative distance along the path using msg.poses
-    for (size_t i = 0; i < msg.poses.size() - 1; i++)
+    size_t pose_size = msg->poses.size();
+    ROS_ERROR("%ld POSES RECEIVED", pose_size);
+
+    if (pose_size < 2) {
+        ROS_ERROR("Not enough poses to create a spline");
+        return;
+    }
+
+    // Compute cumulative distance along the path using msg->poses
+    for (size_t i = 0; i < pose_size - 1; i++)
     {
-        const geometry_msgs::PoseStamped &pose0 = msg.poses[i];
-        const geometry_msgs::PoseStamped &pose1 = msg.poses[i + 1];
+        const geometry_msgs::PoseStamped& pose0 = msg->poses[i];
+        const geometry_msgs::PoseStamped& pose1 = msg->poses[i + 1];
 
         x0 = pose0.pose.position.x;
         y0 = pose0.pose.position.y;
@@ -181,6 +190,7 @@ void MPCCROS::splinePathCb(const nav_msgs::Path::ConstPtr &msg)
 
         double dist = sqrt((x1 - x0) * (x1 - x0) + (y1 - y0) * (y1 - y0));
         double new_length = total_length + dist;
+        
         if (fabs(total_length - new_length) < 1e-2)
             continue;
 
@@ -191,12 +201,12 @@ void MPCCROS::splinePathCb(const nav_msgs::Path::ConstPtr &msg)
         total_length = new_length;
     }
 
-    // Store the final pose from msg.poses
-    if (!msg.poses.empty())
+    // Store the final pose from msg->poses
+    if (!msg->poses.empty())
     {
         ss.push_back(total_length);
-        xs.push_back(msg.poses.back().pose.position.x);
-        ys.push_back(msg.poses.back().pose.position.y);
+        xs.push_back(msg->poses.back().pose.position.x);
+        ys.push_back(msg->poses.back().pose.position.y);
     }
 
     // Clear any previous trajectory and update reference length
