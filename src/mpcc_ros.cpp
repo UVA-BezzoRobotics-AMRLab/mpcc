@@ -757,18 +757,19 @@ void MPCCROS::controlLoop(const ros::TimerEvent &)
 
     // If within some threshold
      ROS_WARN("Outside loop (dist_to_goal: %.2f) (_y_goal: %.2f) (_x_goal: %.2f)", dist_to_goal, _y_goal_euclid, _x_goal_euclid);
-    // if (dist_to_goal < 0.6) {
-    //     ROS_WARN("Close enough to goal (%.2f < %.2f). Stopping execution.", dist_to_goal, _tol);
+    if (dist_to_goal < 0.6) {
+         ROS_WARN("Close enough to goal (%.2f < %.2f). Stopping execution.", dist_to_goal, _tol);
 
-    //     _is_executing = false;
-    // 	_in_transition = false;
-    // 	_traj_reset = false;
-    // 	velMsg.linear.x = 0.0;
-    //    	velMsg.angular.z = 0.0;
-    // }
+         _is_executing = false;
+     	_in_transition = false;
+     	_traj_reset = false;
+     	velMsg.linear.x = 0.0;
+        	velMsg.angular.z = 0.0;
+     }
 
+	/*
     double curr_s = get_s_from_state(_requested_ref, _requested_len);
-    if (curr_s > _requested_len)
+    if (curr_s > _true_len)
     {
         ROS_WARN("Close enough to end of trajectory");
 
@@ -777,7 +778,7 @@ void MPCCROS::controlLoop(const ros::TimerEvent &)
     	_traj_reset = false;
     	velMsg.linear.x = 0.0;
        	velMsg.angular.z = 0.0;
-    }
+    } */
 
 	//bugs it out so that it send cmd_vel commands that are essentially 0, 2e^-16
     // if (_is_executing) {
