@@ -162,7 +162,7 @@ MPCCROS::MPCCROS(ros::NodeHandle &nh) : _nh("~")
 {
 
 
-	ROS_ERROR("%ld POSES RECEIVED", pose_size);
+	ROS_ERROR("POSES RECEIVED");
     double x0, x1, y0, y1;
     double total_length = 0;
     std::vector<double> ss, xs, ys;
