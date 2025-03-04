@@ -156,6 +156,6 @@ private:
     bool _in_transition;
     std::vector<SplineWrapper> _old_ref;
     double _old_ref_len;
-	
+	void splinePathCb(const nav_msgs::Path &msg)
     void blendTrajectories(double blend_factor);
 };

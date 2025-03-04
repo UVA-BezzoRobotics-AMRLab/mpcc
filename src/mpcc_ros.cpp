@@ -159,80 +159,78 @@ MPCCROS::MPCCROS(ros::NodeHandle &nh) : _nh("~")
 	timer_thread = std::thread(&MPCCROS::publishVel, this);
 }
 /**/
- void MPCCROS::splinePathCb(const  nav_msgs::Path &msg)
- {
- 	double x0,x1,y0,y1;
- 	double total_length = 0;
- 	int M = req.ctrl_pts.size();
- 	ROS_ERROR("%d POINTS RECEIVED", M);
- 	std::vector<double> ss, xs, ys;
-    // Extract data from the Path msg 
- 	xs.clear();
- 	ys.clear();
- 	ss.clear();
-    // GET: x y and total length along the curve (euclid)
-    for (size_t i = 0; i < msg.poses.size()-1; i++)
+void MPCCROS::splinePathCb(const nav_msgs::Path &msg)
+{
+    double x0, x1, y0, y1;
+    double total_length = 0;
+    std::vector<double> ss, xs, ys;
+
+    // Log the number of poses received
+    ROS_ERROR("%ld POSES RECEIVED", msg.poses.size());
+
+    // Compute cumulative distance along the path using msg.poses
+    for (size_t i = 0; i < msg.poses.size() - 1; i++)
     {
- 	   //geometry_msgs/PoseStamped[] poses
- 	   	const geometry_msgs::PoseStamped &pose0 = msg.poses[i];
- 	   	x0 = pose0.pose.position.x;
- 		y0 = pose0.pose.position.y;
- 		const geometry_msgs::PoseStamped &pose1 = msg.poses[i+1];
- 		x1 = pose1.pose.position.x;
- 		y1 = pose1.pose.position.y;
- 
- 		double dist2 = (x1 - x0) * (x1 - x0) + (y1 - y0) * (y1 - y0);
- 	    double new_length = total_length + sqrt(dist2);
- 	    if (fabs(total_length - new_length) < 1e-2)
- 		continue;
- 
- 	    ss.push_back(total_length);
- 	    xs.push_back(x0);
- 	    ys.push_back(y0);
- 
- 	    total_length += sqrt(dist2);
+        const geometry_msgs::PoseStamped &pose0 = msg.poses[i];
+        const geometry_msgs::PoseStamped &pose1 = msg.poses[i + 1];
+
+        x0 = pose0.pose.position.x;
+        y0 = pose0.pose.position.y;
+        x1 = pose1.pose.position.x;
+        y1 = pose1.pose.position.y;
+
+        double dist = sqrt((x1 - x0) * (x1 - x0) + (y1 - y0) * (y1 - y0));
+        double new_length = total_length + dist;
+        if (fabs(total_length - new_length) < 1e-2)
+            continue;
+
+        ss.push_back(total_length);
+        xs.push_back(x0);
+        ys.push_back(y0);
+
+        total_length = new_length;
     }
- 
- 
-    		//store final data point in the vectors
-    		ss.push_back(total_length);
- 		xs.push_back(req.ctrl_pts.back().x);
-         ys.push_back(req.ctrl_pts.back().y);
- 
-    		//clear the traj 
- 		_requested_ref.clear();
- 		_requested_len = ss.back();
- 	
- 		for(int i = 0; i < ss.size(); ++i)
- 		{
- 			ROS_ERROR("%.2f\t%.2f\t%.2f", ss[i], xs[i], ys[i]);
- 		}
- 
- 		//construct the splines
- 		tk::spline refx_spline(ss, xs, tk::spline::cspline);
- 		tk::spline refy_spline(ss, ys, tk::spline::cspline);
- 	
- 		SplineWrapper refx;
- 		refx.spline = refx_spline;
- 	
- 		SplineWrapper refy;
- 		refy.spline = refy_spline;
- 	
- 		_requested_ref.push_back(refx);
- 		_requested_ref.push_back(refy);
- 	
- 		_requested_ss = ss;
- 		_requested_xs = xs;
- 		_requested_ys = ys;
- 
- 	
- 		publishReference(_requested_ref, _requested_len);
- 	
- 		ROS_ERROR("SPLINE RECEIVED OK!!!!!!!");
- 		ROS_ERROR("******************REFERENCE GENERATED******************");
- 	
- 		return true;
- }
+
+    // Store the final pose from msg.poses
+    if (!msg.poses.empty())
+    {
+        ss.push_back(total_length);
+        xs.push_back(msg.poses.back().pose.position.x);
+        ys.push_back(msg.poses.back().pose.position.y);
+    }
+
+    // Clear any previous trajectory and update reference length
+    _requested_ref.clear();
+    _requested_len = ss.back();
+
+    for (size_t i = 0; i < ss.size(); ++i)
+    {
+        ROS_ERROR("%.2f\t%.2f\t%.2f", ss[i], xs[i], ys[i]);
+    }
+
+    // Construct the splines
+    tk::spline refx_spline(ss, xs, tk::spline::cspline);
+    tk::spline refy_spline(ss, ys, tk::spline::cspline);
+
+    SplineWrapper refx;
+    refx.spline = refx_spline;
+
+    SplineWrapper refy;
+    refy.spline = refy_spline;
+
+    _requested_ref.push_back(refx);
+    _requested_ref.push_back(refy);
+
+    _requested_ss = ss;
+    _requested_xs = xs;
+    _requested_ys = ys;
+
+    publishReference(_requested_ref, _requested_len);
+
+    ROS_ERROR("SPLINE RECEIVED OK!!!!!!!");
+    ROS_ERROR("******************REFERENCE GENERATED******************");
+}
+
 
 
 MPCCROS::~MPCCROS()
