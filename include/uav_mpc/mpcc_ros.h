@@ -36,6 +36,7 @@ private:
 	ros::Subscriber _alphaSub;
 	ros::Subscriber _odomSub;
 	ros::Subscriber _viconSub;
+	ros::Subscriber _splinePathSub;
 	ros::Subscriber _collisionSub;
 	ros::Subscriber _mapSub;
 

@@ -152,87 +152,87 @@ MPCCROS::MPCCROS(ros::NodeHandle &nh) : _nh("~")
 	_horizonPub = nh.advertise<trajectory_msgs::JointTrajectory>("/mpc_horizon", 0);
 	_refPub = nh.advertise<trajectory_msgs::JointTrajectoryPoint>("/current_reference", 10);
 
-	//_splinePathSub = nh.subscribe("/spline_path", 1, &MPCCROS::splinePathCb, this);
+	_splinePathSub = nh.subscribe("/spline_path", 1, &MPCCROS::splinePathCb, this);
 	_modify_traj_srv = nh.advertiseService("/modify_trajectory", &MPCCROS::modifyTrajSrv, this);
 	_execute_traj_srv = nh.advertiseService("/execute_trajectory", &MPCCROS::executeTrajSrv, this);
 
 	timer_thread = std::thread(&MPCCROS::publishVel, this);
 }
 /**/
-// void MPCCROS::splinePathCb(const  nav_msgs::Path &msg)
-// {
-// 	double x0,x1,y0,y1;
-// 	double total_length = 0;
-// 	int M = req.ctrl_pts.size();
-// 	ROS_ERROR("%d POINTS RECEIVED", M);
-// 	std::vector<double> ss, xs, ys;
-//    // Extract data from the Path msg 
-// 	xs.clear();
-// 	ys.clear();
-// 	ss.clear();
-//    // GET: x y and total length along the curve (euclid)
-//    for (size_t i = 0; i < msg.poses.size()-1; i++)
-//    {
-// 	   //geometry_msgs/PoseStamped[] poses
-// 	   	const geometry_msgs::PoseStamped &pose0 = msg.poses[i];
-// 	   	x0 = pose0.pose.position.x;
-// 		y0 = pose0.pose.position.y;
-// 		const geometry_msgs::PoseStamped &pose1 = msg.poses[i+1];
-// 		x1 = pose1.pose.position.x;
-// 		y1 = pose1.pose.position.y;
-// 
-// 		double dist2 = (x1 - x0) * (x1 - x0) + (y1 - y0) * (y1 - y0);
-// 	    double new_length = total_length + sqrt(dist2);
-// 	    if (fabs(total_length - new_length) < 1e-2)
-// 		continue;
-// 
-// 	    ss.push_back(total_length);
-// 	    xs.push_back(x0);
-// 	    ys.push_back(y0);
-// 
-// 	    total_length += sqrt(dist2);
-//    }
-// 
-// 
-//    		//store final data point in the vectors
-//    		ss.push_back(total_length);
-// 		xs.push_back(req.ctrl_pts.back().x);
-//         ys.push_back(req.ctrl_pts.back().y);
-// 
-//    		//clear the traj 
-// 		_requested_ref.clear();
-// 		_requested_len = ss.back();
-// 	
-// 		for(int i = 0; i < ss.size(); ++i)
-// 		{
-// 			ROS_ERROR("%.2f\t%.2f\t%.2f", ss[i], xs[i], ys[i]);
-// 		}
-// 
-// 		//construct the splines
-// 		tk::spline refx_spline(ss, xs, tk::spline::cspline);
-// 		tk::spline refy_spline(ss, ys, tk::spline::cspline);
-// 	
-// 		SplineWrapper refx;
-// 		refx.spline = refx_spline;
-// 	
-// 		SplineWrapper refy;
-// 		refy.spline = refy_spline;
-// 	
-// 		_requested_ref.push_back(refx);
-// 		_requested_ref.push_back(refy);
-// 	
-// 		_requested_ss = ss;
-// 		_requested_xs = xs;
-// 		_requested_ys = ys;
-// 
-// 	
-// 		publishReference(_requested_ref, _requested_len);
-// 	
-// 		ROS_ERROR("SPLINE RECEIVED OK!!!!!!!");
-// 		ROS_ERROR("******************REFERENCE GENERATED******************");
-// 	
-// 		return true;
-// }
+ void MPCCROS::splinePathCb(const  nav_msgs::Path &msg)
+ {
+ 	double x0,x1,y0,y1;
+ 	double total_length = 0;
+ 	int M = req.ctrl_pts.size();
+ 	ROS_ERROR("%d POINTS RECEIVED", M);
+ 	std::vector<double> ss, xs, ys;
+    // Extract data from the Path msg 
+ 	xs.clear();
+ 	ys.clear();
+ 	ss.clear();
+    // GET: x y and total length along the curve (euclid)
+    for (size_t i = 0; i < msg.poses.size()-1; i++)
+    {
+ 	   //geometry_msgs/PoseStamped[] poses
+ 	   	const geometry_msgs::PoseStamped &pose0 = msg.poses[i];
+ 	   	x0 = pose0.pose.position.x;
+ 		y0 = pose0.pose.position.y;
+ 		const geometry_msgs::PoseStamped &pose1 = msg.poses[i+1];
+ 		x1 = pose1.pose.position.x;
+ 		y1 = pose1.pose.position.y;
+ 
+ 		double dist2 = (x1 - x0) * (x1 - x0) + (y1 - y0) * (y1 - y0);
+ 	    double new_length = total_length + sqrt(dist2);
+ 	    if (fabs(total_length - new_length) < 1e-2)
+ 		continue;
+ 
+ 	    ss.push_back(total_length);
+ 	    xs.push_back(x0);
+ 	    ys.push_back(y0);
+ 
+ 	    total_length += sqrt(dist2);
+    }
+ 
+ 
+    		//store final data point in the vectors
+    		ss.push_back(total_length);
+ 		xs.push_back(req.ctrl_pts.back().x);
+         ys.push_back(req.ctrl_pts.back().y);
+ 
+    		//clear the traj 
+ 		_requested_ref.clear();
+ 		_requested_len = ss.back();
+ 	
+ 		for(int i = 0; i < ss.size(); ++i)
+ 		{
+ 			ROS_ERROR("%.2f\t%.2f\t%.2f", ss[i], xs[i], ys[i]);
+ 		}
+ 
+ 		//construct the splines
+ 		tk::spline refx_spline(ss, xs, tk::spline::cspline);
+ 		tk::spline refy_spline(ss, ys, tk::spline::cspline);
+ 	
+ 		SplineWrapper refx;
+ 		refx.spline = refx_spline;
+ 	
+ 		SplineWrapper refy;
+ 		refy.spline = refy_spline;
+ 	
+ 		_requested_ref.push_back(refx);
+ 		_requested_ref.push_back(refy);
+ 	
+ 		_requested_ss = ss;
+ 		_requested_xs = xs;
+ 		_requested_ys = ys;
+ 
+ 	
+ 		publishReference(_requested_ref, _requested_len);
+ 	
+ 		ROS_ERROR("SPLINE RECEIVED OK!!!!!!!");
+ 		ROS_ERROR("******************REFERENCE GENERATED******************");
+ 	
+ 		return true;
+ }
 
 
 MPCCROS::~MPCCROS()
