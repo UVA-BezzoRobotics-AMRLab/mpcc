@@ -137,7 +137,7 @@ MPCCROS::MPCCROS(ros::NodeHandle &nh) : _nh("~")
 	_viconSub = nh.subscribe("/vicon/jackal4/jackal4", 1, &MPCCROS::viconCb, this);
 	_trajSub = nh.subscribe("/reference_trajectory", 1, &MPCCROS::trajectorycb, this);
 	_distMapSub = nh.subscribe("/distance_map_node/distance_field_obstacles", 1, &MPCCROS::distmapcb, this);
-
+	_splinePathSub = nh.subscribe("/spline_path", 1, &MPCCROS::splinePathCb, this);
 	_timer = nh.createTimer(ros::Duration(_dt), &MPCCROS::controlLoop, this);
 	// _velPubTimer = nh.createTimer(ros::Duration(1./_vel_pub_freq), &MPCCROS::publishVel, this);
 
@@ -152,7 +152,6 @@ MPCCROS::MPCCROS(ros::NodeHandle &nh) : _nh("~")
 	_horizonPub = nh.advertise<trajectory_msgs::JointTrajectory>("/mpc_horizon", 0);
 	_refPub = nh.advertise<trajectory_msgs::JointTrajectoryPoint>("/current_reference", 10);
 
-	_splinePathSub = nh.subscribe("/spline_path", 1, &MPCCROS::splinePathCb, this);
 	_modify_traj_srv = nh.advertiseService("/modify_trajectory", &MPCCROS::modifyTrajSrv, this);
 	_execute_traj_srv = nh.advertiseService("/execute_trajectory", &MPCCROS::executeTrajSrv, this);
 
