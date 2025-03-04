@@ -96,6 +96,7 @@ private:
 	double _min_alpha;
 	double _max_alpha;
 	double _ref_len;
+	double _true_len;
 	double _requested_len;
 
 	const int XI = 0;
@@ -134,6 +135,8 @@ private:
 
 	void cte_ctrl_loop();
 	void pos_ctrl_loop();
+
+	double get_s_from_state(const std::vector<SplineWrapper>& ref, double ref_len);
 
 	void alphacb(const std_msgs::Float64::ConstPtr &msg);
 	void odomcb(const nav_msgs::Odometry::ConstPtr &msg);

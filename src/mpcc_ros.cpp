@@ -36,6 +36,7 @@ MPCCROS::MPCCROS(ros::NodeHandle &nh) : _nh("~")
 	_curr_vel = 0;
 	_ref_len = 0;
 	_requested_len = 0;
+	_true_len = 0;
 	_ref = {};
 	_requested_ref = {};
 	_requested_ss = {};
@@ -497,36 +498,6 @@ void MPCCROS::cte_ctrl_loop()
 bool MPCCROS::modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req, 
 					   uvatraj_msgs::ExecuteTraj::Response &res)
 {
-
-	// dummy time variable to parameterize initial spline
-	// double T = 1.0;
-	// double dt = T / req.ctrl_pts.size();
-
-	// std::vector<double> tt, xt, yt;
-
-	// // create initial spline out of the points being sent
-	// double t = 0;
-	// for(int i = 0; i < req.ctrl_pts.size(); ++i)
-	// {
-	// 	tt.push_back(t);
-	// 	xt.push_back(req.ctrl_pts[i].x);
-	// 	yt.push_back(req.ctrl_pts[i].y);
-	// 	t += dt;
-	// }
-
-        // tk::spline spline_x(tt, xt, tk::spline::cspline);
-        // tk::spline spline_y(tt, yt, tk::spline::cspline);
-
-	// std::vector<SplineWrapper> ref;
-	// SplineWrapper sx_wrap;
-        // sx_wrap.spline = spline_x;
-
-        // SplineWrapper sy_wrap;
-        // sy_wrap.spline = spline_y;
-
-	// ref.push_back(sx_wrap);
-	// ref.push_back(sy_wrap);
-
 	double total_length = 0;
 	int M = req.ctrl_pts.size();
 	ROS_ERROR("%d POINTS RECEIVED", M);
@@ -553,6 +524,7 @@ bool MPCCROS::modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req,
 
 	}
 
+
         ss.push_back(total_length);
 		xs.push_back(req.ctrl_pts.back().x);
         ys.push_back(req.ctrl_pts.back().y);
@@ -568,8 +540,6 @@ bool MPCCROS::modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req,
     //     	ys[i] = ref[1].spline(ti);
     // }
 	   
-    _requested_ref.clear();
-	_requested_len = ss.back();
 
 	for(int i = 0; i < ss.size(); ++i)
 	{
@@ -583,6 +553,37 @@ bool MPCCROS::modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req,
 
     SplineWrapper refy;
     refy.spline = refy_spline;
+
+	_true_len = total_length;
+
+	// extend traj to make sure it finishes true traj
+	
+	double px = refx.spline(total_length);
+	double py = refy.spline(total_length);
+	double dx = refx.spline.deriv(1, total_length);
+	double dy = refy.spline.deriv(1, total_length);
+
+	double ds = total_length / M;
+	for(int i = 1; i < 200 * ds; ++i)
+	{
+		double s = i * ds;
+	    	double x = dx * s + px;
+	    	double y = dy * s + py;
+
+		ss.push_back(s + _true_len);
+		xs.push_back(x);
+		ys.push_back(y);
+	}
+
+	tk::spline refx_spline_ext(ss, xs, tk::spline::cspline);
+	tk::spline refy_spline_ext(ss, ys, tk::spline::cspline);
+	refx.spline = refx_spline_ext;
+	refy.spline = refy_spline_ext;
+
+	_requested_ref.clear();
+	_requested_len = ss.back();
+
+	ROS_INFO("requested length: %.2f\ttrue length: %.2f", _requested_len, _true_len);
 
 	_requested_ref.push_back(refx);
 	_requested_ref.push_back(refy);
@@ -615,7 +616,7 @@ bool MPCCROS::modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req,
         ROS_INFO("Trajectory modified but not applied. Call executeTrajSrv to start.");
     }
 
-	publishReference(_requested_ref, _requested_len);
+	publishReference(_requested_ref, _true_len);
 
 	ROS_ERROR("SPLINE RECEIVED OK!!!!!!!");
 	ROS_ERROR("******************REFERENCE GENERATED******************");
@@ -696,6 +697,29 @@ bool MPCCROS::executeTrajSrv(std_srvs::Empty::Request &req, std_srvs::Empty::Res
 	return true;
 }
 
+double MPCCROS::get_s_from_state(const std::vector<SplineWrapper>& ref, double ref_len)
+{
+    // find the s which minimizes dist to robot
+    double s            = 0;
+    double min_dist     = 1e6;
+    Eigen::Vector2d pos = _odom.head(2);
+    for (double i = 0.0; i < ref_len; i += .01)
+    {
+        Eigen::Vector2d p = Eigen::Vector2d(ref[0].spline(i), ref[1].spline(i));
+
+        double d = (pos - p).squaredNorm();
+        if (d < min_dist)
+        {
+            min_dist = d;
+            s        = i;
+        }
+    }
+
+    return s;
+}
+
+
+
 void MPCCROS::controlLoop(const ros::TimerEvent &)
 {
 
@@ -733,8 +757,20 @@ void MPCCROS::controlLoop(const ros::TimerEvent &)
 
     // If within some threshold
      ROS_WARN("Outside loop (dist_to_goal: %.2f) (_y_goal: %.2f) (_x_goal: %.2f)", dist_to_goal, _y_goal_euclid, _x_goal_euclid);
-    if (dist_to_goal < 1.5) {
-        ROS_WARN("Close enough to goal (%.2f < %.2f). Stopping execution.", dist_to_goal, _tol);
+    // if (dist_to_goal < 0.6) {
+    //     ROS_WARN("Close enough to goal (%.2f < %.2f). Stopping execution.", dist_to_goal, _tol);
+
+    //     _is_executing = false;
+    // 	_in_transition = false;
+    // 	_traj_reset = false;
+    // 	velMsg.linear.x = 0.0;
+    //    	velMsg.angular.z = 0.0;
+    // }
+
+    double curr_s = get_s_from_state(_requested_ref, _true_len);
+    if (curr_s > _true_len - .5)
+    {
+        ROS_WARN("Close enough to end of trajectory");
 
         _is_executing = false;
     	_in_transition = false;

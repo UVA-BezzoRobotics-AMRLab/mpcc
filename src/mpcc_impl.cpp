@@ -176,8 +176,8 @@ namespace
                 AD<double> e_c = CppAD::sin(ref_phi) * (x - ref_x) - CppAD::cos(ref_phi) * (y - ref_y);
                 AD<double> e_l = (-CppAD::cos(ref_phi) * (x - ref_x) - CppAD::sin(ref_phi) * (y - ref_y));
 
-                fg[0] += 50 * CppAD::pow(e_c, 2);
-                fg[0] += 5 * CppAD::pow(e_l, 2);
+                fg[0] += 5 * CppAD::pow(e_c, 2);
+                fg[0] += 50 * CppAD::pow(e_l, 2);
                 fg[0] += -sdot;
             }
 
