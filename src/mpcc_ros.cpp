@@ -160,6 +160,9 @@ MPCCROS::MPCCROS(ros::NodeHandle &nh) : _nh("~")
 }
 /**/void MPCCROS::splinePathCb(const nav_msgs::Path::ConstPtr& msg)
 {
+
+
+	ROS_ERROR("%ld POSES RECEIVED", pose_size);
     double x0, x1, y0, y1;
     double total_length = 0;
     std::vector<double> ss, xs, ys;
