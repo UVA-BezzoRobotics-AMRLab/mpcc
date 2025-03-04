@@ -330,7 +330,6 @@ inline bool get_tubes(int d, int N, double max_dist, const std::array<Spline1D, 
         }
 
         ds_above[i] = dist_above;
-        // std::cout << "ds_below is " << dist_below << std::endl;
         ds_below[i] = dist_below;
     }
 

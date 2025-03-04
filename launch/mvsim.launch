@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<launch>
+	<!-- ROS1 launch file. See *.launch.py files for ROS2 launch files -->
+  <!-- <arg name="world_file" default="$(find mvsim)/mvsim_tutorial/barn_1.world.xml" /> -->
+  <arg name="world_num" default="0" />
+
+	<node pkg="mvsim" type="mvsim_node" name="mvsim_simulator" output="screen">
+    <param name="world_file" value="$(find jackal_helper)/worlds/BARN/world_$(arg world_num)_world.xml" />
+		<remap from="/odom" to="/odometry/filtered" />
+		<remap from="/front_laser" to="/front/scan" />
+		<!-- <remap from="/laser1" to="/front/scan" /> -->
+	</node>
+
+	<!-- <node pkg="rviz" type="rviz" name="rviz" args="-d $(find mvsim)/mvsim_tutorial/demo_warehouse_ros1.rviz"/> -->
+
+</launch>

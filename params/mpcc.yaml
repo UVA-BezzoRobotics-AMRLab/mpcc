@@ -19,10 +19,10 @@ w_speed: .3
 # CLF Params
 w_lyap_lag_e: 1
 w_lyap_contour_e: 1
-clf_gamma: 10
+clf_gamma: 2
 
 # CBF params
-use_cbf: false
+use_cbf: true
 cbf_alpha: 10
 cbf_colinear: .05
 cbf_padding: .05

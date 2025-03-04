@@ -288,8 +288,8 @@ void MPCCROS::visualizeTubes()
     tube_ma.markers.reserve(2);
     tube_ma.markers.push_back(std::move(tubemsg_a));
     tube_ma.markers.push_back(std::move(tubemsg_b));
-    // tube_ma.markers.push_back(std::move(normals_msg));
-    // tube_ma.markers.push_back(std::move(normals_below_msg));
+    tube_ma.markers.push_back(std::move(normals_msg));
+    tube_ma.markers.push_back(std::move(normals_below_msg));
 
     _tubeVizPub.publish(tube_ma);
 }
@@ -642,7 +642,7 @@ void MPCCROS::publishMPCTrajectory()
 
     _trajPub.publish(pathMsg);
 
-    if (horizon.size() > 1 && horizon[0].size() == 6)
+    if (horizon.size() > 1)
     {
         // convert to JointTrajectory
         trajectory_msgs::JointTrajectory traj;
