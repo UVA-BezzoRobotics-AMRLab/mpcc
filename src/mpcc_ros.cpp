@@ -14,7 +14,7 @@
 #include <geometry_msgs/PointStamped.h>
 #include <std_msgs/Float32MultiArray.h>
 #include <geometry_msgs/PolygonStamped.h>
-
+#include <nav_msgs/Path.h>
 #include "uav_mpc/mpcc_ros.h"
 #include "uav_mpc/utils.h"
 
