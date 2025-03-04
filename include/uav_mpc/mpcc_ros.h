@@ -14,7 +14,7 @@
 #include <geometry_msgs/PoseStamped.h>
 #include <geometry_msgs/TransformStamped.h>
 #include <trajectory_msgs/JointTrajectory.h>
-
+#include <nav_msgs/Path.h>
 #include <costmap_2d/costmap_2d_ros.h>
 
 #include "uav_mpc/mpcc_core.h"
