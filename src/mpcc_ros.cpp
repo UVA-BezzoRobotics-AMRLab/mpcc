@@ -767,8 +767,8 @@ void MPCCROS::controlLoop(const ros::TimerEvent &)
     //    	velMsg.angular.z = 0.0;
     // }
 
-    double curr_s = get_s_from_state(_requested_ref, _true_len);
-    if (curr_s > _true_len - .5)
+    double curr_s = get_s_from_state(_requested_ref, _requested_len);
+    if (curr_s > _requested_len)
     {
         ROS_WARN("Close enough to end of trajectory");
 
