@@ -34,8 +34,6 @@ find_package(Eigen3 REQUIRED COMPONENT system)
 # if acados_include_dirs has acados_c after /include, remove acados_c from path
 string(REGEX REPLACE "/acados_c$" "" ACADOS_INCLUDE_DIRS "${ACADOS_INCLUDE_DIRS}")
 
-message(WARN "ACADOS_INCLUDE_DIRS: ${ACADOS_INCLUDE_DIRS}")
-
 catkin_package(
 #  INCLUDE_DIRS include
 #  LIBRARIES mpcc
