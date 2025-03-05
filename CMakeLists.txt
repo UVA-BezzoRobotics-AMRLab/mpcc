@@ -30,6 +30,10 @@ find_package(BLASFEO REQUIRED)
 find_package(HPIPM REQUIRED)
 find_package(Eigen3 REQUIRED COMPONENT system)
 
+# if acados_include_dirs has acados_c after /include, remove acados_c from path
+string(REGEX REPLACE "/acados_c$" "" ACADOS_INCLUDE_DIRS "${ACADOS_INCLUDE_DIRS}")
+
+message(WARN "ACADOS_INCLUDE_DIRS: ${ACADOS_INCLUDE_DIRS}")
 
 catkin_package(
 #  INCLUDE_DIRS include
@@ -54,7 +58,6 @@ include_directories(
   ${BLASFEO_INCLUDE_DIRS}
 )
 
-message(WARNING "BLASFEO_INCLUDE_DIRS: ${ACADOS_INCLUDE_DIRS}")
 
 set(ACADOS_OUTPUT_DIR ${CMAKE_SOURCE_DIR}/scripts/unicycle_mpcc/c_generated_code)
 

@@ -2,6 +2,7 @@
 #include <mpcc/utils.h>
 
 #include <array>
+#include <chrono>
 #include <iostream>
 #include <mpcc/termcolor.hpp>
 
@@ -631,15 +632,19 @@ std::array<double, 2> MPCC::solve(const Eigen::VectorXd& state)
     // run at most 2 times, if first fails, try with simple initialization
     for (int i = 0; i < 2; ++i)
     {
+        // timer for acados using chrono
+        auto start = std::chrono::high_resolution_clock::now();
         int status = unicycle_model_mpcc_acados_solve(_acados_ocp_capsule);
-        // for some reason this causes problems in docker container, commenting 
+        auto end   = std::chrono::high_resolution_clock::now();
+        // for some reason this causes problems in docker container, commenting
         // out for now
         // ocp_nlp_get(_nlp_config, _nlp_solver, "time_tot", &timer);
         // elapsed_time += timer;
 
         if (status == ACADOS_SUCCESS)
         {
-            std::cout << "[MPCC] unicycle_model_mpcc_acados_solve(): SUCCESS!" << std::endl;
+            std::cout << "[MPCC] unicycle_model_mpcc_acados_solve(): SUCCESS! "
+                      << std::chrono::duration<double>(end - start).count() << "s" << std::endl;
             //          << elapsed_time * 1000 << std::endl;
             _is_shift_warm = true;
             break;
