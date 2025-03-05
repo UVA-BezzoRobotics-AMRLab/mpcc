@@ -12,6 +12,7 @@
 #include <std_msgs/Float64.h>
 #include <std_srvs/Empty.h>
 #include <trajectory_msgs/JointTrajectory.h>
+#include <mpcc/logger.h>
 
 #include <grid_map_ros/GridMapRosConverter.hpp>
 #include <grid_map_ros/grid_map_ros.hpp>
@@ -129,6 +130,7 @@ class MPCCROS
      * between different MPC class implementations, but in this project only
      * one is currently implemented (the MPCC). Will eventually add more.
      **********************************************************************/
+    std::unique_ptr<logger::Logger> _logger;
 
     ros::Subscriber _trajSub;
     ros::Subscriber _trajNoResetSub;
@@ -201,6 +203,8 @@ class MPCCROS
     double _dt, _curr_vel, _curr_ang_vel, _vel_pub_freq;
     bool _is_init, _is_goal, _teleop, _traj_reset, _use_vicon, _estop, _is_at_goal, _use_cbf,
         _use_dynamic_alpha;
+
+    bool _is_logging;
 
     int _tube_degree;
     int _tube_samples;

@@ -18,6 +18,7 @@ find_package(catkin REQUIRED COMPONENTS
   trajectory_msgs
   grid_map_ros
   costmap_2d
+  amrl_logging
 )
 
 set(CVXPYGEN_OUTPUT ${CMAKE_SOURCE_DIR}/scripts/tube_gen/LP_codegen/c)
@@ -123,6 +124,7 @@ target_compile_options(cvxpy_lib PRIVATE -O3 -w)
 target_include_directories(cvxpy_lib PRIVATE ${cpg_include})
 
 add_executable(mpcc_ros 
+  src/mpcc/logger.cpp
   src/mpcc/mpcc_node.cpp
   src/mpcc/mpcc_ros.cpp
   src/mpcc/mpcc_core.cpp

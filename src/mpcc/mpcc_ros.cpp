@@ -19,7 +19,6 @@
 #include <algorithm>
 
 #include "mpcc/utils.h"
-#include "ros/param.h"
 
 MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~")
 {
@@ -104,6 +103,8 @@ MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~")
     _nh.param("ref_length_size", _mpc_ref_len_sz, 4.);
     _nh.param("mpc_ref_samples", _mpc_ref_samples, 10);
 
+    _nh.param("/train/logging", _is_logging, false);
+
     // num coeffs is tube_W_ANGVELdegree + 1
     _tube_degree += 1;
 
@@ -176,6 +177,9 @@ MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~")
     _refPub = nh.advertise<trajectory_msgs::JointTrajectoryPoint>("/current_reference", 10);
 
     timer_thread = std::thread(&MPCCROS::publishVel, this);
+
+    if (_is_logging)
+        _logger = std::make_unique<logger::Logger>(nh);
 }
 
 MPCCROS::~MPCCROS()
