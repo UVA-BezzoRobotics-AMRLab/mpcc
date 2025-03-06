@@ -223,7 +223,7 @@ double MPCC::get_s_from_state(const Eigen::VectorXd& state)
 
 void MPCC::set_odom(const Eigen::VectorXd& odom) { _odom = odom; }
 
-Eigen::VectorXd MPCC::get_state() { return _state; }
+const Eigen::VectorXd& MPCC::get_state() const { return _state; }
 
 Eigen::VectorXd MPCC::next_state(const Eigen::VectorXd& current_state,
                                  const Eigen::VectorXd& control)
@@ -254,7 +254,7 @@ Eigen::VectorXd MPCC::next_state(const Eigen::VectorXd& current_state,
     return ret;
 }
 
-std::array<Spline1D, 2> MPCC::compute_adjusted_ref(double s)
+std::array<Spline1D, 2> MPCC::compute_adjusted_ref(double s) const
 {
     // get reference for next _ref_len_sz meters, indexing from s=0 onwards
     // need to also down sample the tubes
@@ -692,6 +692,51 @@ std::array<double, 2> MPCC::solve(const Eigen::VectorXd& state)
         _prev_x0[_v_start], s, _prev_x0[_s_dot_start];
 
     return {_prev_u0[1], _prev_u0[0]};
+}
+
+Eigen::VectorXd MPCC::get_cbf_data(const Eigen::VectorXd& state, const Eigen::VectorXd& control,
+                                   bool is_abv) const
+{
+    Eigen::VectorXd ret_data(3);
+    double s = state(4);
+
+    Eigen::VectorXd coeffs;
+    if (is_abv)
+        coeffs = _tubes[0];
+    else
+        coeffs = _tubes[1];
+
+    double tube_dist = 0;
+    double x_pow     = 1;
+
+    for (int i = 0; i < coeffs.size(); ++i)
+    {
+        tube_dist += coeffs[i] * x_pow;
+        x_pow *= s;
+    }
+
+    std::array<Spline1D, 2> adjusted_ref = compute_adjusted_ref(s);
+    double xr                            = adjusted_ref[0](s).coeff(0);
+    double yr                            = adjusted_ref[1](s).coeff(0);
+
+    double xr_dot = adjusted_ref[0].derivatives(s, 1).coeff(1);
+    double yr_dot = adjusted_ref[1].derivatives(s, 1).coeff(1);
+
+    double den      = sqrt(xr_dot * xr_dot + yr_dot * yr_dot);
+    double obs_dirx = -yr_dot / den;
+    double obs_diry = xr_dot / den;
+
+    double signed_d = (state(0) - xr) * obs_dirx + (state(1) - yr) * obs_diry;
+    double p        = obs_dirx * cos(state(2)) + obs_diry * sin(state(2)) + state(3) * .05;
+
+    double h_val;
+    if (is_abv)
+        h_val = (tube_dist - signed_d - .2) * exp(-p);
+    else
+        h_val = (signed_d - tube_dist - .2) * exp(-p);
+
+    signed_d = is_abv ? signed_d : -signed_d;
+    return Eigen::Vector3d(h_val, signed_d, atan2(obs_diry, obs_dirx));
 }
 
 // utility

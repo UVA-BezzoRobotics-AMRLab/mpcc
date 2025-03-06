@@ -48,7 +48,9 @@ class MPCC
     void set_odom(const Eigen::VectorXd &odom);
     void set_tubes(const std::array<Eigen::VectorXd, 2> &tubes);
     void set_reference(const std::array<Spline1D, 2> &reference, double arclen);
-    Eigen::VectorXd get_state();
+    const Eigen::VectorXd &get_state() const;
+    Eigen::VectorXd get_cbf_data(const Eigen::VectorXd &state, const Eigen::VectorXd &control,
+                                 bool is_abv) const;
 
     // TOOD: make getter for these
     std::vector<double> mpc_x;
@@ -63,7 +65,7 @@ class MPCC
     std::vector<double> mpc_s_ddots;
 
    protected:
-    std::array<Spline1D, 2> compute_adjusted_ref(double s);
+    std::array<Spline1D, 2> compute_adjusted_ref(double s) const;
     /**********************************************************************
      * Function: MPCC::get_ref_from_s()
      * Description: Generates a reference trajectory from a given arc length

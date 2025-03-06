@@ -32,6 +32,8 @@ void MPCCore::load_params(const std::map<std::string, double> &params)
     _prop_gain         = params.at("ANGLE_GAIN");
     _prop_angle_thresh = params.at("ANGLE_THRESH");
 
+    _params = params;
+
     _mpc->load_params(params);
 }
 
@@ -138,9 +140,15 @@ std::array<double, 2> MPCCore::solve(const Eigen::VectorXd &state)
     return {_curr_vel, _curr_angvel};
 }
 
-Eigen::VectorXd MPCCore::get_state() { return _mpc->get_state(); }
+Eigen::VectorXd MPCCore::get_cbf_data(const Eigen::VectorXd &state,
+                                      const Eigen::VectorXd &control, bool is_abv) const
+{
+    return _mpc->get_cbf_data(state, control, is_abv);
+}
 
-std::vector<Eigen::VectorXd> MPCCore::get_horizon()
+const Eigen::VectorXd &MPCCore::get_state() const { return _mpc->get_state(); }
+
+std::vector<Eigen::VectorXd> MPCCore::get_horizon() const
 {
     std::vector<Eigen::VectorXd> ret;
     ret.reserve(_mpc->mpc_x.size());
@@ -159,7 +167,11 @@ std::vector<Eigen::VectorXd> MPCCore::get_horizon()
     return ret;
 }
 
-double MPCCore::limit(double prev_v, double input, double max_rate)
+const std::map<std::string, double> &MPCCore::get_params() const { return _params; }
+
+const std::array<double, 2> &MPCCore::get_mpc_results() const { return _mpc_results; }
+
+double MPCCore::limit(double prev_v, double input, double max_rate) const
 {
     double ret = input;
     if (fabs(prev_v - input) / _dt > max_rate)

@@ -5,6 +5,7 @@
 #include <geometry_msgs/PoseStamped.h>
 #include <geometry_msgs/TransformStamped.h>
 #include <geometry_msgs/Twist.h>
+#include <mpcc/logger.h>
 #include <nav_msgs/Odometry.h>
 #include <ros/ros.h>
 #include <sensor_msgs/LaserScan.h>
@@ -12,7 +13,6 @@
 #include <std_msgs/Float64.h>
 #include <std_srvs/Empty.h>
 #include <trajectory_msgs/JointTrajectory.h>
-#include <mpcc/logger.h>
 
 #include <grid_map_ros/GridMapRosConverter.hpp>
 #include <grid_map_ros/grid_map_ros.hpp>
@@ -52,7 +52,7 @@ class MPCCROS
      * N/A
      **********************************************************************/
 
-    void mpcc_ctrl_loop();
+    void mpcc_ctrl_loop(const ros::TimerEvent &event);
     /**********************************************************************
      * Function: MPCCROS::mpcc_ctrl_loop()
      * Description: Main control loop for MPC controller
@@ -110,16 +110,6 @@ class MPCCROS
      * trajectory from obstacles.
      **********************************************************************/
 
-    void controlLoop(const ros::TimerEvent &);
-    /**********************************************************************
-     * Function: MPCCROS::controlLoop(const ros::TimerEvent&)
-     * Description: Timer callback for control loop
-     * Parameters:
-     * @param e: const ros::TimerEvent&
-     * Returns:
-     * N/A
-     **********************************************************************/
-
     /************************
      * Class variables
      ************************/
@@ -130,7 +120,7 @@ class MPCCROS
      * between different MPC class implementations, but in this project only
      * one is currently implemented (the MPCC). Will eventually add more.
      **********************************************************************/
-    std::unique_ptr<logger::Logger> _logger;
+    std::unique_ptr<logger::RLLogger> _logger;
 
     ros::Subscriber _trajSub;
     ros::Subscriber _trajNoResetSub;

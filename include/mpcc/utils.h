@@ -41,7 +41,7 @@ inline bool raycast_grid(const Eigen::Vector2d& start, const Eigen::Vector2d& di
     double min_dist  = 1e6;
     double theta_dir = atan2(dir(1), dir(0));
 
-    for (int i = -2; i < 3; ++i)
+    for (int i = 0; i < 1; ++i)
     {
         // purturb by degrees each time
         double theta        = theta_dir + i * M_PI / 180;
@@ -238,16 +238,16 @@ inline bool get_tubes(int d, int N, double max_dist, const std::array<Spline1D, 
             double theta2 = atan2(typ, txp);
             curvature     = (theta2 - theta1) / 1e-1;
 
-            // if (theta2 - theta1 > 0)
-            // {
-            //     nx = -ty;
-            //     ny = tx;
-            // }
-            // else
-            // {
-            //     nx = ty;
-            //     ny = -tx;
-            // }
+            if (theta2 - theta1 > 0)
+            {
+                nx = -ty;
+                ny = tx;
+            }
+            else
+            {
+                nx = ty;
+                ny = -tx;
+            }
         }
         else
         {
@@ -258,16 +258,16 @@ inline bool get_tubes(int d, int N, double max_dist, const std::array<Spline1D, 
             double theta2 = atan2(typ, txp);
             curvature     = (theta1 - theta2) / 1e-1;
 
-            // if (theta1 - theta2 > 0)
-            // {
-            //     nx = -ty;
-            //     ny = tx;
-            // }
-            // else
-            // {
-            //     nx = ty;
-            //     ny = -tx;
-            // }
+            if (theta1 - theta2 > 0)
+            {
+                nx = -ty;
+                ny = tx;
+            }
+            else
+            {
+                nx = ty;
+                ny = -tx;
+            }
         }
 
         // double nx = traj[0].derivatives(s, 2).coeff(2);

@@ -36,11 +36,20 @@ string(REGEX REPLACE "/acados_c$" "" ACADOS_INCLUDE_DIRS "${ACADOS_INCLUDE_DIRS}
 
 message(WARN "ACADOS_INCLUDE_DIRS: ${ACADOS_INCLUDE_DIRS}")
 
+add_service_files(
+  FILES
+  QuerySAC.srv
+)
+
+generate_messages(
+      DEPENDENCIES 
+      nav_msgs
+      geometry_msgs 
+      trajectory_msgs
+)
+
 catkin_package(
-#  INCLUDE_DIRS include
-#  LIBRARIES mpcc
-#  CATKIN_DEPENDS geometry_msgs roscpp rospy std_msgs trajectory_msgs
-#  DEPENDS system_lib
+  CATKIN_DEPENDS message_runtime
 )
 
 ###########
@@ -113,15 +122,11 @@ add_custom_target(
   DEPENDS ${ACADOS_OUTPUT_FILES} ${ACADOS_SCRIPTS} ${CMAKE_SOURCE_DIR}/params/mpcc.yaml
 )
 
-# add_executable(test_reparam src/test.cpp)
-# target_link_libraries(test_reparam
-#   ${catkin_LIBRARIES}
-#   ${EIGEN3_LIBRARIES}
-# )
 
 add_library(cvxpy_lib STATIC ${cpg_src})
 target_compile_options(cvxpy_lib PRIVATE -O3 -w)
 target_include_directories(cvxpy_lib PRIVATE ${cpg_include})
+
 
 add_executable(mpcc_ros 
   src/mpcc/logger.cpp
