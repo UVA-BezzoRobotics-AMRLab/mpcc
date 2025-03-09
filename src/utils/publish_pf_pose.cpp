@@ -3,6 +3,7 @@
 #include <ros/ros.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 #include <tf2_ros/transform_listener.h>
+#include "tf2/exceptions.h"
 
 nav_msgs::Odometry msg;
 bool is_init;
@@ -20,7 +21,14 @@ void odomcb(const nav_msgs::Odometry::ConstPtr& msg)
     nav_msgs::Odometry gmappingOdom;
     gmappingOdom.header.frame_id = frame_id;
     gmappingOdom.header.stamp    = ros::Time::now();
-    tf2::doTransform(msg->pose.pose, gmappingOdom.pose.pose, odom_to_map);
+    try
+    {
+      tf2::doTransform(msg->pose.pose, gmappingOdom.pose.pose, odom_to_map);
+    } catch (tf2::LookupException &e)
+    {
+      ROS_WARN("[Particle Filter] Lookup Exception: %s", e.what());
+      return;
+    }
     gmappingOdom.twist.twist = msg->twist.twist;
     gmappingOdomPub.publish(gmappingOdom);
 }

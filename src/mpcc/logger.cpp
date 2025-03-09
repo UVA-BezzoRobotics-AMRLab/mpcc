@@ -27,6 +27,7 @@ RLLogger::RLLogger(ros::NodeHandle& nh, double min_alpha, double max_alpha)
     _is_done         = false;
     _is_first_iter   = true;
     _exceeded_bounds = false;
+    _is_colliding    = false;
 
     _alpha_dot = 0.;
 
