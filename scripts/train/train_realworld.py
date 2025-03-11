@@ -1,3 +1,4 @@
+from logging import exception
 import os
 import sys
 import json
@@ -357,15 +358,40 @@ class TrainManager:
         next_states = torch.FloatTensor(next_states).to(ptu.device)
         dones = torch.FloatTensor(dones).unsqueeze(1).to(ptu.device)
 
-        self.trainer.train_from_torch(
-            batch={
-                "observations": states,
-                "actions": actions,
-                "rewards": rewards,
-                "next_observations": next_states,
-                "terminals": dones,
-            }
-        )
+        # check if any NAN values are present in the data
+        if torch.isnan(states).any():
+            print("NAN values present in states")
+            print("states", states)
+
+        if torch.isnan(actions).any():
+            print("NAN values present in actions")
+            print("actions", actions)
+
+        if torch.isnan(rewards).any():
+            print("NAN values present in rewards")
+            print("rewards", rewards)
+
+        if torch.isnan(next_states).any():
+            print("NAN values present in next_states")
+            print("next_states", next_states)
+
+        if torch.isnan(dones).any():
+            print("NAN values present in dones")
+            print("dones", dones)
+
+        try:
+            self.trainer.train_from_torch(
+                batch={
+                    "observations": states,
+                    "actions": actions,
+                    "rewards": rewards,
+                    "next_observations": next_states,
+                    "terminals": dones,
+                }
+            )
+        except Exception as e:
+            print("Error training SAC: ", str(e))
+            return
 
         # Logging metrics
         eval_stats = self.trainer.get_diagnostics()

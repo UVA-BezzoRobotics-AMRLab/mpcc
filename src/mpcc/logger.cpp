@@ -125,7 +125,7 @@ bool RLLogger::request_alpha(MPCCore& mpc_core)
     return true;
 }
 
-void RLLogger::log_transition(const MPCCore& mpc_core)
+void RLLogger::log_transition(const MPCCore& mpc_core, double len_start, double ref_len)
 {
     if (_is_first_iter)
     {
@@ -185,7 +185,7 @@ void RLLogger::log_transition(const MPCCore& mpc_core)
         if (!_is_colliding)
         {
             // weight distance to obstacle
-            reward = 5 * _curr_rl_state.obs_dist_abv * _curr_rl_state.obs_dist_blw;
+            // reward = 5 * _curr_rl_state.obs_dist_abv * _curr_rl_state.obs_dist_blw;
         }
         else
         {
@@ -194,6 +194,9 @@ void RLLogger::log_transition(const MPCCore& mpc_core)
 
         // add penalty for not making progress
         // reward -= 12 * (1 - _curr_rl_state(6));
+        // ref len should never be negative, but fabs just in case
+        // need to use passed in len-start because core version is relative
+        if (fabs(ref_len) > 1e-3) reward -= 12 * (ref_len - len_start) / ref_len;
 
         // add small penalty for large alpha jumps
         reward -= 0.1 * _alpha_dot * _alpha_dot;
@@ -204,8 +207,11 @@ void RLLogger::log_transition(const MPCCore& mpc_core)
         // if alpha value is outside bounds, penalize heavily
         if (_exceeded_bounds) reward -= 20;
 
+        _exceeded_bounds = false;
+
         // if h_value is negative, penalize heavily
-        if (_curr_rl_state.h_val_abv < 0 || _curr_rl_state.h_val_blw < 0) reward -= 10;
+        if (_curr_rl_state.h_val_abv < 0) reward -= 10;
+        if (_curr_rl_state.h_val_blw < 0) reward -= 10;
 
         // log to database
         amrl_logging::LoggingData row;

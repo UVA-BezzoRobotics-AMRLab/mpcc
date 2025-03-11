@@ -513,9 +513,7 @@ void MPCCROS::mpcc_ctrl_loop(const ros::TimerEvent& event)
             _traj_reset = false;
         }
 
-        _s_dot = std::min(std::max((corrected_len - _prev_s) / _dt, 0.), _max_linvel);
-        ROS_INFO("len_start: %.2f\tprev_s: %.2f\tsdot: %.2f", corrected_len, _prev_s, _s_dot);
-
+        _s_dot  = std::min(std::max((corrected_len - _prev_s) / _dt, 0.), _max_linvel);
         _prev_s = len_start;
 
         if (len_start > _true_ref_len - 2e-1)
@@ -586,7 +584,7 @@ void MPCCROS::mpcc_ctrl_loop(const ros::TimerEvent& event)
         _vel_msg.angular.z = mpc_results[1];
 
         // log data back to db if logging enabled
-        if (_is_logging) _logger->log_transition(*_mpc_core);
+        if (_is_logging) _logger->log_transition(*_mpc_core, len_start,  _true_ref_len);
 
         publishReference();
         publishMPCTrajectory();

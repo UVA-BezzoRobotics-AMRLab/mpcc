@@ -38,7 +38,7 @@ class RLLogger
 
     ~RLLogger();
 
-    void log_transition(const MPCCore& mpc_core);
+    void log_transition(const MPCCore& mpc_core, double len_start, double ref_len);
     bool request_alpha(MPCCore& mpc_core);
 
    private:

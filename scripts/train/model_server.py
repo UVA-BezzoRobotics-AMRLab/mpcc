@@ -49,7 +49,7 @@ class ModelServer:
         self.min_alpha = rospy.get_param("/train/min_alpha", 0.1)
         self.max_alpha = rospy.get_param("/train/max_alpha", 10.0)
 
-        self.q_pub = rospy.Publisher("q_value", Float32, queue_size=1)
+        self.alpha_dot_pub = rospy.Publisher("alpha_dot", Float32, queue_size=1)
 
         self.stoch_policy = TanhGaussianPolicy(
             obs_dim=self.state_dim,
@@ -154,6 +154,10 @@ class ModelServer:
             action, self.min_alpha_dot, self.max_alpha_dot
         )
         resp.success = True
+
+        alpha_dot_msg = Float32()
+        alpha_dot_msg.data = resp.alpha_dot
+        self.alpha_dot_pub.publish(alpha_dot_msg)
 
         return resp
 
