@@ -173,10 +173,10 @@ def run_sim(args):
 
     nav_stack_launch_file = join(base_path, "launch/jackal_mpc_track.launch")
     params = ""
-    if args.train:
+    if args.train or args.eval:
         params = (
             "db_filename:=" + rospy.get_param("train/db_file", "./rl_learning.db"),
-            "logging:=true",
+            "use_rl:=true",
         )
 
     controller_process = subprocess.Popen(
@@ -331,13 +331,11 @@ if __name__ == "__main__":
         f.write("Below are the simulation results for the test trials\n")
 
     trainer = None
-    print("setting eval parameter to", args.eval)
-    rospy.set_param("/train/is_eval", args.eval)
-    rospy.set_param("/train/logging", False)
-    if args.train:
-        # set logging param to true
-        rospy.set_param("/train/logging", True)
 
+    rospy.set_param("/train/is_eval", args.eval)
+    rospy.set_param("/train/logging", args.train)
+
+    if args.train or args.eval:
         yaml_file = "train.yaml"
 
         with open(os.path.join(base_path, "params", yaml_file), "r") as f:
@@ -500,7 +498,7 @@ if __name__ == "__main__":
 
     else:
         # TRAIN
-        for i in range(250, 285):
+        for i in range(251, 285):
             args.world_idx = i
 
             for i in range(5):

@@ -67,15 +67,15 @@ class ModelServer:
             hidden_sizes=[self.hidden_dim, self.hidden_dim],
         ).to(ptu.device)
 
-        rospy.loginfo("*******************************")
-        rospy.loginfo("Model Server Initialized")
-        rospy.loginfo("*******************************")
+        rospy.logerr("*******************************")
+        rospy.logerr("Model Server Initialized")
+        rospy.logerr("*******************************")
 
         # if file exists, load the model. Otherwise use the default model
         model_dir = os.path.dirname(self.model_file)
         fname = self.model_file
         if os.path.exists(fname):
-            rospy.loginfo("Loading model from " + fname)
+            rospy.logerr("Loading model from " + fname)
             self.stoch_policy.load_state_dict(torch.load(fname))
             # self.qf1.load_state_dict(torch.load(os.path.join(model_dir, "qf1.pth")))
             # self.qf2.load_state_dict(torch.load(os.path.join(model_dir, "qf2.pth")))
@@ -86,9 +86,9 @@ class ModelServer:
 
         if self.is_eval:
             self.policy = MakeDeterministic(self.stoch_policy).to(ptu.device)
-            rospy.loginfo("*******************************")
-            rospy.loginfo("Policy is in deterministic mode")
-            rospy.loginfo("*******************************")
+            rospy.logerr("*******************************")
+            rospy.logerr("Policy is in deterministic mode")
+            rospy.logerr("*******************************")
 
         self.policy.eval().to(ptu.device)
         # self.qf1.eval().to(ptu.device)

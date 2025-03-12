@@ -379,19 +379,15 @@ class TrainManager:
             print("NAN values present in dones")
             print("dones", dones)
 
-        try:
-            self.trainer.train_from_torch(
-                batch={
-                    "observations": states,
-                    "actions": actions,
-                    "rewards": rewards,
-                    "next_observations": next_states,
-                    "terminals": dones,
-                }
-            )
-        except Exception as e:
-            print("Error training SAC: ", str(e))
-            return
+        self.trainer.train_from_torch(
+            batch={
+                "observations": states,
+                "actions": actions,
+                "rewards": rewards,
+                "next_observations": next_states,
+                "terminals": dones,
+            }
+        )
 
         # Logging metrics
         eval_stats = self.trainer.get_diagnostics()

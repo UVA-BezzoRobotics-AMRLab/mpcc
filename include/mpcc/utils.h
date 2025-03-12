@@ -304,7 +304,7 @@ inline bool get_tubes(int d, int N, double max_dist, const std::array<Spline1D, 
             if (n_vec.dot(abv_n_vec) > 0)
                 dist_above = std::min(dist_above, 1 / (2 * curvature));
             else
-                dist_below = std::min(dist_above, 1 / (2 * curvature));
+                dist_below = std::min(dist_below, 1 / (2 * curvature));
         }
 
         if (dist_above < min_dist_abv) min_dist_abv = dist_above;
@@ -326,7 +326,10 @@ inline bool get_tubes(int d, int N, double max_dist, const std::array<Spline1D, 
                 dist_above = dp.norm();
             }
             else if (dot_prod < 0 && dist_below < odom_dist)
+            {
+                std::cout << "forcefully setting dist_below to be " << dp.norm() << std::endl;
                 dist_below = dp.norm();
+            }
         }
 
         ds_above[i] = dist_above;
@@ -338,6 +341,9 @@ inline bool get_tubes(int d, int N, double max_dist, const std::array<Spline1D, 
     **************************************/
 
     // setup_lp(d, N, traj_arc_len, 0, ds_above);
+    std::cout << "len_start is: " << len_start << std::endl;
+    std::cout << "horizon is: " << horizon << std::endl;
+
     setup_lp(d, N, len_start, horizon, min_dist_abv / 1.1, ds_above);
     // setup_lp(d, N, horizon, 0, ds_above);
     cpg_solve();
@@ -371,19 +377,17 @@ inline bool get_tubes(int d, int N, double max_dist, const std::array<Spline1D, 
         upper_coeffs[i] = CPG_Result.prim->var2[i];
     }
 
-    if (!is_straight)
-    {
-        // print out dist abv as a row vector
-        std::cout << "dist_above = [";
-        for (int i = 0; i < N; ++i) std::cout << ds_above[i] << ", ";
-        std::cout << "];" << std::endl;
-    }
+    // print out dist abv as a row vector
+    std::cout << "dist_above = [";
+    for (int i = 0; i < N; ++i) std::cout << ds_above[i] << ", ";
+    std::cout << "];" << std::endl;
 
     // cpg_set_solver_default_settings();
     /*************************************
     ********* Setup & Solve Down *********
     **************************************/
 
+    std::cout << "min_dist_blw is: " << min_dist_blw << std::endl;
     setup_lp(d, N, len_start, horizon, min_dist_blw / 1.1, ds_below);
     // setup_lp(d, N, horizon, 0, ds_below);
     cpg_solve();
@@ -400,6 +404,10 @@ inline bool get_tubes(int d, int N, double max_dist, const std::array<Spline1D, 
 
     for (int i = 0; i < d; ++i) std::cout << CPG_Result.prim->var2[i] << ", ";
     std::cout << std::endl;
+
+    std::cout << "dist_below= [";
+    for (int i = 0; i < N; ++i) std::cout << ds_below[i] << ", ";
+    std::cout << "];" << std::endl;
 
     Eigen::VectorXd lower_coeffs;
     lower_coeffs.resize(d);

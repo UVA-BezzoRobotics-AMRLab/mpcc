@@ -195,6 +195,7 @@ class MPCCROS
         _use_dynamic_alpha;
 
     bool _is_logging;
+    bool _is_eval;
 
     int _tube_degree;
     int _tube_samples;

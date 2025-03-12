@@ -7,10 +7,12 @@
 namespace logger
 {
 
-RLLogger::RLLogger(ros::NodeHandle& nh, double min_alpha, double max_alpha)
+RLLogger::RLLogger(ros::NodeHandle& nh, double min_alpha, double max_alpha, bool is_logging)
 {
-    _min_alpha = min_alpha;
-    _max_alpha = max_alpha;
+    _nh         = nh;
+    _min_alpha  = min_alpha;
+    _max_alpha  = max_alpha;
+    _is_logging = is_logging;
 
     _table_name = "replay_buffer";
     _topic_name = "/cbf_rl_learning";
@@ -58,7 +60,8 @@ RLLogger::RLLogger(ros::NodeHandle& nh, double min_alpha, double max_alpha)
                                                 "curr_h_blw",
                                                 "curr_alpha"});
 
-    if (!amrl::logging_setup(_nh, _table_name, _topic_name, string_types, {}, float_types))
+    if (_is_logging &&
+        !amrl::logging_setup(_nh, _table_name, _topic_name, string_types, {}, float_types))
     {
         ROS_ERROR("[Logger] Failed to setup logging");
         exit(-1);
@@ -139,12 +142,16 @@ void RLLogger::log_transition(const MPCCore& mpc_core, double len_start, double 
 
         double alpha = mpc_core.get_params().at("CBF_ALPHA");
 
+        double curr_progress = 1;
+        if (ref_len > 1e-3) curr_progress = mpc_state[4] / ref_len;
+        if (curr_progress > 1.) curr_progress = 1.;
+
         _curr_rl_state.theta        = mpc_state[2];
         _curr_rl_state.vel          = mpc_state[3];
         _curr_rl_state.obs_dist_abv = cbf_data_abv[1];
         _curr_rl_state.obs_dist_blw = cbf_data_blw[1];
         _curr_rl_state.obs_heading  = cbf_data_abv[2];
-        _curr_rl_state.progress     = mpc_state[4];
+        _curr_rl_state.progress     = curr_progress;
         _curr_rl_state.h_val_abv    = cbf_data_abv[0];
         _curr_rl_state.h_val_blw    = cbf_data_blw[0];
         _curr_rl_state.alpha_val    = alpha;
@@ -170,12 +177,16 @@ void RLLogger::log_transition(const MPCCore& mpc_core, double len_start, double 
 
         double alpha = mpc_core.get_params().at("CBF_ALPHA");
 
+        double curr_progress = 1;
+        if (ref_len > 1e-3) curr_progress = mpc_state[4] / ref_len;
+        if (curr_progress > 1.) curr_progress = 1.;
+
         _curr_rl_state.theta        = mpc_state[2];
         _curr_rl_state.vel          = mpc_state[3];
         _curr_rl_state.obs_dist_abv = cbf_data_abv[1];
         _curr_rl_state.obs_dist_blw = cbf_data_blw[1];
         _curr_rl_state.obs_heading  = cbf_data_abv[2];
-        _curr_rl_state.progress     = mpc_state[4];
+        _curr_rl_state.progress     = curr_progress;
         _curr_rl_state.h_val_abv    = cbf_data_abv[0];
         _curr_rl_state.h_val_blw    = cbf_data_blw[0];
         _curr_rl_state.alpha_val    = alpha;
@@ -196,7 +207,7 @@ void RLLogger::log_transition(const MPCCore& mpc_core, double len_start, double 
         // reward -= 12 * (1 - _curr_rl_state(6));
         // ref len should never be negative, but fabs just in case
         // need to use passed in len-start because core version is relative
-        if (fabs(ref_len) > 1e-3) reward -= 12 * (ref_len - len_start) / ref_len;
+        reward -= 12 * (1 - curr_progress);
 
         // add small penalty for large alpha jumps
         reward -= 0.1 * _alpha_dot * _alpha_dot;
@@ -249,17 +260,14 @@ void RLLogger::log_transition(const MPCCore& mpc_core, double len_start, double 
         row.labels       = string_data;
         row.reals        = numeric_data;
 
-        _logging_pub.publish(row);
+        if (_is_logging) _logging_pub.publish(row);
 
         _prev_rl_state = _curr_rl_state;
     }
 
-    if (_is_done)
-    {
-        std_msgs::Bool done_msg;
-        done_msg.data = true;
-        _done_pub.publish(done_msg);
-    }
+    std_msgs::Bool done_msg;
+    done_msg.data = _is_done;
+    _done_pub.publish(done_msg);
 }
 
 }  // namespace logger

@@ -104,6 +104,9 @@ MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~")
     _nh.param("mpc_ref_samples", _mpc_ref_samples, 10);
 
     _nh.param("/train/logging", _is_logging, false);
+    _nh.param("/train/is_eval", _is_eval, false);
+    _nh.param("/train/min_alpha", _min_alpha, .1);
+    _nh.param("/train/max_alpha", _max_alpha, 10.);
 
     // num coeffs is tube_W_ANGVELdegree + 1
     _tube_degree += 1;
@@ -183,11 +186,10 @@ MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~")
         ROS_WARN("******************");
         ROS_WARN("LOGGING IS ENABLED");
         ROS_WARN("******************");
-
-        _nh.param("/train/min_alpha", _min_alpha, .1);
-        _nh.param("/train/max_alpha", _max_alpha, 10.);
-        _logger = std::make_unique<logger::RLLogger>(nh, _min_alpha, _max_alpha);
     }
+
+    if (_is_logging || _is_eval)
+        _logger = std::make_unique<logger::RLLogger>(nh, _min_alpha, _max_alpha, _is_logging);
 }
 
 MPCCROS::~MPCCROS()
@@ -529,8 +531,6 @@ void MPCCROS::mpcc_ctrl_loop(const ros::TimerEvent& event)
 
         double horizon = _mpc_ref_len_sz;
 
-        if (len_start > _ref_len) len_start = _ref_len;
-
         if (len_start + horizon > _ref_len) horizon = _ref_len - len_start;
 
         // generate tubes
@@ -539,6 +539,7 @@ void MPCCROS::mpcc_ctrl_loop(const ros::TimerEvent& event)
         bool status   = true;
         if (_use_cbf)
         {
+            std::cout << "ref_len size is: " << _ref_len << std::endl;
             status = utils::get_tubes(_tube_degree, _tube_samples, _max_tube_width, _ref,
                                       _ref_len, len_start, horizon, _odom, _grid_map, _tubes);
         }
@@ -564,7 +565,7 @@ void MPCCROS::mpcc_ctrl_loop(const ros::TimerEvent& event)
         _mpc_core->set_tubes(_tubes);
 
         // get alpha value if logging is enabled
-        if (_is_logging)
+        if (_is_logging || _is_eval)
         {
             // request alpha sets the alpha
             bool status = _logger->request_alpha(*_mpc_core);
@@ -584,7 +585,8 @@ void MPCCROS::mpcc_ctrl_loop(const ros::TimerEvent& event)
         _vel_msg.angular.z = mpc_results[1];
 
         // log data back to db if logging enabled
-        if (_is_logging) _logger->log_transition(*_mpc_core, len_start,  _true_ref_len);
+        if (_is_logging || _is_eval)
+            _logger->log_transition(*_mpc_core, len_start, _true_ref_len);
 
         publishReference();
         publishMPCTrajectory();

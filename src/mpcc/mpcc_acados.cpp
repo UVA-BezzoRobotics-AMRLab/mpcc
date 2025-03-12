@@ -698,7 +698,7 @@ Eigen::VectorXd MPCC::get_cbf_data(const Eigen::VectorXd& state, const Eigen::Ve
                                    bool is_abv) const
 {
     Eigen::VectorXd ret_data(3);
-    double s = state(4);
+    double s = 0;  // state(4);
 
     Eigen::VectorXd coeffs;
     if (is_abv)
@@ -736,6 +736,15 @@ Eigen::VectorXd MPCC::get_cbf_data(const Eigen::VectorXd& state, const Eigen::Ve
         h_val = (signed_d - tube_dist - .2) * exp(-p);
 
     signed_d = is_abv ? signed_d : -signed_d;
+    if (h_val > 100)
+    {
+        std::cout << termcolor::yellow << "ref length is " << _ref_length << std::endl;
+        std::cout << "s: " << s << " h_val: " << h_val << " is abv: " << is_abv
+                  << termcolor::reset << std::endl;
+        std::cout << "tube dist: " << tube_dist << " signed_d: " << signed_d << std::endl;
+        exit(-1);
+    }
+
     return Eigen::Vector3d(h_val, signed_d, atan2(obs_diry, obs_dirx));
 }
 

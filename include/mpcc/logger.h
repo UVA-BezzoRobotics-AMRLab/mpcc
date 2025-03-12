@@ -34,7 +34,7 @@ typedef struct logger_state logger_state_t;
 class RLLogger
 {
    public:
-    RLLogger(ros::NodeHandle& nh, double min_alpha, double max_alpha);
+    RLLogger(ros::NodeHandle& nh, double min_alpha, double max_alpha, bool is_logging);
 
     ~RLLogger();
 
@@ -67,6 +67,7 @@ class RLLogger
     double _alpha_dot;
 
     bool _is_done;
+    bool _is_logging;
     bool _is_colliding;
     bool _is_first_iter;
     bool _exceeded_bounds;
