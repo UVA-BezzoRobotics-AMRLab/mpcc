@@ -276,6 +276,12 @@ void MPCCROS::visualizeTubes()
         pt_b.y                     = point(1) + normal(1) * db;
         pt_b.z                     = 1.0;
 
+        // if (fabs(da) > 1.1 || fabs(db) > 1.1)
+        // {
+        //     ROS_WARN("s: %.2f\tda = %.2f, db = %.2f", s, da, db);
+        //     should_exit = true;
+        // }
+
         // convenience for setting colors
         std_msgs::ColorRGBA color_msg;
         color_msg.r = 0.0;
@@ -317,6 +323,12 @@ void MPCCROS::visualizeTubes()
     // tube_ma.markers.push_back(std::move(normals_below_msg));
 
     _tubeVizPub.publish(tube_ma);
+
+    // if (should_exit)
+    // {
+    //     ROS_WARN("exiting due to large tube values");
+    //     exit(1);
+    // }
 }
 
 void MPCCROS::publishVel()
