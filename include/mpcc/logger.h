@@ -41,7 +41,7 @@ class RLLogger
     ~RLLogger();
 
     void log_transition(const MPCCore& mpc_core, double len_start, double ref_len);
-    bool request_alpha(MPCCore& mpc_core);
+    bool request_alpha(MPCCore& mpc_core, double ref_len);
 
    private:
     void collision_cb(const std_msgs::Bool::ConstPtr& msg);

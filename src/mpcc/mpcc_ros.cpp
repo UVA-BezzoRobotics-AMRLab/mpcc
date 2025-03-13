@@ -572,7 +572,7 @@ void MPCCROS::mpcc_ctrl_loop(const ros::TimerEvent& event)
         if (_is_logging || _is_eval)
         {
             // request alpha sets the alpha
-            bool status = _logger->request_alpha(*_mpc_core);
+            bool status = _logger->request_alpha(*_mpc_core, _true_ref_len);
             if (!status)
             {
                 ROS_WARN("could not get alpha value from logger");

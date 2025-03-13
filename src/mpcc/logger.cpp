@@ -78,7 +78,7 @@ RLLogger::~RLLogger() { amrl::logging_finish(_nh, _table_name); }
 
 void RLLogger::collision_cb(const std_msgs::Bool::ConstPtr& msg) { _is_colliding = msg->data; }
 
-bool RLLogger::request_alpha(MPCCore& mpc_core)
+bool RLLogger::request_alpha(MPCCore& mpc_core, double ref_len)
 {
     Eigen::VectorXd mpc_state       = mpc_core.get_state();
     std::array<double, 2> mpc_input = mpc_core.get_mpc_results();
@@ -88,6 +88,10 @@ bool RLLogger::request_alpha(MPCCore& mpc_core)
     Eigen::VectorXd cbf_data_blw =
         mpc_core.get_cbf_data(mpc_state, Eigen::Vector2d(mpc_input[0], mpc_input[1]), false);
 
+    double curr_progress = 1;
+    if (ref_len > 1e-3) curr_progress = mpc_state[4] / ref_len;
+    if (curr_progress > 1.) curr_progress = 1.;
+
     mpcc::QuerySAC req;
     req.request.theta        = mpc_state[2];
     req.request.vel          = mpc_state[3];
@@ -96,7 +100,7 @@ bool RLLogger::request_alpha(MPCCore& mpc_core)
     req.request.obs_dist_abv = cbf_data_abv[1];
     req.request.obs_dist_blw = cbf_data_blw[1];
     req.request.heading_dist = cbf_data_abv[2];
-    req.request.progress     = mpc_state[4];
+    req.request.progress     = curr_progress;
     req.request.h_val_abv    = cbf_data_abv[0];
     req.request.h_val_blw    = cbf_data_blw[0];
     req.request.alpha_abv    = mpc_core.get_params().at("CBF_ALPHA_ABV");
@@ -182,7 +186,7 @@ void RLLogger::log_transition(const MPCCore& mpc_core, double len_start, double 
     // we don't want to log if already reported an is_done state
     else if (!_is_done)
     {
-        double reward = -100;
+        double reward = 0;
 
         const Eigen::VectorXd& mpc_state = mpc_core.get_state();
         std::array<double, 2> mpc_input  = mpc_core.get_mpc_results();
@@ -236,13 +240,21 @@ void RLLogger::log_transition(const MPCCore& mpc_core, double len_start, double 
         // reward -= .1 * (_curr_rl_state(8)- _min_alpha);
 
         // if alpha value is outside bounds, penalize heavily
-        reward -= 20 * _exceeded_bounds;
-
-        _exceeded_bounds = 0;
+        reward -= 10 * _exceeded_bounds;
 
         // if h_value is negative, penalize heavily
-        if (_curr_rl_state.h_val_abv < 0) reward -= 10;
-        if (_curr_rl_state.h_val_blw < 0) reward -= 10;
+        if (_curr_rl_state.h_val_abv < 0) reward -= 20;
+        if (_curr_rl_state.h_val_blw < 0) reward -= 20;
+
+        std::cout << "reward is: " << reward << std::endl;
+        std::cout << "\tprogress: " << -12 * (1 - curr_progress) << std::endl;
+        std::cout << "\talpha_dot_abv: " << -0.1 * _alpha_dot_abv * _alpha_dot_abv << std::endl;
+        std::cout << "\talpha_dot_blw: " << -0.1 * _alpha_dot_blw * _alpha_dot_blw << std::endl;
+        std::cout << "\texceeded bounds: " << -20 * _exceeded_bounds << std::endl;
+        std::cout << "\th_val_abv: " << -10 * (_curr_rl_state.h_val_abv < 0) << std::endl;
+        std::cout << "\th_val_blw: " << -10 * (_curr_rl_state.h_val_blw < 0) << std::endl;
+
+        _exceeded_bounds = 0;
 
         // log to database
         amrl_logging::LoggingData row;
