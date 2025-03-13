@@ -79,7 +79,6 @@ class MPCCROS
      * Callbacks for CBF alpha parameter, map, goal (not implemented
      * currently), odometry, and trajectory
      **********************************************************************/
-    void alphacb(const std_msgs::Float64::ConstPtr &msg);
     void odomcb(const nav_msgs::Odometry::ConstPtr &msg);
     void mapcb(const nav_msgs::OccupancyGrid::ConstPtr &msg);
     void goalcb(const geometry_msgs::PoseStamped::ConstPtr &msg);
@@ -171,7 +170,7 @@ class MPCCROS
         _max_angvel, _max_linvel, _bound_value, _x_goal, _y_goal, _theta_goal, _tol,
         _max_linacc, _max_anga, _w_cte, _w_pos, _w_qc, _w_ql, _w_q_speed;
 
-    double _cbf_alpha, _cbf_colinear, _cbf_padding;
+    double _cbf_alpha_abv, _cbf_alpha_blw, _cbf_colinear, _cbf_padding;
 
     double _prop_gain, _prop_angle_thresh;
 

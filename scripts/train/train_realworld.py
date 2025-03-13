@@ -46,6 +46,51 @@ class CustomEnv(gym.Env):
         self.alpha_min = 0.1
         self.alpha_max = 8
 
+        self.action_dim = 2
+        # self.alpha_min = .1
+        # self.alpha_max = 8
+        self.alpha_dot_min = -2
+        self.alpha_dot_max = 2
+
+    def set_obs_space(self):
+
+        low = np.array(
+            [
+                self.theta_min,
+                self.velocity_min,
+                self.acc_min,
+                self.angvel_min,
+                self.distance_to_obstacle_min,
+                self.distance_to_obstacle_min,
+                self.heading_to_obstacle_min,
+                self.progress_min,
+                self.h_value_min,
+                self.h_value_min,
+                self.alpha_min,
+                self.alpha_min,
+            ],
+            dtype=np.float64,
+        )
+        high = np.array(
+            [
+                self.theta_max,
+                self.velocity_max,
+                self.acc_max,
+                self.angvel_max,
+                self.distance_to_obstacle_max,
+                self.distance_to_obstacle_max,
+                self.heading_to_obstacle_max,
+                self.progress_max,
+                self.h_value_max,
+                self.h_value_max,
+                self.alpha_max,
+                self.alpha_max,
+            ],
+            dtype=np.float64,
+        )
+
+        print(low)
+        print(high)
         self.observation_space = gym.spaces.Box(
             low=np.array(
                 [
@@ -60,7 +105,9 @@ class CustomEnv(gym.Env):
                     self.h_value_min,
                     self.h_value_min,
                     self.alpha_min,
-                ]
+                    self.alpha_min,
+                ],
+                dtype=np.float64,
             ),
             high=np.array(
                 [
@@ -75,19 +122,17 @@ class CustomEnv(gym.Env):
                     self.h_value_max,
                     self.h_value_max,
                     self.alpha_max,
-                ]
+                    self.alpha_max,
+                ],
+                dtype=np.float64,
             ),
             dtype=np.float64,
         )
 
         self.state = np.zeros(self.state_dim, dtype=np.float64)
 
+    def set_action_space(self):
         # define action space
-        self.action_dim = 1
-        # self.alpha_min = .1
-        # self.alpha_max = 8
-        self.alpha_dot_min = -2
-        self.alpha_dot_max = 2
         self.action_space = gym.spaces.Box(
             low=np.array([self.alpha_dot_min]),
             high=np.array([self.alpha_dot_max]),
@@ -277,14 +322,28 @@ class TrainManager:
                 row[label_to_index["prev_h_abv"]],
                 row[label_to_index["prev_h_blw"]],
                 self.normalize(
-                    row[label_to_index["prev_alpha"]],
+                    row[label_to_index["prev_alpha_abv"]],
+                    self.env.alpha_min,
+                    self.env.alpha_max,
+                ),
+                self.normalize(
+                    row[label_to_index["prev_alpha_blw"]],
                     self.env.alpha_min,
                     self.env.alpha_max,
                 ),
             ]
-            action = self.unscale_action(
-                row[label_to_index["action"]], self.min_alpha_dot, self.max_alpha_dot
-            )
+            action = [
+                self.unscale_action(
+                    row[label_to_index["alpha_abv"]],
+                    self.min_alpha_dot,
+                    self.max_alpha_dot,
+                ),
+                self.unscale_action(
+                    row[label_to_index["alpha_blw"]],
+                    self.min_alpha_dot,
+                    self.max_alpha_dot,
+                ),
+            ]
             reward = row[label_to_index["reward"]]
             next_state = [
                 self.normalize(
@@ -328,7 +387,12 @@ class TrainManager:
                 row[label_to_index["curr_h_abv"]],
                 row[label_to_index["curr_h_blw"]],
                 self.normalize(
-                    row[label_to_index["curr_alpha"]],
+                    row[label_to_index["curr_alpha_abv"]],
+                    self.env.alpha_min,
+                    self.env.alpha_max,
+                ),
+                self.normalize(
+                    row[label_to_index["curr_alpha_blw"]],
                     self.env.alpha_min,
                     self.env.alpha_max,
                 ),
@@ -353,31 +417,13 @@ class TrainManager:
     def train_sac(self):
         states, actions, rewards, next_states, dones = self.load_from_db()
         states = torch.FloatTensor(states).to(ptu.device)
-        actions = torch.FloatTensor(actions).unsqueeze(1).to(ptu.device)
+        # actions = torch.FloatTensor(actions).unsqueeze(1).to(ptu.device)
+        actions = torch.FloatTensor(actions).to(ptu.device)
         rewards = torch.FloatTensor(rewards).unsqueeze(1).to(ptu.device)
         next_states = torch.FloatTensor(next_states).to(ptu.device)
         dones = torch.FloatTensor(dones).unsqueeze(1).to(ptu.device)
 
         # check if any NAN values are present in the data
-        if torch.isnan(states).any():
-            print("NAN values present in states")
-            print("states", states)
-
-        if torch.isnan(actions).any():
-            print("NAN values present in actions")
-            print("actions", actions)
-
-        if torch.isnan(rewards).any():
-            print("NAN values present in rewards")
-            print("rewards", rewards)
-
-        if torch.isnan(next_states).any():
-            print("NAN values present in next_states")
-            print("next_states", next_states)
-
-        if torch.isnan(dones).any():
-            print("NAN values present in dones")
-            print("dones", dones)
 
         self.trainer.train_from_torch(
             batch={

@@ -17,21 +17,24 @@ RLLogger::RLLogger(ros::NodeHandle& nh, double min_alpha, double max_alpha, bool
     _table_name = "replay_buffer";
     _topic_name = "/cbf_rl_learning";
 
-    _done_pub    = _nh.advertise<std_msgs::Bool>("/mpc_done", 100);
-    _alpha_pub   = _nh.advertise<std_msgs::Float64>("/cbf_alpha", 100);
-    _logging_pub = _nh.advertise<amrl_logging::LoggingData>(_topic_name, 100);
+    _done_pub      = _nh.advertise<std_msgs::Bool>("/mpc_done", 100);
+    _alpha_pub_abv = _nh.advertise<std_msgs::Float64>("/cbf_alpha_abv", 100);
+    _alpha_pub_blw = _nh.advertise<std_msgs::Float64>("/cbf_alpha_blw", 100);
+    _logging_pub   = _nh.advertise<amrl_logging::LoggingData>(_topic_name, 100);
 
     _collision_sub = _nh.subscribe("/collision", 1, &RLLogger::collision_cb, this);
 
     _sac_srv = nh.serviceClient<mpcc::QuerySAC>("/query_sac");
 
-    _count           = 0;
-    _is_done         = false;
-    _is_first_iter   = true;
-    _exceeded_bounds = false;
-    _is_colliding    = false;
+    _count         = 0;
+    _is_done       = false;
+    _is_first_iter = true;
+    _is_colliding  = false;
 
-    _alpha_dot = 0.;
+    _exceeded_bounds = 0;
+
+    _alpha_dot_abv = 0.;
+    _alpha_dot_blw = 0.;
 
     const std::vector<std::string> string_types({"is_done"});
     const std::vector<std::string> float_types({"id",
@@ -45,8 +48,10 @@ RLLogger::RLLogger(ros::NodeHandle& nh, double min_alpha, double max_alpha, bool
                                                 "prev_progress",
                                                 "prev_h_abv",
                                                 "prev_h_blw",
-                                                "prev_alpha",
-                                                "action",
+                                                "prev_alpha_abv",
+                                                "prev_alpha_blw",
+                                                "alpha_abv",
+                                                "alpha_blw",
                                                 "reward",
                                                 "curr_theta",
                                                 "curr_vel",
@@ -58,7 +63,8 @@ RLLogger::RLLogger(ros::NodeHandle& nh, double min_alpha, double max_alpha, bool
                                                 "curr_progress",
                                                 "curr_h_abv",
                                                 "curr_h_blw",
-                                                "curr_alpha"});
+                                                "curr_alpha_abv",
+                                                "curr_alpha_blw"});
 
     if (_is_logging &&
         !amrl::logging_setup(_nh, _table_name, _topic_name, string_types, {}, float_types))
@@ -82,8 +88,6 @@ bool RLLogger::request_alpha(MPCCore& mpc_core)
     Eigen::VectorXd cbf_data_blw =
         mpc_core.get_cbf_data(mpc_state, Eigen::Vector2d(mpc_input[0], mpc_input[1]), false);
 
-    double alpha = mpc_core.get_params().at("CBF_ALPHA");
-
     mpcc::QuerySAC req;
     req.request.theta        = mpc_state[2];
     req.request.vel          = mpc_state[3];
@@ -95,7 +99,8 @@ bool RLLogger::request_alpha(MPCCore& mpc_core)
     req.request.progress     = mpc_state[4];
     req.request.h_val_abv    = cbf_data_abv[0];
     req.request.h_val_blw    = cbf_data_blw[0];
-    req.request.alpha        = mpc_core.get_params().at("CBF_ALPHA");
+    req.request.alpha_abv    = mpc_core.get_params().at("CBF_ALPHA_ABV");
+    req.request.alpha_blw    = mpc_core.get_params().at("CBF_ALPHA_BLW");
 
     if (_sac_srv.call(req))
     {
@@ -105,18 +110,28 @@ bool RLLogger::request_alpha(MPCCore& mpc_core)
         std::map<std::string, double> mpc_params = mpc_core.get_params();
         double dt                                = mpc_params.at("DT");
 
-        _alpha_dot   = req.response.alpha_dot;
-        double alpha = mpc_params["CBF_ALPHA"] + _alpha_dot * dt;
+        _alpha_dot_abv = req.response.alpha_dot[0];
+        _alpha_dot_blw = req.response.alpha_dot[1];
 
-        if (alpha < _min_alpha || alpha > _max_alpha) _exceeded_bounds = true;
+        double alpha_abv = mpc_params["CBF_ALPHA_ABV"] + _alpha_dot_abv * dt;
+        double alpha_blw = mpc_params["CBF_ALPHA_BLW"] + _alpha_dot_blw * dt;
 
-        alpha = std::max(_min_alpha, std::min(_max_alpha, alpha));
+        if (alpha_abv < _min_alpha || alpha_abv > _max_alpha) _exceeded_bounds++;
+        if (alpha_blw < _min_alpha || alpha_blw > _max_alpha) _exceeded_bounds++;
+
+        alpha_abv = std::max(_min_alpha, std::min(_max_alpha, alpha_abv));
+        alpha_blw = std::max(_min_alpha, std::min(_max_alpha, alpha_blw));
 
         std_msgs::Float64 alpha_msg;
-        alpha_msg.data = alpha;
-        _alpha_pub.publish(alpha_msg);
+        alpha_msg.data = alpha_abv;
+        _alpha_pub_abv.publish(alpha_msg);
 
-        mpc_params["CBF_ALPHA"] = alpha;
+        std_msgs::Float64 alpha_msg_blw;
+        alpha_msg_blw.data = alpha_blw;
+        _alpha_pub_blw.publish(alpha_msg_blw);
+
+        mpc_params["CBF_ALPHA_ABV"] = alpha_abv;
+        mpc_params["CBF_ALPHA_BLW"] = alpha_blw;
         mpc_core.load_params(mpc_params);
     }
     else
@@ -140,23 +155,25 @@ void RLLogger::log_transition(const MPCCore& mpc_core, double len_start, double 
         Eigen::VectorXd cbf_data_blw = mpc_core.get_cbf_data(
             mpc_state, Eigen::Vector2d(mpc_input[0], mpc_input[1]), false);
 
-        double alpha = mpc_core.get_params().at("CBF_ALPHA");
+        double alpha_abv = mpc_core.get_params().at("CBF_ALPHA_ABV");
+        double alpha_blw = mpc_core.get_params().at("CBF_ALPHA_BLW");
 
         double curr_progress = 1;
         if (ref_len > 1e-3) curr_progress = mpc_state[4] / ref_len;
         if (curr_progress > 1.) curr_progress = 1.;
 
-        _curr_rl_state.theta        = mpc_state[2];
-        _curr_rl_state.vel          = mpc_state[3];
-        _curr_rl_state.obs_dist_abv = cbf_data_abv[1];
-        _curr_rl_state.obs_dist_blw = cbf_data_blw[1];
-        _curr_rl_state.obs_heading  = cbf_data_abv[2];
-        _curr_rl_state.progress     = curr_progress;
-        _curr_rl_state.h_val_abv    = cbf_data_abv[0];
-        _curr_rl_state.h_val_blw    = cbf_data_blw[0];
-        _curr_rl_state.alpha_val    = alpha;
-        _curr_rl_state.ang_vel      = mpc_input[0];
-        _curr_rl_state.acc          = mpc_input[1];
+        _curr_rl_state.theta         = mpc_state[2];
+        _curr_rl_state.vel           = mpc_state[3];
+        _curr_rl_state.obs_dist_abv  = cbf_data_abv[1];
+        _curr_rl_state.obs_dist_blw  = cbf_data_blw[1];
+        _curr_rl_state.obs_heading   = cbf_data_abv[2];
+        _curr_rl_state.progress      = curr_progress;
+        _curr_rl_state.h_val_abv     = cbf_data_abv[0];
+        _curr_rl_state.h_val_blw     = cbf_data_blw[0];
+        _curr_rl_state.alpha_val_abv = alpha_abv;
+        _curr_rl_state.alpha_val_blw = alpha_blw;
+        _curr_rl_state.ang_vel       = mpc_input[0];
+        _curr_rl_state.acc           = mpc_input[1];
 
         _prev_rl_state = _curr_rl_state;
 
@@ -175,23 +192,25 @@ void RLLogger::log_transition(const MPCCore& mpc_core, double len_start, double 
         Eigen::VectorXd cbf_data_blw = mpc_core.get_cbf_data(
             mpc_state, Eigen::Vector2d(mpc_input[0], mpc_input[1]), false);
 
-        double alpha = mpc_core.get_params().at("CBF_ALPHA");
+        double alpha_abv = mpc_core.get_params().at("CBF_ALPHA_ABV");
+        double alpha_blw = mpc_core.get_params().at("CBF_ALPHA_BLW");
 
         double curr_progress = 1;
         if (ref_len > 1e-3) curr_progress = mpc_state[4] / ref_len;
         if (curr_progress > 1.) curr_progress = 1.;
 
-        _curr_rl_state.theta        = mpc_state[2];
-        _curr_rl_state.vel          = mpc_state[3];
-        _curr_rl_state.obs_dist_abv = cbf_data_abv[1];
-        _curr_rl_state.obs_dist_blw = cbf_data_blw[1];
-        _curr_rl_state.obs_heading  = cbf_data_abv[2];
-        _curr_rl_state.progress     = curr_progress;
-        _curr_rl_state.h_val_abv    = cbf_data_abv[0];
-        _curr_rl_state.h_val_blw    = cbf_data_blw[0];
-        _curr_rl_state.alpha_val    = alpha;
-        _curr_rl_state.ang_vel      = mpc_input[0];
-        _curr_rl_state.acc          = mpc_input[1];
+        _curr_rl_state.theta         = mpc_state[2];
+        _curr_rl_state.vel           = mpc_state[3];
+        _curr_rl_state.obs_dist_abv  = cbf_data_abv[1];
+        _curr_rl_state.obs_dist_blw  = cbf_data_blw[1];
+        _curr_rl_state.obs_heading   = cbf_data_abv[2];
+        _curr_rl_state.progress      = curr_progress;
+        _curr_rl_state.h_val_abv     = cbf_data_abv[0];
+        _curr_rl_state.h_val_blw     = cbf_data_blw[0];
+        _curr_rl_state.alpha_val_abv = alpha_abv;
+        _curr_rl_state.alpha_val_blw = alpha_abv;
+        _curr_rl_state.ang_vel       = mpc_input[0];
+        _curr_rl_state.acc           = mpc_input[1];
 
         if (!_is_colliding)
         {
@@ -210,15 +229,16 @@ void RLLogger::log_transition(const MPCCore& mpc_core, double len_start, double 
         reward -= 12 * (1 - curr_progress);
 
         // add small penalty for large alpha jumps
-        reward -= 0.1 * _alpha_dot * _alpha_dot;
+        reward -= 0.1 * _alpha_dot_abv * _alpha_dot_abv;
+        reward -= 0.1 * _alpha_dot_blw * _alpha_dot_blw;
 
         // add penalty for using higher alpha values
         // reward -= .1 * (_curr_rl_state(8)- _min_alpha);
 
         // if alpha value is outside bounds, penalize heavily
-        if (_exceeded_bounds) reward -= 20;
+        reward -= 20 * _exceeded_bounds;
 
-        _exceeded_bounds = false;
+        _exceeded_bounds = 0;
 
         // if h_value is negative, penalize heavily
         if (_curr_rl_state.h_val_abv < 0) reward -= 10;
@@ -230,30 +250,33 @@ void RLLogger::log_transition(const MPCCore& mpc_core, double len_start, double 
         std::vector<std::string> string_data = {is_done_str};
         std::vector<double> numeric_data     = {
             _count,
-            _prev_rl_state.theta,         // theta
-            _prev_rl_state.vel,           // velocity
-            _prev_rl_state.acc,           // acceleration
-            _prev_rl_state.ang_vel,       // angular velocity
-            _prev_rl_state.obs_dist_abv,  // distance to obstacle abv
-            _prev_rl_state.obs_dist_blw,  // distance to obstacle blw
-            _prev_rl_state.obs_heading,   // heading to obstacle
-            _prev_rl_state.progress,      // progress
-            _prev_rl_state.h_val_abv,     // h value
-            _prev_rl_state.h_val_blw,     // h value
-            _prev_rl_state.alpha_val,     // alpha value
-            _alpha_dot,
+            _prev_rl_state.theta,          // theta
+            _prev_rl_state.vel,            // velocity
+            _prev_rl_state.acc,            // acceleration
+            _prev_rl_state.ang_vel,        // angular velocity
+            _prev_rl_state.obs_dist_abv,   // distance to obstacle abv
+            _prev_rl_state.obs_dist_blw,   // distance to obstacle blw
+            _prev_rl_state.obs_heading,    // heading to obstacle
+            _prev_rl_state.progress,       // progress
+            _prev_rl_state.h_val_abv,      // h value
+            _prev_rl_state.h_val_blw,      // h value
+            _prev_rl_state.alpha_val_abv,  // alpha value
+            _prev_rl_state.alpha_val_blw,  // alpha value
+            _alpha_dot_abv,
+            _alpha_dot_blw,
             reward,
-            _curr_rl_state.theta,         // theta
-            _curr_rl_state.vel,           // velocity
-            _curr_rl_state.acc,           // acceleration
-            _curr_rl_state.ang_vel,       // angular velocity
-            _curr_rl_state.obs_dist_abv,  // distance to obstacle abv
-            _curr_rl_state.obs_dist_blw,  // distance to osbtacle blw
-            _curr_rl_state.obs_heading,   // heading to obstacle
-            _curr_rl_state.progress,      // progress
-            _curr_rl_state.h_val_abv,     // h value
-            _curr_rl_state.h_val_blw,     // h value
-            _curr_rl_state.alpha_val};    // alpha value
+            _curr_rl_state.theta,           // theta
+            _curr_rl_state.vel,             // velocity
+            _curr_rl_state.acc,             // acceleration
+            _curr_rl_state.ang_vel,         // angular velocity
+            _curr_rl_state.obs_dist_abv,    // distance to obstacle abv
+            _curr_rl_state.obs_dist_blw,    // distance to osbtacle blw
+            _curr_rl_state.obs_heading,     // heading to obstacle
+            _curr_rl_state.progress,        // progress
+            _curr_rl_state.h_val_abv,       // h value
+            _curr_rl_state.h_val_blw,       // h value
+            _curr_rl_state.alpha_val_abv,   // alpha value
+            _curr_rl_state.alpha_val_blw};  // alpha value
 
         row.header.seq += _count++;
         row.header.stamp = ros::Time::now();

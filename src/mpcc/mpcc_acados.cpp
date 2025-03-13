@@ -24,11 +24,12 @@ MPCC::MPCC()
     _w_ql_lyap = 1;
     _w_qc_lyap = 1;
 
-    _gamma    = .5;
-    _use_cbf  = false;
-    _alpha    = 1.0;
-    _colinear = 0.01;
-    _padding  = .05;
+    _gamma     = .5;
+    _use_cbf   = false;
+    _alpha_abv = 1.0;
+    _alpha_blw = 1.0;
+    _colinear  = 0.01;
+    _padding   = .05;
 
     _use_eigen   = false;
     _ref_samples = 10;
@@ -119,7 +120,10 @@ void MPCC::load_params(const std::map<std::string, double>& params)
         params.find("CLF_W_CONTOUR") != params.end() ? params.at("CLF_W_CONTOUR") : _w_ql_lyap;
 
     _use_cbf = params.find("USE_CBF") != params.end() ? params.at("USE_CBF") : _use_cbf;
-    _alpha   = params.find("CBF_ALPHA") != params.end() ? params.at("CBF_ALPHA") : _alpha;
+    _alpha_abv =
+        params.find("CBF_ALPHA_ABV") != params.end() ? params.at("CBF_ALPHA_ABV") : _alpha_abv;
+    _alpha_blw =
+        params.find("CBF_ALPHA_BLW") != params.end() ? params.at("CBF_ALPHA_BLW") : _alpha_blw;
     _colinear =
         params.find("CBF_COLINEAR") != params.end() ? params.at("CBF_COLINEAR") : _colinear;
     _padding = params.find("CBF_PADDING") != params.end() ? params.at("CBF_PADDING") : _padding;
@@ -448,7 +452,7 @@ bool MPCC::set_solver_parameters(const std::array<Spline1D, 2>& adjusted_ref)
     auto ctrls_x = adjusted_ref[0].ctrls();
     auto ctrls_y = adjusted_ref[1].ctrls();
 
-    int num_params = ctrls_x.size() + ctrls_y.size() + _tubes[0].size() + _tubes[1].size() + 7;
+    int num_params = ctrls_x.size() + ctrls_y.size() + _tubes[0].size() + _tubes[1].size() + 8;
     if (num_params != NP)
     {
         std::cout << "[MPCC] reference size " << num_params
@@ -456,10 +460,11 @@ bool MPCC::set_solver_parameters(const std::array<Spline1D, 2>& adjusted_ref)
         return false;
     }
 
-    params[NP - 7] = _w_qc;
-    params[NP - 6] = _w_ql;
-    params[NP - 5] = _w_q_speed;
-    params[NP - 4] = _alpha;
+    params[NP - 8] = _w_qc;
+    params[NP - 7] = _w_ql;
+    params[NP - 6] = _w_q_speed;
+    params[NP - 5] = _alpha_abv;
+    params[NP - 4] = _alpha_blw;
     params[NP - 3] = _w_qc_lyap;
     params[NP - 2] = _w_ql_lyap;
     params[NP - 1] = _gamma;
@@ -731,9 +736,9 @@ Eigen::VectorXd MPCC::get_cbf_data(const Eigen::VectorXd& state, const Eigen::Ve
 
     double h_val;
     if (is_abv)
-        h_val = (tube_dist - signed_d - .2) * exp(-p);
+        h_val = (tube_dist - signed_d - .1) * exp(-p);
     else
-        h_val = (signed_d - tube_dist - .2) * exp(-p);
+        h_val = (signed_d - tube_dist - .1) * exp(-p);
 
     signed_d = is_abv ? signed_d : -signed_d;
     if (h_val > 100)

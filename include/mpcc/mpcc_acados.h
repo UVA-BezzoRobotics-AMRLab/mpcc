@@ -200,7 +200,8 @@ class MPCC
     double _max_angvel;
     double _max_linacc;
 
-    double _alpha;
+    double _alpha_abv;
+    double _alpha_blw;
     double _colinear;
     double _padding;
 

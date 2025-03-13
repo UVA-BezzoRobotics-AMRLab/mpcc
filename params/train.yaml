@@ -1,15 +1,15 @@
 # if bag param is true in gazebo_run, will dump bags to this location
-bag_dir: "/home/bezzo/catkin_ws/src/mpcc/bags"
-log_dir: "/home/bezzo/catkin_ws/src/mpcc/bags/results/sac_logs"
-db_file: "/home/bezzo/catkin_ws/src/mpcc/bags/results/rl_learning.db"
-model_file: "/home/bezzo/catkin_ws/src/mpcc/bags/results/sac_policy.pth"
+bag_dir: "/home/nick/catkin_ws/src/mpcc/bags"
+log_dir: "/home/nick/catkin_ws/src/mpcc/bags/results/sac_logs"
+db_file: "/home/nick/catkin_ws/src/mpcc/bags/results/rl_learning.db"
+model_file: "/home/nick/catkin_ws/src/mpcc/bags/results/sac_policy.pth"
 
 # training hyper params
 batch_size: 512
 num_updates: 500
 hidden_dims: 256
 
-state_dim: 11
+state_dim: 12
 theta_min: -3.141592
 theta_max: 3.141592
 velocity_min: -2.
@@ -29,8 +29,8 @@ h_value_max: 1e5
 min_alpha: .025
 max_alpha: 5
 
-action_dim: 1
-min_alpha_dot: -0.3 #-3.
-max_alpha_dot: 0.3 #3.
+action_dim: 2
+min_alpha_dot: -1.0
+max_alpha_dot: 1.0
 
 buffer_size: 50000

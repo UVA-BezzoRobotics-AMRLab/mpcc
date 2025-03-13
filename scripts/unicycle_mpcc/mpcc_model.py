@@ -242,7 +242,8 @@ def export_mpcc_ode_model_spline_tube(params) -> AcadosModel:
     # cost_expr_e = y_expr_e.T @ Q_mat_e @ y_expr_e - Q_s * sdot1
 
     # Control Barrier Function
-    alpha = MX.sym("alpha")
+    alpha_abv = MX.sym("alpha_abv")
+    alpha_blw = MX.sym("alpha_blw")
 
     # vector pointing towards the obstacle from the robot
     # roughly equal to norm of trajectory derivative since
@@ -289,8 +290,8 @@ def export_mpcc_ode_model_spline_tube(params) -> AcadosModel:
 
     # con_abv = signed_d - d_abv
     # con_blw = d_blw - signed_d
-    con_abv = Lfh_abv + h_dot_abv @ g @ u + alpha * h_abv
-    con_blw = Lfh_blw + h_dot_blw @ g @ u + alpha * h_blw
+    con_abv = Lfh_abv + h_dot_abv @ g @ u + alpha_abv * h_abv
+    con_blw = Lfh_blw + h_dot_blw @ g @ u + alpha_blw * h_blw
 
     # con_abv = ddot_h_abv + 0.5 * dot_h_abv + alpha * h_abv
     # con_blw = ddot_h_blw + 0.5 * dot_h_blw + alpha * h_blw
@@ -313,7 +314,8 @@ def export_mpcc_ode_model_spline_tube(params) -> AcadosModel:
         Q_c,
         Q_l,
         Q_s,
-        alpha,
+        alpha_abv,
+        alpha_blw,
         Ql_c,
         Ql_l,
         gamma,

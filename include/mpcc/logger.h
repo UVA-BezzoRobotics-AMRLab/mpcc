@@ -11,6 +11,7 @@
 #include <std_msgs/Bool.h>
 
 #include <amrl_logging_util/util.hpp>
+#include <cstdint>
 
 namespace logger
 {
@@ -27,7 +28,8 @@ struct logger_state
     double progress;
     double h_val_abv;
     double h_val_blw;
-    double alpha_val;
+    double alpha_val_abv;
+    double alpha_val_blw;
 };
 typedef struct logger_state logger_state_t;
 
@@ -47,8 +49,9 @@ class RLLogger
     ros::NodeHandle _nh;
 
     ros::Publisher _done_pub;
-    ros::Publisher _alpha_pub;
     ros::Publisher _logging_pub;
+    ros::Publisher _alpha_pub_abv;
+    ros::Publisher _alpha_pub_blw;
 
     ros::Subscriber _collision_sub;
 
@@ -64,13 +67,15 @@ class RLLogger
 
     double _min_alpha;
     double _max_alpha;
-    double _alpha_dot;
+    double _alpha_dot_abv;
+    double _alpha_dot_blw;
 
     bool _is_done;
     bool _is_logging;
     bool _is_colliding;
     bool _is_first_iter;
-    bool _exceeded_bounds;
+
+    uint8_t _exceeded_bounds;
 };
 
 }  // namespace logger

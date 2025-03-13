@@ -19,37 +19,38 @@ class ModelServer:
     def __init__(self):
 
         # self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.hidden_dim = rospy.get_param("/train/hidden_dims", 256)
-        self.action_dim = rospy.get_param("/train/action_dim", 1)
-        self.state_dim = rospy.get_param("/train/state_dim", 11)
+        self.hidden_dim = int(rospy.get_param("/train/hidden_dims", 256))
+        self.action_dim = int(rospy.get_param("/train/action_dim", 1))
+        self.state_dim = int(rospy.get_param("/train/state_dim", 11))
 
-        self.min_alpha_dot = rospy.get_param("/train/min_alpha_dot", -2.0)
-        self.max_alpha_dot = rospy.get_param("/train/max_alpha_dot", 2.0)
+        self.min_alpha_dot = float(rospy.get_param("/train/min_alpha_dot", -2.0))
+        self.max_alpha_dot = float(rospy.get_param("/train/max_alpha_dot", 2.0))
 
         self.is_eval = rospy.get_param("/train/is_eval", True)
 
         self.model_file = rospy.get_param("/train/model_file", "./sac_policy.pth")
 
-        self.theta_min = rospy.get_param("/train/theta_min", -np.pi)
-        self.theta_max = rospy.get_param("/train/theta_max", np.pi)
-        self.velocity_min = rospy.get_param("/train/velocity_min", -2.0)
-        self.velocity_max = rospy.get_param("/train/velocity_max", 2.0)
-        self.acc_min = rospy.get_param("/train/acc_min", -5.0)
-        self.acc_max = rospy.get_param("/train/acc_max", 5.0)
-        self.angvel_min = rospy.get_param("/train/angvel_min", -3.141)
-        self.angvel_max = rospy.get_param("/train/angvel_max", 3.141)
+        self.theta_min = float(rospy.get_param("/train/theta_min", -np.pi))
+        self.theta_max = float(rospy.get_param("/train/theta_max", np.pi))
+        self.velocity_min = float(rospy.get_param("/train/velocity_min", -2.0))
+        self.velocity_max = float(rospy.get_param("/train/velocity_max", 2.0))
+        self.acc_min = float(rospy.get_param("/train/acc_min", -5.0))
+        self.acc_max = float(rospy.get_param("/train/acc_max", 5.0))
+        self.angvel_min = float(rospy.get_param("/train/angvel_min", -3.141))
+        self.angvel_max = float(rospy.get_param("/train/angvel_max", 3.141))
         self.dist_to_obs_min = float(rospy.get_param("/train/dist_to_obs_min", -0.2))
         self.dist_to_obs_max = float(rospy.get_param("/train/dist_to_obs_max", 100.0))
-        self.head_to_obs_min = rospy.get_param("/train/head_to_obs_min", -np.pi)
-        self.head_to_obs_max = rospy.get_param("/train/head_to_obs_max", np.pi)
-        self.progress_min = rospy.get_param("/train/progress_min", 0.0)
-        self.progress_max = rospy.get_param("/train/progress_max", 1.0)
-        self.h_value_min = rospy.get_param("/train/h_value_min", -100.0)
-        self.h_value_max = rospy.get_param("/train/h_value_max", 100.0)
-        self.min_alpha = rospy.get_param("/train/min_alpha", 0.1)
-        self.max_alpha = rospy.get_param("/train/max_alpha", 10.0)
+        self.head_to_obs_min = float(rospy.get_param("/train/head_to_obs_min", -np.pi))
+        self.head_to_obs_max = float(rospy.get_param("/train/head_to_obs_max", np.pi))
+        self.progress_min = float(rospy.get_param("/train/progress_min", 0.0))
+        self.progress_max = float(rospy.get_param("/train/progress_max", 1.0))
+        self.h_value_min = float(rospy.get_param("/train/h_value_min", -100.0))
+        self.h_value_max = float(rospy.get_param("/train/h_value_max", 100.0))
+        self.min_alpha = float(rospy.get_param("/train/min_alpha", 0.1))
+        self.max_alpha = float(rospy.get_param("/train/max_alpha", 10.0))
 
-        self.alpha_dot_pub = rospy.Publisher("alpha_dot", Float32, queue_size=1)
+        self.alpha_dot_abv_pub = rospy.Publisher("alpha_dot_abv", Float32, queue_size=1)
+        self.alpha_dot_blw_pub = rospy.Publisher("alpha_dot_blw", Float32, queue_size=1)
 
         self.stoch_policy = TanhGaussianPolicy(
             obs_dim=self.state_dim,
@@ -89,6 +90,10 @@ class ModelServer:
             rospy.logerr("*******************************")
             rospy.logerr("Policy is in deterministic mode")
             rospy.logerr("*******************************")
+        else:
+            rospy.logerr("****************************")
+            rospy.logerr("Policy is in stochastic mode")
+            rospy.logerr("****************************")
 
         self.policy.eval().to(ptu.device)
         # self.qf1.eval().to(ptu.device)
@@ -121,7 +126,8 @@ class ModelServer:
                 self.normalize(req.progress, self.progress_min, self.progress_max),
                 req.h_val_abv,
                 req.h_val_blw,
-                self.normalize(req.alpha, self.min_alpha, self.max_alpha),
+                self.normalize(req.alpha_abv, self.min_alpha, self.max_alpha),
+                self.normalize(req.alpha_blw, self.min_alpha, self.max_alpha),
             ]
         )
 
@@ -135,7 +141,6 @@ class ModelServer:
 
         print("inference time is:", end - start)
         # print("DIST IS", dist)
-        print("DIST PARAMS ARE:", dist.normal_mean, dist.normal_std)
         # action_tensor = torch.FloatTensor(action_np[0]).to(ptu.device)
         # input_tensor = torch.cat([obs, action_tensor], dim=0)
 
@@ -147,17 +152,22 @@ class ModelServer:
         # msg.data = q_val.item()
         # self.q_pub.publish(msg)
 
-        action = action_np[0]
+        action_abv = action_np[0][0]
+        action_blw = action_np[0][1]
+
+        action1 = self.scale_action(action_abv, self.min_alpha_dot, self.max_alpha_dot)
+        action2 = self.scale_action(action_blw, self.min_alpha_dot, self.max_alpha_dot)
 
         resp = QuerySACResponse()
-        resp.alpha_dot = self.scale_action(
-            action, self.min_alpha_dot, self.max_alpha_dot
-        )
+        resp.alpha_dot = [action1, action2]
         resp.success = True
 
         alpha_dot_msg = Float32()
-        alpha_dot_msg.data = resp.alpha_dot
-        self.alpha_dot_pub.publish(alpha_dot_msg)
+        alpha_dot_msg.data = resp.alpha_dot[0]
+        self.alpha_dot_abv_pub.publish(alpha_dot_msg)
+
+        alpha_dot_msg.data = resp.alpha_dot[1]
+        self.alpha_dot_blw_pub.publish(alpha_dot_msg)
 
         return resp
 

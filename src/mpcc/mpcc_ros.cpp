@@ -86,7 +86,8 @@ MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~")
 
     // cbf params
     _nh.param("use_cbf", _use_cbf, false);
-    _nh.param("cbf_alpha", _cbf_alpha, .5);
+    _nh.param("cbf_alpha_abv", _cbf_alpha_abv, .5);
+    _nh.param("cbf_alpha_blw", _cbf_alpha_blw, .5);
     _nh.param("cbf_colinear", _cbf_colinear, .1);
     _nh.param("cbf_padding", _cbf_padding, .1);
     _nh.param("dynamic_alpha", _use_dynamic_alpha, false);
@@ -146,7 +147,8 @@ MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~")
     _mpc_params["CLF_W_CONTOUR"] = _w_qc_lyap;
 
     _mpc_params["USE_CBF"]           = _use_cbf;
-    _mpc_params["CBF_ALPHA"]         = _cbf_alpha;
+    _mpc_params["CBF_ALPHA_ABV"]     = _cbf_alpha_abv;
+    _mpc_params["CBF_ALPHA_BLW"]     = _cbf_alpha_blw;
     _mpc_params["CBF_COLINEAR"]      = _cbf_colinear;
     _mpc_params["CBF_PADDING"]       = _cbf_padding;
     _mpc_params["CBF_DYNAMIC_ALPHA"] = _use_dynamic_alpha;
@@ -342,16 +344,6 @@ void MPCCROS::publishVel()
         _velPub.publish(_vel_msg);
         std::this_thread::sleep_for(pub_loop_period);
     }
-}
-
-/**********************************************************************
- * Callbacks for CBF alpha parameter, map, goal (not implemented
- * currently), odometry, distance map, and trajectory
- **********************************************************************/
-void MPCCROS::alphacb(const std_msgs::Float64::ConstPtr& msg)
-{
-    _mpc_params["CBF_ALPHA"] = msg->data;
-    _mpc_core->load_params(_mpc_params);
 }
 
 void MPCCROS::mapcb(const nav_msgs::OccupancyGrid::ConstPtr& msg)
