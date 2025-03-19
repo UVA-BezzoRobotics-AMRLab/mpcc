@@ -114,7 +114,7 @@ def run_sim(args):
     )
     time.sleep(5)
 
-    collision_topic = "/collision" if args.train else "/mpc_done"
+    collision_topic = "/mpc_done" if args.train else "/collision"
     simple_sim = SimpleSimulation(collision_topic)
 
     init_coor = (INIT_POSITION[0], INIT_POSITION[1])
@@ -218,7 +218,7 @@ def run_sim(args):
     # start navigation, check position, time and collision
     start_time = curr_time
     collided = False
-    timeout_time = 100
+    timeout_time = 50
 
     if planner_process.poll() is not None or prog_crash:
         collided = True

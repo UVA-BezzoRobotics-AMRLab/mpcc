@@ -88,9 +88,11 @@ bool RLLogger::request_alpha(MPCCore& mpc_core, double ref_len)
     Eigen::VectorXd cbf_data_blw =
         mpc_core.get_cbf_data(mpc_state, Eigen::Vector2d(mpc_input[0], mpc_input[1]), false);
 
-    double curr_progress = 1;
-    if (ref_len > 1e-3) curr_progress = mpc_state[4] / ref_len;
-    if (curr_progress > 1.) curr_progress = 1.;
+    // double curr_progress = 1;
+    // if (ref_len > 1e-3) curr_progress = mpc_state[4] / ref_len;
+    // if (curr_progress > 1.) curr_progress = 1.;
+    double max_vel       = mpc_core.get_params().at("LINVEL");
+    double curr_progress = mpc_state[5] / max_vel;
 
     mpcc::QuerySAC req;
     req.request.theta        = mpc_state[2];
@@ -162,9 +164,12 @@ void RLLogger::log_transition(const MPCCore& mpc_core, double len_start, double 
         double alpha_abv = mpc_core.get_params().at("CBF_ALPHA_ABV");
         double alpha_blw = mpc_core.get_params().at("CBF_ALPHA_BLW");
 
-        double curr_progress = 1;
-        if (ref_len > 1e-3) curr_progress = mpc_state[4] / ref_len;
-        if (curr_progress > 1.) curr_progress = 1.;
+        // double curr_progress = 1;
+        // if (ref_len > 1e-3) curr_progress = mpc_state[4] / ref_len;
+        // if (curr_progress > 1.) curr_progress = 1.;
+
+        double max_vel       = mpc_core.get_params().at("LINVEL");
+        double curr_progress = mpc_state[5] / max_vel;
 
         _curr_rl_state.theta         = mpc_state[2];
         _curr_rl_state.vel           = mpc_state[3];
@@ -199,9 +204,11 @@ void RLLogger::log_transition(const MPCCore& mpc_core, double len_start, double 
         double alpha_abv = mpc_core.get_params().at("CBF_ALPHA_ABV");
         double alpha_blw = mpc_core.get_params().at("CBF_ALPHA_BLW");
 
-        double curr_progress = 1;
-        if (ref_len > 1e-3) curr_progress = mpc_state[4] / ref_len;
-        if (curr_progress > 1.) curr_progress = 1.;
+        // double curr_progress = 1;
+        // if (ref_len > 1e-3) curr_progress = mpc_state[4] / ref_len;
+        // if (curr_progress > 1.) curr_progress = 1.;
+        double max_vel       = mpc_core.get_params().at("LINVEL");
+        double curr_progress = mpc_state[5] / max_vel;
 
         _curr_rl_state.theta         = mpc_state[2];
         _curr_rl_state.vel           = mpc_state[3];
@@ -230,29 +237,37 @@ void RLLogger::log_transition(const MPCCore& mpc_core, double len_start, double 
         // reward -= 12 * (1 - _curr_rl_state(6));
         // ref len should never be negative, but fabs just in case
         // need to use passed in len-start because core version is relative
+
+        // potentially use velocity along the path as the reward here!
+        // reward -= 12 * (1 - curr_progress);
         reward -= 12 * (1 - curr_progress);
 
         // add small penalty for large alpha jumps
-        reward -= 0.1 * _alpha_dot_abv * _alpha_dot_abv;
-        reward -= 0.1 * _alpha_dot_blw * _alpha_dot_blw;
+        // reward -= 0.1 * _alpha_dot_abv * _alpha_dot_abv;
+        // reward -= 0.1 * _alpha_dot_blw * _alpha_dot_blw;
 
         // add penalty for using higher alpha values
         // reward -= .1 * (_curr_rl_state(8)- _min_alpha);
 
         // if alpha value is outside bounds, penalize heavily
-        reward -= 10 * _exceeded_bounds;
+        reward -= 20 * _exceeded_bounds;
 
         // if h_value is negative, penalize heavily
         if (_curr_rl_state.h_val_abv < 0) reward -= 20;
         if (_curr_rl_state.h_val_blw < 0) reward -= 20;
 
-        std::cout << "reward is: " << reward << std::endl;
-        std::cout << "\tprogress: " << -12 * (1 - curr_progress) << std::endl;
-        std::cout << "\talpha_dot_abv: " << -0.1 * _alpha_dot_abv * _alpha_dot_abv << std::endl;
-        std::cout << "\talpha_dot_blw: " << -0.1 * _alpha_dot_blw * _alpha_dot_blw << std::endl;
-        std::cout << "\texceeded bounds: " << -20 * _exceeded_bounds << std::endl;
-        std::cout << "\th_val_abv: " << -10 * (_curr_rl_state.h_val_abv < 0) << std::endl;
-        std::cout << "\th_val_blw: " << -10 * (_curr_rl_state.h_val_blw < 0) << std::endl;
+        // add reward for h_values being above 0
+        if (_curr_rl_state.h_val_abv > 0) reward += 10 * _curr_rl_state.h_val_abv;
+        if (_curr_rl_state.h_val_blw > 0) reward += 10 * _curr_rl_state.h_val_blw;
+
+        // std::cout << "reward is: " << reward << std::endl;
+        // std::cout << "\tprogress: " << -12 * (1 - curr_progress) << std::endl;
+        // std::cout << "\talpha_dot_abv: " << -0.1 * _alpha_dot_abv * _alpha_dot_abv <<
+        // std::endl; std::cout << "\talpha_dot_blw: " << -0.1 * _alpha_dot_blw * _alpha_dot_blw
+        // << std::endl; std::cout << "\texceeded bounds: " << -20 * _exceeded_bounds <<
+        // std::endl; std::cout << "\th_val_abv: " << -10 * (_curr_rl_state.h_val_abv < 0) <<
+        // std::endl; std::cout << "\th_val_blw: " << -10 * (_curr_rl_state.h_val_blw < 0) <<
+        // std::endl;
 
         _exceeded_bounds = 0;
 

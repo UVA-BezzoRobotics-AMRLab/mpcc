@@ -423,8 +423,6 @@ class TrainManager:
         next_states = torch.FloatTensor(next_states).to(ptu.device)
         dones = torch.FloatTensor(dones).unsqueeze(1).to(ptu.device)
 
-        # check if any NAN values are present in the data
-
         self.trainer.train_from_torch(
             batch={
                 "observations": states,

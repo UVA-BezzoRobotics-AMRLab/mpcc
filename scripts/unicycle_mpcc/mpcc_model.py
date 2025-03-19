@@ -257,10 +257,10 @@ def export_mpcc_ode_model_spline_tube(params) -> AcadosModel:
     # h_blw = signed_d - d_blw
 
     p_abv = obs_dirx * cos_theta + obs_diry * sin_theta + v1 * 0.05
-    h_abv = (d_abv - signed_d - 0.2) * exp(-p_abv)
+    h_abv = (d_abv - signed_d - 0.1) * exp(-p_abv)
 
     p_blw = -obs_dirx * cos_theta - obs_diry * sin_theta + v1 * 0.05
-    h_blw = (signed_d - d_blw - 0.2) * exp(-p_blw)
+    h_blw = (signed_d - d_blw - 0.1) * exp(-p_blw)
 
     f = vertcat(v1 * cos_theta, v1 * sin_theta, 0, 0, sdot1, 0)
     g = vertcat(
