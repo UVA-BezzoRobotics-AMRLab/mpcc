@@ -15,8 +15,9 @@ from os.path import join
 from simple_simulation import SimpleSimulation
 from train_realworld import TrainManager, CustomEnv
 
-INIT_POSITION = [-2.25, -2, 1.57]  # in world frame
-GOAL_POSITION = [0, 10]  # relative to the initial position
+# INIT_POSITION = [-2.25, -2, 1.57]  # in world frame
+INIT_POSITION = [-2.25, 8, -1.57]  # in world frame
+GOAL_POSITION = [0, -10]  # relative to the initial position
 
 bag_process = None
 gazebo_process = None
@@ -507,7 +508,10 @@ if __name__ == "__main__":
 
     else:
         # TRAIN
-        for i in range(251, 285):
+        for i in range(253, 289):
+            if i == 278 or i == 275 or i == 273 or i == 270 or i == 259:
+                continue
+
             args.world_idx = i
 
             for i in range(5):

@@ -11,6 +11,7 @@ float64 h_val_abv
 float64 h_val_blw
 float64 alpha_abv
 float64 alpha_blw
+bool solver_status
 ---
 # Response
 bool success

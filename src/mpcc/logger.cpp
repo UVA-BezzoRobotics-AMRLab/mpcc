@@ -36,7 +36,8 @@ RLLogger::RLLogger(ros::NodeHandle& nh, double min_alpha, double max_alpha, bool
     _alpha_dot_abv = 0.;
     _alpha_dot_blw = 0.;
 
-    const std::vector<std::string> string_types({"is_done"});
+    const std::vector<std::string> string_types(
+        {"prev_solver_status", "curr_solver_status", "is_done"});
     const std::vector<std::string> float_types({"id",
                                                 "prev_theta",
                                                 "prev_vel",
@@ -50,8 +51,8 @@ RLLogger::RLLogger(ros::NodeHandle& nh, double min_alpha, double max_alpha, bool
                                                 "prev_h_blw",
                                                 "prev_alpha_abv",
                                                 "prev_alpha_blw",
-                                                "alpha_abv",
-                                                "alpha_blw",
+                                                "alpha_dot_abv",
+                                                "alpha_dot_blw",
                                                 "reward",
                                                 "curr_theta",
                                                 "curr_vel",
@@ -82,6 +83,7 @@ bool RLLogger::request_alpha(MPCCore& mpc_core, double ref_len)
 {
     Eigen::VectorXd mpc_state       = mpc_core.get_state();
     std::array<double, 2> mpc_input = mpc_core.get_mpc_results();
+    bool solver_status              = mpc_core.get_solver_status();
 
     Eigen::VectorXd cbf_data_abv =
         mpc_core.get_cbf_data(mpc_state, Eigen::Vector2d(mpc_input[0], mpc_input[1]), true);
@@ -95,18 +97,19 @@ bool RLLogger::request_alpha(MPCCore& mpc_core, double ref_len)
     double curr_progress = mpc_state[5] / max_vel;
 
     mpcc::QuerySAC req;
-    req.request.theta        = mpc_state[2];
-    req.request.vel          = mpc_state[3];
-    req.request.acc          = mpc_input[1];
-    req.request.ang_vel      = mpc_input[0];
-    req.request.obs_dist_abv = cbf_data_abv[1];
-    req.request.obs_dist_blw = cbf_data_blw[1];
-    req.request.heading_dist = cbf_data_abv[2];
-    req.request.progress     = curr_progress;
-    req.request.h_val_abv    = cbf_data_abv[0];
-    req.request.h_val_blw    = cbf_data_blw[0];
-    req.request.alpha_abv    = mpc_core.get_params().at("CBF_ALPHA_ABV");
-    req.request.alpha_blw    = mpc_core.get_params().at("CBF_ALPHA_BLW");
+    req.request.theta         = mpc_state[2];
+    req.request.vel           = mpc_state[3];
+    req.request.acc           = mpc_input[1];
+    req.request.ang_vel       = mpc_input[0];
+    req.request.obs_dist_abv  = cbf_data_abv[1];
+    req.request.obs_dist_blw  = cbf_data_blw[1];
+    req.request.heading_dist  = cbf_data_abv[2];
+    req.request.progress      = curr_progress;
+    req.request.h_val_abv     = cbf_data_abv[0];
+    req.request.h_val_blw     = cbf_data_blw[0];
+    req.request.alpha_abv     = mpc_core.get_params().at("CBF_ALPHA_ABV");
+    req.request.alpha_blw     = mpc_core.get_params().at("CBF_ALPHA_BLW");
+    req.request.solver_status = solver_status;
 
     if (_sac_srv.call(req))
     {
@@ -155,6 +158,7 @@ void RLLogger::log_transition(const MPCCore& mpc_core, double len_start, double 
     {
         Eigen::VectorXd mpc_state       = mpc_core.get_state();
         std::array<double, 2> mpc_input = mpc_core.get_mpc_results();
+        bool solver_status              = mpc_core.get_solver_status();
 
         Eigen::VectorXd cbf_data_abv =
             mpc_core.get_cbf_data(mpc_state, Eigen::Vector2d(mpc_input[0], mpc_input[1]), true);
@@ -183,6 +187,7 @@ void RLLogger::log_transition(const MPCCore& mpc_core, double len_start, double 
         _curr_rl_state.alpha_val_blw = alpha_blw;
         _curr_rl_state.ang_vel       = mpc_input[0];
         _curr_rl_state.acc           = mpc_input[1];
+        _curr_rl_state.solver_status = solver_status;
 
         _prev_rl_state = _curr_rl_state;
 
@@ -195,6 +200,7 @@ void RLLogger::log_transition(const MPCCore& mpc_core, double len_start, double 
 
         const Eigen::VectorXd& mpc_state = mpc_core.get_state();
         std::array<double, 2> mpc_input  = mpc_core.get_mpc_results();
+        bool solver_status               = mpc_core.get_solver_status();
 
         Eigen::VectorXd cbf_data_abv =
             mpc_core.get_cbf_data(mpc_state, Eigen::Vector2d(mpc_input[0], mpc_input[1]), true);
@@ -219,14 +225,15 @@ void RLLogger::log_transition(const MPCCore& mpc_core, double len_start, double 
         _curr_rl_state.h_val_abv     = cbf_data_abv[0];
         _curr_rl_state.h_val_blw     = cbf_data_blw[0];
         _curr_rl_state.alpha_val_abv = alpha_abv;
-        _curr_rl_state.alpha_val_blw = alpha_abv;
+        _curr_rl_state.alpha_val_blw = alpha_blw;
         _curr_rl_state.ang_vel       = mpc_input[0];
         _curr_rl_state.acc           = mpc_input[1];
+        _curr_rl_state.solver_status = solver_status;
 
         if (!_is_colliding)
         {
             // weight distance to obstacle
-            // reward = 5 * _curr_rl_state.obs_dist_abv * _curr_rl_state.obs_dist_blw;
+            reward = 5 * _curr_rl_state.obs_dist_abv * _curr_rl_state.obs_dist_blw;
         }
         else
         {
@@ -240,7 +247,7 @@ void RLLogger::log_transition(const MPCCore& mpc_core, double len_start, double 
 
         // potentially use velocity along the path as the reward here!
         // reward -= 12 * (1 - curr_progress);
-        reward -= 12 * (1 - curr_progress);
+        reward -= 5 * (1 - curr_progress);
 
         // add small penalty for large alpha jumps
         // reward -= 0.1 * _alpha_dot_abv * _alpha_dot_abv;
@@ -250,15 +257,27 @@ void RLLogger::log_transition(const MPCCore& mpc_core, double len_start, double 
         // reward -= .1 * (_curr_rl_state(8)- _min_alpha);
 
         // if alpha value is outside bounds, penalize heavily
-        reward -= 20 * _exceeded_bounds;
+        // penalize linearly as alpha_abv approaches max/min alpha
+        double mid_alpha = (_max_alpha + _min_alpha) / 2.0;
+        reward -= 5 * (_curr_rl_state.alpha_val_abv - mid_alpha) *
+                  (_curr_rl_state.alpha_val_abv - mid_alpha);
+
+        reward -= 5 * (_curr_rl_state.alpha_val_blw - mid_alpha) *
+                  (_curr_rl_state.alpha_val_blw - mid_alpha);
+
+        reward -= 30 * _exceeded_bounds;
 
         // if h_value is negative, penalize heavily
-        if (_curr_rl_state.h_val_abv < 0) reward -= 20;
-        if (_curr_rl_state.h_val_blw < 0) reward -= 20;
+        /*if (_curr_rl_state.h_val_abv < 0) reward -= 20;*/
+        /*if (_curr_rl_state.h_val_blw < 0) reward -= 20;*/
 
         // add reward for h_values being above 0
-        if (_curr_rl_state.h_val_abv > 0) reward += 10 * _curr_rl_state.h_val_abv;
-        if (_curr_rl_state.h_val_blw > 0) reward += 10 * _curr_rl_state.h_val_blw;
+        if (_curr_rl_state.h_val_abv > 0) reward += 7 * _curr_rl_state.h_val_abv;
+        if (_curr_rl_state.h_val_blw > 0) reward += 7 * _curr_rl_state.h_val_blw;
+
+        if (!_curr_rl_state.solver_status) reward -= 25;
+
+        if (_is_done) reward -= 25;
 
         // std::cout << "reward is: " << reward << std::endl;
         // std::cout << "\tprogress: " << -12 * (1 - curr_progress) << std::endl;
@@ -274,7 +293,10 @@ void RLLogger::log_transition(const MPCCore& mpc_core, double len_start, double 
         // log to database
         amrl_logging::LoggingData row;
         std::string is_done_str              = _is_done ? "true" : "false";
-        std::vector<std::string> string_data = {is_done_str};
+        std::string prev_solver_stat         = _prev_rl_state.solver_status ? "true" : "false";
+        std::string curr_solver_stat         = _curr_rl_state.solver_status ? "true" : "false";
+        std::vector<std::string> string_data = {prev_solver_stat, curr_solver_stat,
+                                                is_done_str};
         std::vector<double> numeric_data     = {
             _count,
             _prev_rl_state.theta,          // theta

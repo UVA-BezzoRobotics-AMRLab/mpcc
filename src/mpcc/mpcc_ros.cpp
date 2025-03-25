@@ -219,7 +219,7 @@ void MPCCROS::visualizeTubes()
     tubemsg_a.id                 = 87;
     tubemsg_a.action             = visualization_msgs::Marker::ADD;
     tubemsg_a.type               = visualization_msgs::Marker::LINE_STRIP;
-    tubemsg_a.scale.x            = .05;
+    tubemsg_a.scale.x            = .075;
     tubemsg_a.pose.orientation.w = 1;
 
     visualization_msgs::Marker tubemsg_b = tubemsg_a;
@@ -285,14 +285,20 @@ void MPCCROS::visualizeTubes()
         // }
 
         // convenience for setting colors
-        std_msgs::ColorRGBA color_msg;
-        color_msg.r = 0.0;
-        color_msg.g = 1.0;
-        color_msg.b = 1.0;
-        color_msg.a = 1.0;
+        std_msgs::ColorRGBA color_msg_abv;
+        color_msg_abv.r = 192. / 255.;
+        color_msg_abv.g = 0.0;
+        color_msg_abv.b = 0.0;
+        color_msg_abv.a = 1.0;
 
-        tubemsg_a.colors.push_back(color_msg);
-        tubemsg_b.colors.push_back(color_msg);
+        std_msgs::ColorRGBA color_msg_blw;
+        color_msg_blw.r = 251. / 255.;
+        color_msg_blw.g = 133. / 255.;
+        color_msg_blw.b = 0.0;
+        color_msg_blw.a = 1.0;
+
+        tubemsg_a.colors.push_back(color_msg_abv);
+        tubemsg_b.colors.push_back(color_msg_blw);
 
         geometry_msgs::Point normal_pt;
         normal_pt.x = point(0);
@@ -321,7 +327,7 @@ void MPCCROS::visualizeTubes()
     tube_ma.markers.reserve(2);
     tube_ma.markers.push_back(std::move(tubemsg_a));
     tube_ma.markers.push_back(std::move(tubemsg_b));
-    tube_ma.markers.push_back(std::move(normals_msg));
+    // tube_ma.markers.push_back(std::move(normals_msg));
     // tube_ma.markers.push_back(std::move(normals_below_msg));
 
     _tubeVizPub.publish(tube_ma);

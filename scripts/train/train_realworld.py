@@ -68,6 +68,7 @@ class CustomEnv(gym.Env):
                 self.h_value_min,
                 self.alpha_min,
                 self.alpha_min,
+                0,  # for solver status
             ],
             dtype=np.float64,
         )
@@ -85,49 +86,12 @@ class CustomEnv(gym.Env):
                 self.h_value_max,
                 self.alpha_max,
                 self.alpha_max,
+                1,  # for solver status
             ],
             dtype=np.float64,
         )
 
-        print(low)
-        print(high)
-        self.observation_space = gym.spaces.Box(
-            low=np.array(
-                [
-                    self.theta_min,
-                    self.velocity_min,
-                    self.acc_min,
-                    self.angvel_min,
-                    self.distance_to_obstacle_min,
-                    self.distance_to_obstacle_min,
-                    self.heading_to_obstacle_min,
-                    self.progress_min,
-                    self.h_value_min,
-                    self.h_value_min,
-                    self.alpha_min,
-                    self.alpha_min,
-                ],
-                dtype=np.float64,
-            ),
-            high=np.array(
-                [
-                    self.theta_max,
-                    self.velocity_max,
-                    self.acc_max,
-                    self.angvel_max,
-                    self.distance_to_obstacle_max,
-                    self.distance_to_obstacle_max,
-                    self.heading_to_obstacle_max,
-                    self.progress_max,
-                    self.h_value_max,
-                    self.h_value_max,
-                    self.alpha_max,
-                    self.alpha_max,
-                ],
-                dtype=np.float64,
-            ),
-            dtype=np.float64,
-        )
+        self.observation_space = gym.spaces.Box(low=low, high=high, dtype=np.float64)
 
         self.state = np.zeros(self.state_dim, dtype=np.float64)
 
@@ -165,8 +129,8 @@ class TrainManager:
 
         self.buffer_size = yaml_data["buffer_size"]
 
-        self.min_alpha_dot = yaml_data["min_alpha_dot"]
-        self.max_alpha_dot = yaml_data["max_alpha_dot"]
+        self.min_alpha_dot = float(yaml_data["min_alpha_dot"])
+        self.max_alpha_dot = float(yaml_data["max_alpha_dot"])
 
         # Define networks
         self.qf1 = ConcatMlp(
@@ -209,8 +173,8 @@ class TrainManager:
             reward_scale=1.0,
             soft_target_tau=5e-3,
             target_update_period=1,
-            policy_lr=3e-4,
-            qf_lr=3e-4,
+            policy_lr=1e-5,
+            qf_lr=1e-5,
             use_automatic_entropy_tuning=True,
         )
 
@@ -282,120 +246,126 @@ class TrainManager:
         for row in rows:
             state = [
                 self.normalize(
-                    row[label_to_index["prev_theta"]],
+                    float(row[label_to_index["prev_theta"]]),
                     self.env.theta_min,
                     self.env.theta_max,
                 ),
                 self.normalize(
-                    row[label_to_index["prev_vel"]],
+                    float(row[label_to_index["prev_vel"]]),
                     self.env.velocity_min,
                     self.env.velocity_max,
                 ),
                 self.normalize(
-                    row[label_to_index["prev_acc"]], self.env.acc_min, self.env.acc_max
+                    float(row[label_to_index["prev_acc"]]),
+                    self.env.acc_min,
+                    self.env.acc_max,
                 ),
                 self.normalize(
-                    row[label_to_index["prev_angvel"]],
+                    float(row[label_to_index["prev_angvel"]]),
                     self.env.angvel_min,
                     self.env.angvel_max,
                 ),
                 self.normalize(
-                    row[label_to_index["prev_obs_dist_abv"]],
+                    float(row[label_to_index["prev_obs_dist_abv"]]),
                     self.env.distance_to_obstacle_min,
                     self.env.distance_to_obstacle_max,
                 ),
                 self.normalize(
-                    row[label_to_index["prev_obs_dist_blw"]],
+                    float(row[label_to_index["prev_obs_dist_blw"]]),
                     self.env.distance_to_obstacle_min,
                     self.env.distance_to_obstacle_max,
                 ),
                 self.normalize(
-                    row[label_to_index["prev_obs_heading"]],
+                    float(row[label_to_index["prev_obs_heading"]]),
                     self.env.heading_to_obstacle_min,
                     self.env.heading_to_obstacle_max,
                 ),
                 self.normalize(
-                    row[label_to_index["prev_progress"]],
+                    float(row[label_to_index["prev_progress"]]),
                     self.env.progress_min,
                     self.env.progress_max,
                 ),
-                row[label_to_index["prev_h_abv"]],
-                row[label_to_index["prev_h_blw"]],
+                float(row[label_to_index["prev_h_abv"]]),
+                float(row[label_to_index["prev_h_blw"]]),
                 self.normalize(
-                    row[label_to_index["prev_alpha_abv"]],
+                    float(row[label_to_index["prev_alpha_abv"]]),
                     self.env.alpha_min,
                     self.env.alpha_max,
                 ),
                 self.normalize(
-                    row[label_to_index["prev_alpha_blw"]],
+                    float(row[label_to_index["prev_alpha_blw"]]),
                     self.env.alpha_min,
                     self.env.alpha_max,
                 ),
+                1.0 if row[label_to_index["prev_solver_status"]] == "true" else 0.0,
             ]
             action = [
                 self.unscale_action(
-                    row[label_to_index["alpha_abv"]],
+                    float(row[label_to_index["alpha_dot_abv"]]),
                     self.min_alpha_dot,
                     self.max_alpha_dot,
                 ),
                 self.unscale_action(
-                    row[label_to_index["alpha_blw"]],
+                    float(row[label_to_index["alpha_dot_blw"]]),
                     self.min_alpha_dot,
                     self.max_alpha_dot,
                 ),
             ]
-            reward = row[label_to_index["reward"]]
+            reward = float(row[label_to_index["reward"]])
             next_state = [
                 self.normalize(
-                    row[label_to_index["curr_theta"]],
+                    float(row[label_to_index["curr_theta"]]),
                     self.env.theta_min,
                     self.env.theta_max,
                 ),
                 self.normalize(
-                    row[label_to_index["curr_vel"]],
+                    float(row[label_to_index["curr_vel"]]),
                     self.env.velocity_min,
                     self.env.velocity_max,
                 ),
                 self.normalize(
-                    row[label_to_index["curr_acc"]], self.env.acc_min, self.env.acc_max
+                    float(row[label_to_index["curr_acc"]]),
+                    self.env.acc_min,
+                    self.env.acc_max,
                 ),
                 self.normalize(
-                    row[label_to_index["curr_angvel"]],
+                    float(row[label_to_index["curr_angvel"]]),
                     self.env.angvel_min,
                     self.env.angvel_max,
                 ),
                 self.normalize(
-                    row[label_to_index["curr_obs_dist_abv"]],
+                    float(row[label_to_index["curr_obs_dist_abv"]]),
                     self.env.distance_to_obstacle_min,
                     self.env.distance_to_obstacle_max,
                 ),
                 self.normalize(
-                    row[label_to_index["curr_obs_dist_blw"]],
+                    float(row[label_to_index["curr_obs_dist_blw"]]),
                     self.env.distance_to_obstacle_min,
                     self.env.distance_to_obstacle_max,
                 ),
                 self.normalize(
-                    row[label_to_index["curr_obs_heading"]],
+                    float(row[label_to_index["curr_obs_heading"]]),
                     self.env.heading_to_obstacle_min,
                     self.env.heading_to_obstacle_max,
                 ),
                 self.normalize(
-                    row[label_to_index["curr_progress"]],
+                    float(row[label_to_index["curr_progress"]]),
                     self.env.progress_min,
                     self.env.progress_max,
                 ),
-                row[label_to_index["curr_h_abv"]],
-                row[label_to_index["curr_h_blw"]],
+                float(row[label_to_index["curr_h_abv"]]),
+                float(row[label_to_index["curr_h_blw"]]),
                 self.normalize(
-                    row[label_to_index["curr_alpha_abv"]],
+                    float(row[label_to_index["curr_alpha_abv"]]),
                     self.env.alpha_min,
                     self.env.alpha_max,
                 ),
                 self.normalize(
-                    row[label_to_index["curr_alpha_blw"]],
+                    float(row[label_to_index["curr_alpha_blw"]]),
                     self.env.alpha_min,
                     self.env.alpha_max,
                 ),
+                1.0 if row[label_to_index["curr_solver_status"]] == "true" else 0.0,
             ]
 
             done = True if row[label_to_index["is_done"]] == "true" else False
@@ -411,11 +381,24 @@ class TrainManager:
         rewards = np.array(rewards)
         next_states = np.array(next_states)
         dones = np.array(dones)
-
         return states, actions, rewards, next_states, dones
 
     def train_sac(self):
         states, actions, rewards, next_states, dones = self.load_from_db()
+
+        # iterate over batch and check if negative rewards show up for any of the samples
+        # for ind, (reward, action, state, next_state) in enumerate(
+        #    zip(rewards, actions, states, next_states)
+        # ):
+        #    alpha_dot_blw = action[0]
+        #    alpha_blw = state[10]
+        #    next_alpha_blw = next_state[10]
+
+        #    if alpha_blw < 0.05 and alpha_dot_blw < 0:
+        #        print(
+        #            f"reward for {alpha_dot_blw} is {reward}: {alpha_blw} -> {next_alpha_blw}"
+        #        )
+
         states = torch.FloatTensor(states).to(ptu.device)
         # actions = torch.FloatTensor(actions).unsqueeze(1).to(ptu.device)
         actions = torch.FloatTensor(actions).to(ptu.device)

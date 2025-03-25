@@ -20,8 +20,8 @@ class ModelServer:
 
         # self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.hidden_dim = int(rospy.get_param("/train/hidden_dims", 256))
-        self.action_dim = int(rospy.get_param("/train/action_dim", 1))
-        self.state_dim = int(rospy.get_param("/train/state_dim", 11))
+        self.action_dim = int(rospy.get_param("/train/action_dim", 2))
+        self.state_dim = int(rospy.get_param("/train/state_dim", 12))
 
         self.min_alpha_dot = float(rospy.get_param("/train/min_alpha_dot", -2.0))
         self.max_alpha_dot = float(rospy.get_param("/train/max_alpha_dot", 2.0))
@@ -128,6 +128,7 @@ class ModelServer:
                 req.h_val_blw,
                 self.normalize(req.alpha_abv, self.min_alpha, self.max_alpha),
                 self.normalize(req.alpha_blw, self.min_alpha, self.max_alpha),
+                1.0 if req.solver_status == "true" else 0.0,
             ]
         )
 

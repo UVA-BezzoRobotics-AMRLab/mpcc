@@ -30,6 +30,7 @@ struct logger_state
     double h_val_blw;
     double alpha_val_abv;
     double alpha_val_blw;
+    bool solver_status;
 };
 typedef struct logger_state logger_state_t;
 
