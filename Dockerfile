@@ -21,11 +21,7 @@ RUN git clone https://github.com/acados/acados.git && \
     mkdir -p build && \
     cd build && \
     cmake -DACADOS_WITH_QPOASES=ON .. && \
-    make install && cd .. && \
-    pip install --upgrade pip && \
-    pip install --upgrade importlib_metadata && \
-    pip install importlib_resources && \
-    pip install "setuptools>=61"
+    make install
 
 ENV ACADOS_SOURCE_DIR=/home/acados
 ENV LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$ACADOS_SOURCE_DIR/lib
@@ -68,18 +64,25 @@ RUN git clone https://github.com/ANYbotics/grid_map.git src/grid_map && \
 # copy the package to the workspace and build
 COPY . ./src/mpcc
 
-RUN mv ./src/mpcc/amrl_logging ./src && \
+RUN apt install -y --no-install-recommends python3.8-venv && \
+    python3.8 -m venv venv && \
+    . /home/catkin_ws/venv/bin/activate && \
+    pip install --upgrade pip && \
+    pip install "setuptools>=61" && \
+    pip install --upgrade importlib_metadata && \
+    pip install importlib_resources && \
     pip install -r src/mpcc/requirements.txt && \
-    pip install -e $ACADOS_SOURCE_DIR/interfaces/acados_template
+    pip install -e $ACADOS_SOURCE_DIR/interfaces/acados_template && \
+    mv ./src/mpcc/amrl_logging ./src
 
 WORKDIR /home/catkin_ws/src/mpcc/scripts/tube_gen
 
 # generate code to build tubes
-RUN python3 tube_lp_gen.py --yaml=/home/catkin_ws/src/mpcc/params/mpcc.yaml
+RUN . /home/catkin_ws/venv/bin/activate && python3 tube_lp_gen.py --yaml=/home/catkin_ws/src/mpcc/params/mpcc.yaml
 
 WORKDIR /home/catkin_ws
 
-RUN /bin/bash -c "source /opt/ros/noetic/setup.bash && catkin build -DCMAKE_BUILD_TYPE=Release -DPYTHON_EXECUTABLE=/usr/bin/python3"
+RUN /bin/bash -c "source /opt/ros/noetic/setup.bash && source /home/catkin_ws/venv/bin/activate && catkin build -DCMAKE_BUILD_TYPE=Release -DPYTHON_EXECUTABLE=/usr/bin/python3"
 
 RUN echo "source /opt/ros/noetic/setup.bash" >> /root/.bashrc && \
     echo "source /home/catkin_ws/devel/setup.bash" >> /root/.bashrc && \
