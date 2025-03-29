@@ -1,6 +1,7 @@
 wheel
 rospkg
 pyyaml
+packaging
 defusedxml
 setuptools>=61
 gtimer==1.0.0b5

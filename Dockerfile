@@ -20,11 +20,12 @@ RUN git clone https://github.com/acados/acados.git && \
     git submodule update --init --recursive && \
     mkdir -p build && \
     cd build && \
-    cmake -DACADOS_WITH_QPOASES=ON -DACADOS_INSTALL_DIR=/usr/local/ .. && \
+    cmake -DACADOS_WITH_QPOASES=ON .. && \
     make install && cd .. && \
+    pip install --upgrade pip && \
     pip install --upgrade importlib_metadata && \
-    pip install "setuptools>=61" && \
-    pip install -e interfaces/acados_template
+    pip install importlib_resources && \
+    pip install "setuptools>=61"
 
 ENV ACADOS_SOURCE_DIR=/home/acados
 ENV LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$ACADOS_SOURCE_DIR/lib
@@ -67,7 +68,9 @@ RUN git clone https://github.com/ANYbotics/grid_map.git src/grid_map && \
 # copy the package to the workspace and build
 COPY . ./src/mpcc
 
-RUN pip install -r src/mpcc/requirements.txt
+RUN mv ./src/mpcc/amrl_logging ./src && \
+    pip install -r src/mpcc/requirements.txt && \
+    pip install -e $ACADOS_SOURCE_DIR/interfaces/acados_template
 
 WORKDIR /home/catkin_ws/src/mpcc/scripts/tube_gen
 
@@ -76,7 +79,7 @@ RUN python3 tube_lp_gen.py --yaml=/home/catkin_ws/src/mpcc/params/mpcc.yaml
 
 WORKDIR /home/catkin_ws
 
-RUN /bin/bash -c "source /opt/ros/noetic/setup.bash && catkin build -DCMAKE_BUILD_TYPE=Release"
+RUN /bin/bash -c "source /opt/ros/noetic/setup.bash && catkin build -DCMAKE_BUILD_TYPE=Release -DPYTHON_EXECUTABLE=/usr/bin/python3"
 
 RUN echo "source /opt/ros/noetic/setup.bash" >> /root/.bashrc && \
     echo "source /home/catkin_ws/devel/setup.bash" >> /root/.bashrc && \
