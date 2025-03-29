@@ -24,11 +24,12 @@ MPCC::MPCC()
     _w_ql_lyap = 1;
     _w_qc_lyap = 1;
 
-    _gamma    = .5;
-    _use_cbf  = false;
-    _alpha    = 1.0;
-    _colinear = 0.01;
-    _padding  = .05;
+    _gamma     = .5;
+    _use_cbf   = false;
+    _alpha_abv = 1.0;
+    _alpha_blw = 1.0;
+    _colinear  = 0.01;
+    _padding   = .05;
 
     _use_eigen   = false;
     _ref_samples = 10;
@@ -70,6 +71,7 @@ MPCC::MPCC()
     _ind_input_inc = 3;
 
     _is_shift_warm = false;
+    _solve_success = false;
 
     _odom = Eigen::VectorXd(3);
 
@@ -119,7 +121,10 @@ void MPCC::load_params(const std::map<std::string, double>& params)
         params.find("CLF_W_CONTOUR") != params.end() ? params.at("CLF_W_CONTOUR") : _w_ql_lyap;
 
     _use_cbf = params.find("USE_CBF") != params.end() ? params.at("USE_CBF") : _use_cbf;
-    _alpha   = params.find("CBF_ALPHA") != params.end() ? params.at("CBF_ALPHA") : _alpha;
+    _alpha_abv =
+        params.find("CBF_ALPHA_ABV") != params.end() ? params.at("CBF_ALPHA_ABV") : _alpha_abv;
+    _alpha_blw =
+        params.find("CBF_ALPHA_BLW") != params.end() ? params.at("CBF_ALPHA_BLW") : _alpha_blw;
     _colinear =
         params.find("CBF_COLINEAR") != params.end() ? params.at("CBF_COLINEAR") : _colinear;
     _padding = params.find("CBF_PADDING") != params.end() ? params.at("CBF_PADDING") : _padding;
@@ -186,8 +191,6 @@ void MPCC::load_params(const std::map<std::string, double>& params)
     _ind_state_inc = 6;
     _ind_input_inc = 3;
 
-    _odom = Eigen::VectorXd(3);
-
     std::cout << "!! MPC Obj parameters updated !! " << std::endl;
     std::cout << "!! ACADOS model instantiated !! " << std::endl;
 }
@@ -224,6 +227,8 @@ double MPCC::get_s_from_state(const Eigen::VectorXd& state)
 void MPCC::set_odom(const Eigen::VectorXd& odom) { _odom = odom; }
 
 const Eigen::VectorXd& MPCC::get_state() const { return _state; }
+
+const bool MPCC::get_solver_status() const { return _solve_success; }
 
 Eigen::VectorXd MPCC::next_state(const Eigen::VectorXd& current_state,
                                  const Eigen::VectorXd& control)
@@ -343,80 +348,6 @@ void MPCC::warm_start_shifted_u(bool correct_perturb, const Eigen::VectorXd& sta
         ocp_nlp_out_set(_nlp_config, _nlp_dims, _nlp_out, _mpc_steps, "x", &curr[0]);
         // exit(0);
     }
-    // if (correct_perturb)
-    // {
-    //     std::cout << termcolor::red << "[MPCC] Guess pos. too far, correcting"
-    //               << termcolor::reset << std::endl;
-
-    //     Eigen::VectorXd curr         = state;
-    //     Eigen::VectorXd mpc_curr_est = _prev_x0.segment(NX, NX);
-    //     Eigen::Vector2d trans        = curr.head(2) - mpc_curr_est.head(2);
-    //     double d_theta               = curr(2) - mpc_curr_est(2);
-    //     double d_s_dot               = curr(5) - mpc_curr_est(5);  // s_dot
-
-    //     // translate and rotate previous solution to current state
-
-    //     Eigen::MatrixXd affine = Eigen::MatrixXd::Identity(3, 3);
-    //     affine(0, 0)           = cos(d_theta);
-    //     affine(0, 1)           = -sin(d_theta);
-    //     affine(0, 2)           = trans(0);
-    //     affine(1, 0)           = sin(d_theta);
-    //     affine(1, 1)           = cos(d_theta);
-    //     affine(1, 2)           = trans(1);
-
-    //     std::cout << curr.transpose() << std::endl;
-    //     std::cout << mpc_curr_est.transpose() << std::endl;
-    //     std::cout << affine << std::endl;
-
-    //     Eigen::VectorXd tmp = mpc_curr_est;
-    //     apply_affine_transform(tmp, mpc_curr_est.head(2), affine);
-    //     tmp(2) += d_theta;
-
-    //     std::cout << "curr after affine " << tmp.transpose() << std::endl;
-
-    //     // exit(0);
-
-    //     Eigen::VectorXd warm_state;
-    //     for (int i = 1; i < _mpc_steps; ++i)
-    //     {
-    //         warm_state = _prev_x0.segment(i * NX, NX);
-    //         warm_state(2) += d_theta;
-    //         warm_state(4) -= starting_s;
-    //         warm_state(5) += d_s_dot;
-
-    //         // transforming warm_state based on current true robot state
-    //         apply_affine_transform(warm_state, mpc_curr_est.head(2), affine);
-
-    //         // set transformed state as warm start
-    //         ocp_nlp_out_set(_nlp_config, _nlp_dims, _nlp_out, i - 1, "x", &warm_state[0]);
-    //         ocp_nlp_out_set(_nlp_config, _nlp_dims, _nlp_out, i - 1, "u", &_prev_u0[i * NU]);
-    //     }
-
-    //     warm_state = _prev_x0.tail(NX);
-    //     warm_state(2) += d_theta;
-    //     warm_state(4) -= starting_s;
-    //     warm_state(5) += d_s_dot;
-
-    //     apply_affine_transform(warm_state, mpc_curr_est.head(2), affine);
-
-    //     ocp_nlp_out_set(_nlp_config, _nlp_dims, _nlp_out, _mpc_steps - 1, "x",
-    //     &warm_state[0]); ocp_nlp_out_set(_nlp_config, _nlp_dims, _nlp_out, _mpc_steps - 1,
-    //     "u",
-    //                     &_prev_u0[(_mpc_steps - 1) * NU]);
-
-    //     Eigen::VectorXd uN_prev = _prev_u0.tail(NU);
-    //     warm_state              = next_state(warm_state, uN_prev);
-
-    //     ocp_nlp_out_set(_nlp_config, _nlp_dims, _nlp_out, _mpc_steps, "x", &warm_state[0]);
-
-    //     // std::cout << termcolor::red << "warm state is " << warm_state.transpose() <<
-    //     // std::endl; std::cout << "second to last state is "
-    //     //           << _prev_x0.segment((_mpc_steps - 1) * NX, NX).transpose() << std::endl;
-    //     // std::cout << "final state is " << _prev_x0.tail(NX).transpose() <<
-    //     // termcolor::reset
-    //     //           << std::endl;
-    //     // exit(0);
-    // }
     else
     {
         for (int i = 1; i < _mpc_steps; ++i)
@@ -448,7 +379,7 @@ bool MPCC::set_solver_parameters(const std::array<Spline1D, 2>& adjusted_ref)
     auto ctrls_x = adjusted_ref[0].ctrls();
     auto ctrls_y = adjusted_ref[1].ctrls();
 
-    int num_params = ctrls_x.size() + ctrls_y.size() + _tubes[0].size() + _tubes[1].size() + 7;
+    int num_params = ctrls_x.size() + ctrls_y.size() + _tubes[0].size() + _tubes[1].size() + 8;
     if (num_params != NP)
     {
         std::cout << "[MPCC] reference size " << num_params
@@ -456,10 +387,11 @@ bool MPCC::set_solver_parameters(const std::array<Spline1D, 2>& adjusted_ref)
         return false;
     }
 
-    params[NP - 7] = _w_qc;
-    params[NP - 6] = _w_ql;
-    params[NP - 5] = _w_q_speed;
-    params[NP - 4] = _alpha;
+    params[NP - 8] = _w_qc;
+    params[NP - 7] = _w_ql;
+    params[NP - 6] = _w_q_speed;
+    params[NP - 5] = _alpha_abv;
+    params[NP - 4] = _alpha_blw;
     params[NP - 3] = _w_qc_lyap;
     params[NP - 2] = _w_ql_lyap;
     params[NP - 1] = _gamma;
@@ -546,6 +478,8 @@ void MPCC::reset_horizon()
 
 std::array<double, 2> MPCC::solve(const Eigen::VectorXd& state)
 {
+    _solve_success = false;
+
     if (_tubes.size() == 0)
     {
         std::cout << "[MPCC] tubes are not set yet, mpc cannot run" << std::endl;
@@ -647,6 +581,7 @@ std::array<double, 2> MPCC::solve(const Eigen::VectorXd& state)
                       << std::chrono::duration<double>(end - start).count() << "s" << std::endl;
             //          << elapsed_time * 1000 << std::endl;
             _is_shift_warm = true;
+            _solve_success = true;
             break;
         }
         else
@@ -698,7 +633,7 @@ Eigen::VectorXd MPCC::get_cbf_data(const Eigen::VectorXd& state, const Eigen::Ve
                                    bool is_abv) const
 {
     Eigen::VectorXd ret_data(3);
-    double s = state(4);
+    double s = 0;  // state(4);
 
     Eigen::VectorXd coeffs;
     if (is_abv)
@@ -731,11 +666,20 @@ Eigen::VectorXd MPCC::get_cbf_data(const Eigen::VectorXd& state, const Eigen::Ve
 
     double h_val;
     if (is_abv)
-        h_val = (tube_dist - signed_d - .2) * exp(-p);
+        h_val = (tube_dist - signed_d - .1) * exp(-p);
     else
-        h_val = (signed_d - tube_dist - .2) * exp(-p);
+        h_val = (signed_d - tube_dist - .1) * exp(-p);
 
     signed_d = is_abv ? signed_d : -signed_d;
+    if (h_val > 100)
+    {
+        std::cout << termcolor::yellow << "ref length is " << _ref_length << std::endl;
+        std::cout << "s: " << s << " h_val: " << h_val << " is abv: " << is_abv
+                  << termcolor::reset << std::endl;
+        std::cout << "tube dist: " << tube_dist << " signed_d: " << signed_d << std::endl;
+        exit(-1);
+    }
+
     return Eigen::Vector3d(h_val, signed_d, atan2(obs_diry, obs_dirx));
 }
 

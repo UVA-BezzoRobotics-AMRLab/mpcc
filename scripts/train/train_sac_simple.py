@@ -12,11 +12,12 @@ import numpy as np
 
 from tqdm import tqdm
 from os.path import join
-from gazebo_simulation import GazeboSimulation
+from simple_simulation import SimpleSimulation
 from train_realworld import TrainManager, CustomEnv
 
-INIT_POSITION = [-2, 3, 1.57]  # in world frame
-GOAL_POSITION = [10.0, 0]  # relative to the initial position
+# INIT_POSITION = [-2.25, -2, 1.57]  # in world frame
+INIT_POSITION = [-2.25, 8, -1.57]  # in world frame
+GOAL_POSITION = [0, -10]  # relative to the initial position
 
 bag_process = None
 gazebo_process = None
@@ -94,18 +95,15 @@ def run_sim(args):
     base_path = rospack.get_path("mpcc")
     planner_path = rospack.get_path("robust_fast_navigation")
     world_path = rospack.get_path("jackal_helper")
+    sim_path = rospack.get_path("cbf_tracking")
     world_name = f"BARN/world_{args.world_idx}.world"
 
-    os.environ["JACKAL_LASER"] = "1"
-    os.environ["JACKAL_LASER_MODEL"] = "ust10"
-    os.environ["JACKAL_LASER_OFFSET"] = "-0.065 0 0.01"
-
     print(
-        ">>>>>>>>>>>>>>>>>> Loading Gazebo Simulation with %s <<<<<<<<<<<<<<<<<<"
+        ">>>>>>>>>>>>>>>>>> Loading Simulation with %s <<<<<<<<<<<<<<<<<<"
         % (world_name)
     )
 
-    launch_file = join(world_path, "launch", "gazebo_launch.launch")
+    launch_file = join(sim_path, "launch", "simulator.launch")
     world_name = join(world_path, "worlds", world_name)
 
     gazebo_process = subprocess.Popen(
@@ -113,33 +111,30 @@ def run_sim(args):
             "roslaunch",
             launch_file,
             "world_name:=" + world_name,
-            "gui:=" + str(args.gui),
         ]
     )
     time.sleep(5)
 
-    collision_topic = "/mpc_done"
-    gazebo_sim = GazeboSimulation(
-        init_position=INIT_POSITION, collision_topic=collision_topic
-    )
+    collision_topic = "/mpc_done" if args.train else "/collision"
+    simple_sim = SimpleSimulation(collision_topic)
 
     init_coor = (INIT_POSITION[0], INIT_POSITION[1])
     # due to map / world transform, flip goal_pos coords...
     goal_coor = (
-        INIT_POSITION[0] + GOAL_POSITION[1],
-        INIT_POSITION[1] + GOAL_POSITION[0],
+        INIT_POSITION[0] + GOAL_POSITION[0],
+        INIT_POSITION[1] + GOAL_POSITION[1],
     )
 
-    pos = gazebo_sim.get_model_state().pose.position
+    pos = simple_sim.get_model_state().odom.pose.pose.position
     curr_coor = (pos.x, pos.y)
     collided = True
 
     # check whether the robot is reset, the collision is False
     while compute_distance(init_coor, curr_coor) > 0.1 or collided:
-        gazebo_sim.reset()  # Reset to the initial position
-        pos = gazebo_sim.get_model_state().pose.position
+        pos = simple_sim.get_model_state().odom.pose.pose.position
+        print(pos)
         curr_coor = (pos.x, pos.y)
-        collided = gazebo_sim.get_hard_collision()
+        collided = simple_sim.get_hard_collision()
         time.sleep(1)
 
     bag_fname = None
@@ -201,7 +196,7 @@ def run_sim(args):
     ##########################################################################
 
     curr_time = rospy.get_time()
-    pos = gazebo_sim.get_model_state().pose.position
+    pos = simple_sim.get_model_state().odom.pose.pose.position
     curr_coor = (pos.x, pos.y)
 
     prog_crash = False
@@ -217,14 +212,14 @@ def run_sim(args):
             break
 
         curr_time = rospy.get_time()
-        pos = gazebo_sim.get_model_state().pose.position
+        pos = simple_sim.get_model_state().odom.pose.pose.position
         curr_coor = (pos.x, pos.y)
         time.sleep(0.01)
 
     # start navigation, check position, time and collision
     start_time = curr_time
     collided = False
-    timeout_time = 100
+    timeout_time = 50
 
     if planner_process.poll() is not None or prog_crash:
         collided = True
@@ -235,7 +230,7 @@ def run_sim(args):
         and curr_time - start_time < timeout_time
     ):
         curr_time = rospy.get_time()
-        pos = gazebo_sim.get_model_state().pose.position
+        pos = simple_sim.get_model_state().odom.pose.pose.position
 
         curr_coor = (pos.x, pos.y)
         print(
@@ -243,7 +238,7 @@ def run_sim(args):
             % (curr_time - start_time, *curr_coor),
             end="\r",
         )
-        collided = gazebo_sim.get_hard_collision()
+        collided = simple_sim.get_hard_collision()
         while rospy.get_time() - curr_time < 0.1:
             time.sleep(0.01)
 
@@ -304,6 +299,7 @@ if __name__ == "__main__":
     signal.signal(signal.SIGINT, shutdown)
     sys.excepthook = myexcepthook
 
+    print("hello?")
     parser = argparse.ArgumentParser(description="test BARN navigation challenge")
     parser.add_argument("--world_idx", type=int, default=-1)
     parser.add_argument("--gui", action="store_true")
@@ -369,34 +365,48 @@ if __name__ == "__main__":
         h_value_max = rospy.get_param("/train/h_value_max", 100.0)
         alpha_min = rospy.get_param("/train/min_alpha", 0.1)
         alpha_max = rospy.get_param("/train/max_alpha", 10)
+        alpha_dot_min = rospy.get_param("/train/min_alpha_dot", -1)
+        alpha_dot_max = rospy.get_param("/train/max_alpha_dot", 1)
 
+        rospy.loginfo("Initializing training manager")
         env = CustomEnv()
-        env.state_dim = state_dim
-        env.theta_min = theta_min
-        env.theta_max = theta_max
-        env.velocity_min = velocity_min
-        env.velocity_max = velocity_max
-        env.acc_min = acc_min
-        env.acc_max = acc_max
-        env.angvel_min = angvel_min
-        env.angvel_max = angvel_max
-        env.distance_to_obstacle_min = dist_to_obs_min
-        env.distance_to_obstacle_max = dist_to_obs_max
-        env.heading_to_obstacle_min = head_to_obs_min
-        env.heading_to_obstacle_max = head_to_obs_max
-        env.progress_min = progress_min
-        env.progress_max = progress_max
-        env.h_value_min = h_value_min
-        env.h_value_max = h_value_max
-        env.alpha_min = alpha_min
-        env.alpha_max = alpha_max
+        env.state_dim = int(state_dim)
+        env.theta_min = float(theta_min)
+        env.theta_max = float(theta_max)
+        env.velocity_min = float(velocity_min)
+        env.velocity_max = float(velocity_max)
+        env.acc_min = float(acc_min)
+        env.acc_max = float(acc_max)
+        env.angvel_min = float(angvel_min)
+        env.angvel_max = float(angvel_max)
+        env.distance_to_obstacle_min = float(dist_to_obs_min)
+        env.distance_to_obstacle_max = float(dist_to_obs_max)
+        env.heading_to_obstacle_min = float(head_to_obs_min)
+        env.heading_to_obstacle_max = float(head_to_obs_max)
+        env.progress_min = float(progress_min)
+        env.progress_max = float(progress_max)
+        env.h_value_min = float(h_value_min)
+        env.h_value_max = float(h_value_max)
+        env.alpha_min = float(alpha_min)
+        env.alpha_max = float(alpha_max)
 
+        env.alpha_dot_min = float(alpha_dot_min)
+        env.alpha_dot_max = float(alpha_dot_max)
+
+        rospy.loginfo("Setting observation and action space")
+        env.set_obs_space()
+        rospy.loginfo("Setting action space")
+        env.set_action_space()
+
+        rospy.loginfo("making manager")
         trainer = TrainManager(db_filename, log_dir, batch_size, env)
+        rospy.loginfo("done making manager")
 
     # eval_worlds = np.array([294, 265,  78,  58, 181, 105, 295,  67, 132,  46,  53, 129,  24,
     #                         111, 140,  20, 187, 297, 133, 150, 241,  80, 281,   9,  21,  88,
     #                         106, 272, 253,  85, 100, 293,  30, 161, 262, 170, 115, 166, 235,
     #                         41,  18,  56, 239, 282, 194, 270,  42,  50, 110, 103])
+    rospy.loginfo("Starting simulation")
     eval_worlds = np.array(
         [
             8,
@@ -498,7 +508,10 @@ if __name__ == "__main__":
 
     else:
         # TRAIN
-        for i in range(251, 285):
+        for i in range(253, 289):
+            if i == 278 or i == 275 or i == 273 or i == 270 or i == 259:
+                continue
+
             args.world_idx = i
 
             for i in range(5):

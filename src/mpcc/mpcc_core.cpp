@@ -146,6 +146,8 @@ Eigen::VectorXd MPCCore::get_cbf_data(const Eigen::VectorXd &state,
     return _mpc->get_cbf_data(state, control, is_abv);
 }
 
+const bool MPCCore::get_solver_status() const { return _mpc->get_solver_status(); }
+
 const Eigen::VectorXd &MPCCore::get_state() const { return _mpc->get_state(); }
 
 std::vector<Eigen::VectorXd> MPCCore::get_horizon() const

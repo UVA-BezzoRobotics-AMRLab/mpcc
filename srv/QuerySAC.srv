@@ -9,8 +9,10 @@ float64 heading_dist
 float64 progress
 float64 h_val_abv
 float64 h_val_blw
-float64 alpha
+float64 alpha_abv
+float64 alpha_blw
+bool solver_status
 ---
 # Response
 bool success
-float64 alpha_dot
+float64[] alpha_dot

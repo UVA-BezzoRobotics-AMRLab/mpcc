@@ -63,12 +63,13 @@ class MPCCore
     void set_trajectory(const std::array<Spline1D, 2> &ref, double arclen);
     void set_tubes(const std::array<Eigen::VectorXd, 2> &tubes);
 
-    Eigen::VectorXd get_cbf_data(const Eigen::VectorXd &state, const Eigen::VectorXd &control,
-                                 bool is_abv) const;
+    const bool get_solver_status() const;
     const Eigen::VectorXd &get_state() const;
     std::vector<Eigen::VectorXd> get_horizon() const;
     const std::array<double, 2> &get_mpc_results() const;
     const std::map<std::string, double> &get_params() const;
+    Eigen::VectorXd get_cbf_data(const Eigen::VectorXd &state, const Eigen::VectorXd &control,
+                                 bool is_abv) const;
 
    protected:
     double limit(double prev_v, double input, double max_rate) const;

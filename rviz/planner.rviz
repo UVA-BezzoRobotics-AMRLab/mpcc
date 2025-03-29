@@ -4,10 +4,12 @@ Panels:
     Name: Displays
     Property Tree Widget:
       Expanded:
+        - /Global Options1
         - /Odometry1/Shape1
         - /MPPI1/Marker1
         - /MPPI1/Marker2
         - /MPPI1/Marker3
+        - /MarkerArray2
       Splitter Ratio: 0.5
     Tree Height: 441
   - Class: rviz/Selection
@@ -27,7 +29,7 @@ Panels:
   - Class: rviz/Time
     Name: Time
     SyncMode: 0
-    SyncSource: LaserScan
+    SyncSource: ""
   - Class: graph_rviz_plugin/Line graph
     Name: Line graph
     export_directory: ""
@@ -76,7 +78,21 @@ Panels:
     Property Tree Widget:
       Expanded: ~
       Splitter Ratio: 0.5
-    Tree Height: 734
+    Tree Height: 371
+  - Class: graph_rviz_plugin/Line graph
+    Name: Line graph
+    export_directory: ""
+    legend_enable: true
+    refresh_freq: 40
+    topic_0_color: 0
+    topic_0_name: /cbf_alpha
+    topic_0_thickness: 1
+    topic_0_type: std_msgs/Float64
+    w_time: 1
+    window_time_enable: false
+    y_max: 10
+    y_min: 0
+    yaxis_rescale_auto: true
 Preferences:
   PromptSaveOnExit: true
 Toolbars:
@@ -166,22 +182,6 @@ Visualization Manager:
       Value: false
     - Class: rviz/Marker
       Enabled: false
-      Marker Topic: /visualizer/edge_helper
-      Name: Helper_Poly_Edge
-      Namespaces:
-        {}
-      Queue Size: 100
-      Value: false
-    - Class: rviz/Marker
-      Enabled: false
-      Marker Topic: /visualizer/mesh_helper
-      Name: Helper_Poly_mesh
-      Namespaces:
-        {}
-      Queue Size: 100
-      Value: false
-    - Class: rviz/Marker
-      Enabled: false
       Marker Topic: /visualizer/edge
       Name: Poly_Edge
       Namespaces:
@@ -229,33 +229,16 @@ Visualization Manager:
       Unreliable: false
       Value: true
     - Alpha: 1
-      Arrow Length: 0.30000001192092896
-      Axes Length: 0.30000001192092896
-      Axes Radius: 0.009999999776482582
-      Class: rviz/PoseArray
-      Color: 255; 25; 0
-      Enabled: false
-      Head Length: 0.07000000029802322
-      Head Radius: 0.029999999329447746
-      Name: Intermediate_Goal
-      Queue Size: 10
-      Shaft Length: 0.23000000417232513
-      Shaft Radius: 0.009999999776482582
-      Shape: Arrow (Flat)
-      Topic: /intermediate_goal
-      Unreliable: false
-      Value: false
-    - Alpha: 1
       Class: rviz/PointStamped
       Color: 176; 132; 204
-      Enabled: true
+      Enabled: false
       History Length: 1
       Name: Current_Reference
       Queue Size: 10
       Radius: 0.15000000596046448
       Topic: /traj_point
       Unreliable: false
-      Value: true
+      Value: false
     - Angle Tolerance: 0.10000000149011612
       Class: rviz/Odometry
       Covariance:
@@ -296,7 +279,7 @@ Visualization Manager:
       Marker Topic: /MINCO_path
       Name: Trajectory
       Namespaces:
-        planTraj: true
+        {}
       Queue Size: 100
       Value: true
     - Class: rviz/Marker
@@ -304,17 +287,8 @@ Visualization Manager:
       Marker Topic: /paddedObs
       Name: Padded_Obs
       Namespaces:
-        padded: true
+        {}
       Queue Size: 100
-      Value: true
-    - Alpha: 1
-      Class: rviz/Polygon
-      Color: 25; 255; 0
-      Enabled: true
-      Name: Footprint
-      Queue Size: 10
-      Topic: /robust_planner/global_costmap/footprint
-      Unreliable: false
       Value: true
     - Class: rviz/Group
       Displays:
@@ -392,18 +366,6 @@ Visualization Manager:
       Topic: /correct_mpc
       Unreliable: false
       Value: true
-    - Class: rviz/Image
-      Enabled: false
-      Image Topic: /camera1
-      Max Value: 1
-      Median window: 5
-      Min Value: 0
-      Name: Image
-      Normalize Range: true
-      Queue Size: 2
-      Transport Hint: raw
-      Unreliable: false
-      Value: false
     - Alpha: 0.30000001192092896
       Class: rviz/Map
       Color Scheme: map
@@ -425,14 +387,22 @@ Visualization Manager:
       Topic: /initPoint
       Unreliable: false
       Value: false
+    - Class: rviz/MarkerArray
+      Enabled: true
+      Marker Topic: /tube_viz
+      Name: MarkerArray
+      Namespaces:
+        {}
+      Queue Size: 100
+      Value: true
     - Class: rviz/Marker
-      Enabled: false
-      Marker Topic: visualization_marker
+      Enabled: true
+      Marker Topic: /visualization_marker
       Name: Marker
       Namespaces:
         {}
       Queue Size: 100
-      Value: false
+      Value: true
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
@@ -460,7 +430,7 @@ Visualization Manager:
   Value: true
   Views:
     Current:
-      Angle: 4.710028171539307
+      Angle: 4.710023880004883
       Class: rviz/TopDownOrtho
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
@@ -470,22 +440,20 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Scale: -89.7635498046875
+      Scale: -118.03954315185547
       Target Frame: <Fixed Frame>
-      X: -2.5082316398620605
-      Y: 1.3060694932937622
+      X: -1.9891386032104492
+      Y: 0.9294828772544861
     Saved: ~
 Window Geometry:
   Displays:
-    collapsed: true
-  Height: 1023
-  Hide Left Dock: true
-  Hide Right Dock: true
-  Image:
     collapsed: false
+  Height: 1023
+  Hide Left Dock: false
+  Hide Right Dock: true
   Line graph:
     collapsed: false
-  QMainWindow State: 000000ff00000000fd0000000400000000000001c600000361fc020000000dfb0000001200530065006c0065006300740069006f006e00000001e10000009b0000005c00fffffffb0000001e0054006f006f006c002000500072006f007000650072007400690065007302000001ed000001df00000185000000a3fb000000120056006900650077007300200054006f006f02000001df000002110000018500000122fb000000200054006f006f006c002000500072006f0070006500720074006900650073003203000002880000011d000002210000017afb000000100044006900730070006c006100790073000000003d000000c9000000c900fffffffb0000002000730065006c0065006300740069006f006e00200062007500660066006500720200000138000000aa0000023a00000294fb00000014005700690064006500530074006500720065006f02000000e6000000d2000003ee0000030bfb0000000c004b0069006e0065006300740200000186000001060000030c00000261fb0000000a0049006d0061006700650000000263000000d60000001600fffffffb00000014004c0069006e0065002000670072006100700068000000003d0000017a0000007900fffffffb00000014004c0069006e0065002000670072006100700068000000003d000003610000007900fffffffb00000014004c0069006e006500200067007200610070006800000001b4000001ea0000007900fffffffb000000100044006900730070006c006100790073000000003d00000361000000c900ffffff000000010000010f00000380fc0200000003fb0000001e0054006f006f006c002000500072006f00700065007200740069006500730100000041000000780000000000000000fb0000000a00560069006500770073000000003e00000380000000a400fffffffb0000001200530065006c0065006300740069006f006e010000025a000000b200000000000000000000000200000490000000a9fc0100000001fb0000000a00560069006500770073030000004e00000080000002e10000019700000003000007800000003efc0100000002fb0000000800540069006d0065010000000000000780000003bc00fffffffb0000000800540069006d00650100000000000004500000000000000000000007800000036100000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
+  QMainWindow State: 000000ff00000000fd0000000400000000000001c600000361fc020000000efb0000001200530065006c0065006300740069006f006e00000001e10000009b0000005c00fffffffb0000001e0054006f006f006c002000500072006f007000650072007400690065007302000001ed000001df00000185000000a3fb000000120056006900650077007300200054006f006f02000001df000002110000018500000122fb000000200054006f006f006c002000500072006f0070006500720074006900650073003203000002880000011d000002210000017afb000000100044006900730070006c006100790073000000003d000001de000000c900fffffffb0000002000730065006c0065006300740069006f006e00200062007500660066006500720200000138000000aa0000023a00000294fb00000014005700690064006500530074006500720065006f02000000e6000000d2000003ee0000030bfb0000000c004b0069006e0065006300740200000186000001060000030c00000261fb0000000a0049006d0061006700650000000263000000d60000000000000000fb00000014004c0069006e0065002000670072006100700068010000003d000001b00000007900fffffffb00000014004c0069006e006500200067007200610070006800000000d30000010d0000007900fffffffb00000014004c0069006e006500200067007200610070006800000001a5000000800000007900fffffffb000000100044006900730070006c00610079007300000001f1000001ad000000c900fffffffb00000014004c0069006e006500200067007200610070006801000001f3000001ab0000007900ffffff000000010000010f00000380fc0200000003fb0000001e0054006f006f006c002000500072006f00700065007200740069006500730100000041000000780000000000000000fb0000000a00560069006500770073000000003e00000380000000a400fffffffb0000001200530065006c0065006300740069006f006e010000025a000000b200000000000000000000000200000490000000a9fc0100000001fb0000000a00560069006500770073030000004e00000080000002e10000019700000003000007800000003efc0100000002fb0000000800540069006d0065010000000000000780000003bc00fffffffb0000000800540069006d00650100000000000004500000000000000000000005b40000036100000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
   Selection:
     collapsed: false
   Time:

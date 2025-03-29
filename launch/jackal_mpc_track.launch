@@ -4,14 +4,14 @@
 	<arg name="odomTopic" default="/gmapping/odometry" />
 	<arg name="cmdTopic" default="/cmd_vel" />
   <arg name="mpc_type" value="mpcc" />
-  <arg name="logging" default="false" />
+  <arg name="use_rl" default="false" />
   <arg name="db_filename" default="$(env HOME)/dbs/rl_learning.db" />
 
   <rosparam file="$(find mpcc)/params/$(arg mpc_type).yaml" command="load" ns="mpcc/" />
   <rosparam file="$(find mpcc)/params/robo_params.yaml" command="load" ns="mpcc/" />
 
   <!-- For logging data when learning CBF adaptation -->
-	<group if="$(arg logging)">
+	<group if="$(arg use_rl)">
 		<node pkg="amrl_logging" type="sqlite_node" name="logging_node" output="screen">
 			<param name="db_filename" value="$(arg db_filename)"/>
 		</node>
