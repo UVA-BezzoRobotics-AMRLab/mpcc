@@ -1,6 +1,6 @@
 find_path(ACADOS_INCLUDE_DIRS
     NAMES ocp_nlp_interface.h
-    HINTS $ENV{ACADOS_SOURCE_DIR}/include /usr/local/include /usr/include)
+    HINTS $ENV{ACADOS_SOURCE_DIR}/include/acados_c /usr/local/include/acados_c /usr/include/acados_c)
 
 find_library(ACADOS_LIBRARIES
     NAMES acados
