@@ -86,7 +86,8 @@ MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~")
 
     // cbf params
     _nh.param("use_cbf", _use_cbf, false);
-    _nh.param("cbf_alpha", _cbf_alpha, .5);
+    _nh.param("cbf_alpha_abv", _cbf_alpha_abv, .5);
+    _nh.param("cbf_alpha_blw", _cbf_alpha_blw, .5);
     _nh.param("cbf_colinear", _cbf_colinear, .1);
     _nh.param("cbf_padding", _cbf_padding, .1);
     _nh.param("dynamic_alpha", _use_dynamic_alpha, false);
@@ -104,6 +105,9 @@ MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~")
     _nh.param("mpc_ref_samples", _mpc_ref_samples, 10);
 
     _nh.param("/train/logging", _is_logging, false);
+    _nh.param("/train/is_eval", _is_eval, false);
+    _nh.param("/train/min_alpha", _min_alpha, .1);
+    _nh.param("/train/max_alpha", _max_alpha, 10.);
 
     // num coeffs is tube_W_ANGVELdegree + 1
     _tube_degree += 1;
@@ -143,7 +147,8 @@ MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~")
     _mpc_params["CLF_W_CONTOUR"] = _w_qc_lyap;
 
     _mpc_params["USE_CBF"]           = _use_cbf;
-    _mpc_params["CBF_ALPHA"]         = _cbf_alpha;
+    _mpc_params["CBF_ALPHA_ABV"]     = _cbf_alpha_abv;
+    _mpc_params["CBF_ALPHA_BLW"]     = _cbf_alpha_blw;
     _mpc_params["CBF_COLINEAR"]      = _cbf_colinear;
     _mpc_params["CBF_PADDING"]       = _cbf_padding;
     _mpc_params["CBF_DYNAMIC_ALPHA"] = _use_dynamic_alpha;
@@ -162,7 +167,7 @@ MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~")
     _odomSub = nh.subscribe("/odometry/filtered", 1, &MPCCROS::odomcb, this);
     _trajSub = nh.subscribe("/reference_trajectory", 1, &MPCCROS::trajectorycb, this);
 
-    _timer = nh.createTimer(ros::Duration(_dt), &MPCCROS::controlLoop, this);
+    _timer = nh.createTimer(ros::Duration(_dt), &MPCCROS::mpcc_ctrl_loop, this);
     // _velPubTimer = nh.createTimer(ros::Duration(1./_vel_pub_freq),
     // &MPCCROS::publishVel, this);
 
@@ -179,7 +184,14 @@ MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~")
     timer_thread = std::thread(&MPCCROS::publishVel, this);
 
     if (_is_logging)
-        _logger = std::make_unique<logger::Logger>(nh);
+    {
+        ROS_WARN("******************");
+        ROS_WARN("LOGGING IS ENABLED");
+        ROS_WARN("******************");
+    }
+
+    if (_is_logging || _is_eval)
+        _logger = std::make_unique<logger::RLLogger>(nh, _min_alpha, _max_alpha, _is_logging);
 }
 
 MPCCROS::~MPCCROS()
@@ -189,9 +201,9 @@ MPCCROS::~MPCCROS()
 
 void MPCCROS::visualizeTubes()
 {
-    Eigen::VectorXd state = _mpc_core->get_state();
-    double len_start      = state(4);
-    double horizon        = _max_linvel * _dt * _mpc_steps;
+    const Eigen::VectorXd& state = _mpc_core->get_state();
+    double len_start             = state(4);
+    double horizon               = _max_linvel * _dt * _mpc_steps;
 
     if (len_start > _true_ref_len) return;
 
@@ -207,7 +219,7 @@ void MPCCROS::visualizeTubes()
     tubemsg_a.id                 = 87;
     tubemsg_a.action             = visualization_msgs::Marker::ADD;
     tubemsg_a.type               = visualization_msgs::Marker::LINE_STRIP;
-    tubemsg_a.scale.x            = .05;
+    tubemsg_a.scale.x            = .075;
     tubemsg_a.pose.orientation.w = 1;
 
     visualization_msgs::Marker tubemsg_b = tubemsg_a;
@@ -216,15 +228,15 @@ void MPCCROS::visualizeTubes()
     tubemsg_b.id                         = 88;
 
     visualization_msgs::Marker normals_msg;
-    normals_msg.header.frame_id    = _frame_id;
-    normals_msg.ns                 = "traj_normals";
-    normals_msg.id                 = 237;
-    normals_msg.action             = visualization_msgs::Marker::ADD;
-    normals_msg.type               = visualization_msgs::Marker::LINE_LIST;
-    normals_msg.scale.x            = .01;
-    normals_msg.pose.orientation.w = 1;
-    normals_msg.color.r            = 1.0;
-    normals_msg.color.a            = 1.0;
+    normals_msg.header.frame_id = _frame_id;
+    normals_msg.ns              = "traj_normals";
+    normals_msg.id              = 237;
+    normals_msg.action          = visualization_msgs::Marker::ADD;
+    normals_msg.type            = visualization_msgs::Marker::LINE_LIST;
+    normals_msg.scale.x         = .01;
+
+    normals_msg.color.r = 1.0;
+    normals_msg.color.a = 1.0;
 
     visualization_msgs::Marker normals_below_msg = normals_msg;
     normals_below_msg.ns                         = "traj_normals_below";
@@ -266,36 +278,65 @@ void MPCCROS::visualizeTubes()
         pt_b.y                     = point(1) + normal(1) * db;
         pt_b.z                     = 1.0;
 
-        // convenience for setting colors
-        std_msgs::ColorRGBA color_msg;
-        color_msg.r = 0.0;
-        color_msg.g = 1.0;
-        color_msg.b = 1.0;
-        color_msg.a = 1.0;
+        // if (fabs(da) > 1.1 || fabs(db) > 1.1)
+        // {
+        //     ROS_WARN("s: %.2f\tda = %.2f, db = %.2f", s, da, db);
+        //     should_exit = true;
+        // }
 
-        tubemsg_a.colors.push_back(color_msg);
-        tubemsg_b.colors.push_back(color_msg);
+        // convenience for setting colors
+        std_msgs::ColorRGBA color_msg_abv;
+        color_msg_abv.r = 192. / 255.;
+        color_msg_abv.g = 0.0;
+        color_msg_abv.b = 0.0;
+        color_msg_abv.a = 1.0;
+
+        std_msgs::ColorRGBA color_msg_blw;
+        color_msg_blw.r = 251. / 255.;
+        color_msg_blw.g = 133. / 255.;
+        color_msg_blw.b = 0.0;
+        color_msg_blw.a = 1.0;
+
+        tubemsg_a.colors.push_back(color_msg_abv);
+        tubemsg_b.colors.push_back(color_msg_blw);
 
         geometry_msgs::Point normal_pt;
         normal_pt.x = point(0);
         normal_pt.y = point(1);
         normal_pt.z = 1.0;
 
-        normals_msg.points.push_back(normal_pt);
-        normals_msg.points.push_back(pt_a);
+        // make normals msg instead show tangent line
+        Eigen::Vector2d tangent(tx, ty);
+        tangent.normalize();
+        geometry_msgs::Point tangent_pt;
+        tangent_pt.x = point(0) + .025 * tangent(0);
+        tangent_pt.y = point(1) + .025 * tangent(1);
+        tangent_pt.z = 1.0;
 
-        normals_below_msg.points.push_back(normal_pt);
-        normals_below_msg.points.push_back(pt_b);
+        normals_msg.points.push_back(normal_pt);
+        normals_msg.points.push_back(tangent_pt);
+
+        // normals_msg.points.push_back(normal_pt);
+        // normals_msg.points.push_back(pt_a);
+
+        // normals_below_msg.points.push_back(normal_pt);
+        // normals_below_msg.points.push_back(pt_b);
     }
 
     visualization_msgs::MarkerArray tube_ma;
     tube_ma.markers.reserve(2);
     tube_ma.markers.push_back(std::move(tubemsg_a));
     tube_ma.markers.push_back(std::move(tubemsg_b));
-    tube_ma.markers.push_back(std::move(normals_msg));
-    tube_ma.markers.push_back(std::move(normals_below_msg));
+    // tube_ma.markers.push_back(std::move(normals_msg));
+    // tube_ma.markers.push_back(std::move(normals_below_msg));
 
     _tubeVizPub.publish(tube_ma);
+
+    // if (should_exit)
+    // {
+    //     ROS_WARN("exiting due to large tube values");
+    //     exit(1);
+    // }
 }
 
 void MPCCROS::publishVel()
@@ -306,19 +347,10 @@ void MPCCROS::publishVel()
 
     while (ros::ok())
     {
-        _velPub.publish(_vel_msg);
+        if (_trajectory.points.size() > 0) _velPub.publish(_vel_msg);
+
         std::this_thread::sleep_for(pub_loop_period);
     }
-}
-
-/**********************************************************************
- * Callbacks for CBF alpha parameter, map, goal (not implemented
- * currently), odometry, distance map, and trajectory
- **********************************************************************/
-void MPCCROS::alphacb(const std_msgs::Float64::ConstPtr& msg)
-{
-    _mpc_params["CBF_ALPHA"] = msg->data;
-    _mpc_core->load_params(_mpc_params);
 }
 
 void MPCCROS::mapcb(const nav_msgs::OccupancyGrid::ConstPtr& msg)
@@ -375,6 +407,13 @@ void MPCCROS::odomcb(const nav_msgs::Odometry::ConstPtr& msg)
  **********************************************************************/
 void MPCCROS::trajectorycb(const trajectory_msgs::JointTrajectory::ConstPtr& msg)
 {
+    ROS_INFO("Trajectory received!");
+    if (msg->points.size() == 0)
+    {
+        ROS_WARN("Trajectory is empty!");
+        return;
+    }
+
     _prev_ref     = _ref;
     _prev_ref_len = _true_ref_len;
 
@@ -393,6 +432,8 @@ void MPCCROS::trajectorycb(const trajectory_msgs::JointTrajectory::ConstPtr& msg
         xs(i) = msg->points[i].positions[0];
         ys(i) = msg->points[i].positions[1];
         ss(i) = msg->points[i].time_from_start.toSec();
+
+        ROS_INFO("%.2f:\t(%.2f, %.2f)", ss(i), xs(i), ys(i));
     }
 
     _ref_len      = ss(ss.size() - 1);
@@ -415,6 +456,8 @@ void MPCCROS::trajectorycb(const trajectory_msgs::JointTrajectory::ConstPtr& msg
         double py  = splineY(end).coeff(0);
         double dx  = splineX.derivatives(end, 1).coeff(1);
         double dy  = splineY.derivatives(end, 1).coeff(1);
+
+        /*ROS_WARN("(%.2f, %.2f)\t(%.2f, %.2f)", px, py, dx, dy);*/
 
         double ds = _mpc_ref_len_sz / (N - 1);
 
@@ -475,7 +518,7 @@ double MPCCROS::get_s_from_state(const std::array<Spline1D, 2>& ref, double ref_
     return s;
 }
 
-void MPCCROS::mpcc_ctrl_loop()
+void MPCCROS::mpcc_ctrl_loop(const ros::TimerEvent& event)
 {
     if (!_is_init || _estop) return;
 
@@ -494,9 +537,7 @@ void MPCCROS::mpcc_ctrl_loop()
             _traj_reset = false;
         }
 
-        _s_dot = std::min(std::max((corrected_len - _prev_s) / _dt, 0.), _max_linvel);
-        ROS_INFO("len_start: %.2f\tprev_s: %.2f\tsdot: %.2f", corrected_len, _prev_s, _s_dot);
-
+        _s_dot  = std::min(std::max((corrected_len - _prev_s) / _dt, 0.), _max_linvel);
         _prev_s = len_start;
 
         if (len_start > _true_ref_len - 2e-1)
@@ -512,8 +553,6 @@ void MPCCROS::mpcc_ctrl_loop()
 
         double horizon = _mpc_ref_len_sz;
 
-        if (len_start > _ref_len) len_start = _ref_len;
-
         if (len_start + horizon > _ref_len) horizon = _ref_len - len_start;
 
         // generate tubes
@@ -522,8 +561,11 @@ void MPCCROS::mpcc_ctrl_loop()
         bool status   = true;
         if (_use_cbf)
         {
+            std::cout << "ref_len size is: " << _ref_len << std::endl;
             status = utils::get_tubes(_tube_degree, _tube_samples, _max_tube_width, _ref,
                                       _ref_len, len_start, horizon, _odom, _grid_map, _tubes);
+
+            ROS_INFO("finished tube generation");
         }
         else
         {
@@ -546,6 +588,18 @@ void MPCCROS::mpcc_ctrl_loop()
 
         _mpc_core->set_tubes(_tubes);
 
+        // get alpha value if logging is enabled
+        if (_is_logging || _is_eval)
+        {
+            // request alpha sets the alpha
+            bool status = _logger->request_alpha(*_mpc_core, _true_ref_len);
+            if (!status)
+            {
+                ROS_WARN("could not get alpha value from logger");
+                return;
+            }
+        }
+
         Eigen::VectorXd state(6);
         state << _odom(0), _odom(1), _odom(2), _vel_msg.linear.x, 0, _s_dot;
 
@@ -554,17 +608,13 @@ void MPCCROS::mpcc_ctrl_loop()
         _vel_msg.linear.x  = mpc_results[0];
         _vel_msg.angular.z = mpc_results[1];
 
+        // log data back to db if logging enabled
+        if (_is_logging || _is_eval)
+            _logger->log_transition(*_mpc_core, len_start, _true_ref_len);
+
         publishReference();
         publishMPCTrajectory();
-    }
-}
 
-void MPCCROS::controlLoop(const ros::TimerEvent&)
-{
-    mpcc_ctrl_loop();
-
-    if (_trajectory.points.size() > 0)
-    {
         geometry_msgs::PointStamped pt;
         pt.header.frame_id = _frame_id;
         pt.point.z         = .1;

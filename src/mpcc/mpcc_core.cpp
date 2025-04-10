@@ -32,6 +32,8 @@ void MPCCore::load_params(const std::map<std::string, double> &params)
     _prop_gain         = params.at("ANGLE_GAIN");
     _prop_angle_thresh = params.at("ANGLE_THRESH");
 
+    _params = params;
+
     _mpc->load_params(params);
 }
 
@@ -58,8 +60,17 @@ bool MPCCore::orient_robot()
     // calculate heading error between robot and trajectory start
     // use 1st point as most times first point has 0 velocity
 
-    double traj_heading =
-        atan2(_ref[1].derivatives(.1, 1).coeff(1), _ref[0].derivatives(.1, 1).coeff(1));
+    double start = get_s_from_odom();
+    double eps_s = .05;
+
+    /*std::cout << "start is " << start + eps_s << std::endl;*/
+
+    double traj_heading = atan2(_ref[1].derivatives(start + eps_s, 1).coeff(1),
+                                _ref[0].derivatives(start + eps_s, 1).coeff(1));
+
+    /*std::cout << "dx " << _ref[0].derivatives(start + eps_s, 1).coeff(1) << std::endl;*/
+    /*std::cout << "dy " << _ref[1].derivatives(start + eps_s, 1).coeff(1) << std::endl;*/
+    /*std::cout << "traj_heading is " << traj_heading << std::endl;*/
 
     // wrap between -pi and pi
     double e = atan2(sin(traj_heading - _odom(2)), cos(traj_heading - _odom(2)));
@@ -68,6 +79,8 @@ bool MPCCore::orient_robot()
               << "[MPC Core] trajectory reset, checking if we need to align... "
                  "error = "
               << e * 180. / M_PI << " deg" << termcolor::reset << std::endl;
+
+    if (isnan(e)) exit(-1);
 
     // if error is larger than _prop_angle_thresh use proportional controller to
     // align
@@ -81,6 +94,27 @@ bool MPCCore::orient_robot()
     }
 
     return false;
+}
+
+double MPCCore::get_s_from_odom() const
+{
+    // find the s which minimizes dist to robot
+    double s            = 0;
+    double min_dist     = 1e6;
+    Eigen::Vector2d pos = _odom.head(2);
+    for (double i = 0.0; i < _ref_length; i += .01)
+    {
+        Eigen::Vector2d p = Eigen::Vector2d(_ref[0](i).coeff(0), _ref[1](i).coeff(0));
+
+        double d = (pos - p).squaredNorm();
+        if (d < min_dist)
+        {
+            min_dist = d;
+            s        = i;
+        }
+    }
+
+    return s;
 }
 
 std::array<double, 2> MPCCore::solve(const Eigen::VectorXd &state)
@@ -138,9 +172,17 @@ std::array<double, 2> MPCCore::solve(const Eigen::VectorXd &state)
     return {_curr_vel, _curr_angvel};
 }
 
-Eigen::VectorXd MPCCore::get_state() { return _mpc->get_state(); }
+Eigen::VectorXd MPCCore::get_cbf_data(const Eigen::VectorXd &state,
+                                      const Eigen::VectorXd &control, bool is_abv) const
+{
+    return _mpc->get_cbf_data(state, control, is_abv);
+}
 
-std::vector<Eigen::VectorXd> MPCCore::get_horizon()
+const bool MPCCore::get_solver_status() const { return _mpc->get_solver_status(); }
+
+const Eigen::VectorXd &MPCCore::get_state() const { return _mpc->get_state(); }
+
+std::vector<Eigen::VectorXd> MPCCore::get_horizon() const
 {
     std::vector<Eigen::VectorXd> ret;
     ret.reserve(_mpc->mpc_x.size());
@@ -159,7 +201,11 @@ std::vector<Eigen::VectorXd> MPCCore::get_horizon()
     return ret;
 }
 
-double MPCCore::limit(double prev_v, double input, double max_rate)
+const std::map<std::string, double> &MPCCore::get_params() const { return _params; }
+
+const std::array<double, 2> &MPCCore::get_mpc_results() const { return _mpc_results; }
+
+double MPCCore::limit(double prev_v, double input, double max_rate) const
 {
     double ret = input;
     if (fabs(prev_v - input) / _dt > max_rate)

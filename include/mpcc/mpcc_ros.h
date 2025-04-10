@@ -5,6 +5,7 @@
 #include <geometry_msgs/PoseStamped.h>
 #include <geometry_msgs/TransformStamped.h>
 #include <geometry_msgs/Twist.h>
+#include <mpcc/logger.h>
 #include <nav_msgs/Odometry.h>
 #include <ros/ros.h>
 #include <sensor_msgs/LaserScan.h>
@@ -12,7 +13,6 @@
 #include <std_msgs/Float64.h>
 #include <std_srvs/Empty.h>
 #include <trajectory_msgs/JointTrajectory.h>
-#include <mpcc/logger.h>
 
 #include <grid_map_ros/GridMapRosConverter.hpp>
 #include <grid_map_ros/grid_map_ros.hpp>
@@ -52,7 +52,7 @@ class MPCCROS
      * N/A
      **********************************************************************/
 
-    void mpcc_ctrl_loop();
+    void mpcc_ctrl_loop(const ros::TimerEvent &event);
     /**********************************************************************
      * Function: MPCCROS::mpcc_ctrl_loop()
      * Description: Main control loop for MPC controller
@@ -79,7 +79,6 @@ class MPCCROS
      * Callbacks for CBF alpha parameter, map, goal (not implemented
      * currently), odometry, and trajectory
      **********************************************************************/
-    void alphacb(const std_msgs::Float64::ConstPtr &msg);
     void odomcb(const nav_msgs::Odometry::ConstPtr &msg);
     void mapcb(const nav_msgs::OccupancyGrid::ConstPtr &msg);
     void goalcb(const geometry_msgs::PoseStamped::ConstPtr &msg);
@@ -110,16 +109,6 @@ class MPCCROS
      * trajectory from obstacles.
      **********************************************************************/
 
-    void controlLoop(const ros::TimerEvent &);
-    /**********************************************************************
-     * Function: MPCCROS::controlLoop(const ros::TimerEvent&)
-     * Description: Timer callback for control loop
-     * Parameters:
-     * @param e: const ros::TimerEvent&
-     * Returns:
-     * N/A
-     **********************************************************************/
-
     /************************
      * Class variables
      ************************/
@@ -130,7 +119,7 @@ class MPCCROS
      * between different MPC class implementations, but in this project only
      * one is currently implemented (the MPCC). Will eventually add more.
      **********************************************************************/
-    std::unique_ptr<logger::Logger> _logger;
+    std::unique_ptr<logger::RLLogger> _logger;
 
     ros::Subscriber _trajSub;
     ros::Subscriber _trajNoResetSub;
@@ -181,7 +170,7 @@ class MPCCROS
         _max_angvel, _max_linvel, _bound_value, _x_goal, _y_goal, _theta_goal, _tol,
         _max_linacc, _max_anga, _w_cte, _w_pos, _w_qc, _w_ql, _w_q_speed;
 
-    double _cbf_alpha, _cbf_colinear, _cbf_padding;
+    double _cbf_alpha_abv, _cbf_alpha_blw, _cbf_colinear, _cbf_padding;
 
     double _prop_gain, _prop_angle_thresh;
 
@@ -205,6 +194,7 @@ class MPCCROS
         _use_dynamic_alpha;
 
     bool _is_logging;
+    bool _is_eval;
 
     int _tube_degree;
     int _tube_samples;

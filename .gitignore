@@ -3,6 +3,7 @@
 __pycache__
 .vscode
 *.json
+*.txt
 .clang-format*
 
 .cache/

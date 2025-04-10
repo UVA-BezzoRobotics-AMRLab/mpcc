@@ -41,7 +41,7 @@ inline bool raycast_grid(const Eigen::Vector2d& start, const Eigen::Vector2d& di
     double min_dist  = 1e6;
     double theta_dir = atan2(dir(1), dir(0));
 
-    for (int i = -2; i < 3; ++i)
+    for (int i = 0; i < 1; ++i)
     {
         // purturb by degrees each time
         double theta        = theta_dir + i * M_PI / 180;
@@ -238,16 +238,16 @@ inline bool get_tubes(int d, int N, double max_dist, const std::array<Spline1D, 
             double theta2 = atan2(typ, txp);
             curvature     = (theta2 - theta1) / 1e-1;
 
-            // if (theta2 - theta1 > 0)
-            // {
-            //     nx = -ty;
-            //     ny = tx;
-            // }
-            // else
-            // {
-            //     nx = ty;
-            //     ny = -tx;
-            // }
+            if (theta2 - theta1 > 0)
+            {
+                nx = -ty;
+                ny = tx;
+            }
+            else
+            {
+                nx = ty;
+                ny = -tx;
+            }
         }
         else
         {
@@ -258,16 +258,16 @@ inline bool get_tubes(int d, int N, double max_dist, const std::array<Spline1D, 
             double theta2 = atan2(typ, txp);
             curvature     = (theta1 - theta2) / 1e-1;
 
-            // if (theta1 - theta2 > 0)
-            // {
-            //     nx = -ty;
-            //     ny = tx;
-            // }
-            // else
-            // {
-            //     nx = ty;
-            //     ny = -tx;
-            // }
+            if (theta1 - theta2 > 0)
+            {
+                nx = -ty;
+                ny = tx;
+            }
+            else
+            {
+                nx = ty;
+                ny = -tx;
+            }
         }
 
         // double nx = traj[0].derivatives(s, 2).coeff(2);
@@ -304,7 +304,7 @@ inline bool get_tubes(int d, int N, double max_dist, const std::array<Spline1D, 
             if (n_vec.dot(abv_n_vec) > 0)
                 dist_above = std::min(dist_above, 1 / (2 * curvature));
             else
-                dist_below = std::min(dist_above, 1 / (2 * curvature));
+                dist_below = std::min(dist_below, 1 / (2 * curvature));
         }
 
         if (dist_above < min_dist_abv) min_dist_abv = dist_above;
@@ -326,7 +326,10 @@ inline bool get_tubes(int d, int N, double max_dist, const std::array<Spline1D, 
                 dist_above = dp.norm();
             }
             else if (dot_prod < 0 && dist_below < odom_dist)
+            {
+                std::cout << "forcefully setting dist_below to be " << dp.norm() << std::endl;
                 dist_below = dp.norm();
+            }
         }
 
         ds_above[i] = dist_above;
@@ -338,9 +341,14 @@ inline bool get_tubes(int d, int N, double max_dist, const std::array<Spline1D, 
     **************************************/
 
     // setup_lp(d, N, traj_arc_len, 0, ds_above);
+    std::cout << "len_start is: " << len_start << std::endl;
+    std::cout << "horizon is: " << horizon << std::endl;
+
     setup_lp(d, N, len_start, horizon, min_dist_abv / 1.1, ds_above);
     // setup_lp(d, N, horizon, 0, ds_above);
     cpg_solve();
+
+    std::cout << "solved!" << std::endl;
 
     std::string solved_str = "solved";
     // std::string status = CPG_Info.status;
@@ -371,19 +379,17 @@ inline bool get_tubes(int d, int N, double max_dist, const std::array<Spline1D, 
         upper_coeffs[i] = CPG_Result.prim->var2[i];
     }
 
-    if (!is_straight)
-    {
-        // print out dist abv as a row vector
-        std::cout << "dist_above = [";
-        for (int i = 0; i < N; ++i) std::cout << ds_above[i] << ", ";
-        std::cout << "];" << std::endl;
-    }
+    // print out dist abv as a row vector
+    std::cout << "dist_above = [";
+    for (int i = 0; i < N; ++i) std::cout << ds_above[i] << ", ";
+    std::cout << "];" << std::endl;
 
     // cpg_set_solver_default_settings();
     /*************************************
     ********* Setup & Solve Down *********
     **************************************/
 
+    std::cout << "min_dist_blw is: " << min_dist_blw << std::endl;
     setup_lp(d, N, len_start, horizon, min_dist_blw / 1.1, ds_below);
     // setup_lp(d, N, horizon, 0, ds_below);
     cpg_solve();
@@ -400,6 +406,10 @@ inline bool get_tubes(int d, int N, double max_dist, const std::array<Spline1D, 
 
     for (int i = 0; i < d; ++i) std::cout << CPG_Result.prim->var2[i] << ", ";
     std::cout << std::endl;
+
+    std::cout << "dist_below= [";
+    for (int i = 0; i < N; ++i) std::cout << ds_below[i] << ", ";
+    std::cout << "];" << std::endl;
 
     Eigen::VectorXd lower_coeffs;
     lower_coeffs.resize(d);
