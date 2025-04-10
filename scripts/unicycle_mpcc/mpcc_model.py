@@ -333,11 +333,11 @@ def export_mpcc_ode_model_spline_tube(params) -> AcadosModel:
     model.name = model_name
 
     # no setting cbf for con_h_expr_e since no u in final step
-    model.con_h_expr_0 = vertcat(con_abv, con_blw, lyap_con)
-    model.con_h_expr = vertcat(con_abv, con_blw, lyap_con)
+    # model.con_h_expr_0 = vertcat(con_abv, con_blw, lyap_con)
+    # model.con_h_expr = vertcat(con_abv, con_blw, lyap_con)
 
-    # model.con_h_expr_0 = vertcat(lyap_con)
-    # model.con_h_expr = vertcat(lyap_con)
+    model.con_h_expr_0 = vertcat(lyap_con)
+    model.con_h_expr = vertcat(lyap_con)
 
     # store meta information
     model.x_labels = [

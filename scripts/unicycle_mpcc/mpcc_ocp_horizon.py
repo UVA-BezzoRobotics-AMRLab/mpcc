@@ -156,31 +156,9 @@ def create_ocp_tube(yaml_file):
     ocp.constraints.ubu = np.array([3, np.pi / 2, 3])
     ocp.constraints.idxbu = np.array([0, 1, 2])
 
-    # constraints
-    # con_upper_bounds = np.array([0, 0])
-    # con_lower_bounds = np.array([-1e6, -1e6])
-
-    # con_upper_bounds = np.array([0])
-    # con_lower_bounds = np.array([1e-6])
-
-    # # hard constraint
-    # ocp.constraints.uh_0 = con_upper_bounds
-    # ocp.constraints.lh_0 = con_lower_bounds
-    # ocp.constraints.uh = con_upper_bounds
-    # ocp.constraints.lh = con_lower_bounds
-
-    # # soft constraint
-
-    # ocp.constraints.lsh_0 = np.zeros((1,))
-    # ocp.constraints.ush_0 = np.zeros((1,))
-    # ocp.constraints.idxsh_0 = np.array([0])
-
-    # ocp.constraints.lsh = np.zeros((1,))
-    # ocp.constraints.ush = np.zeros((1,))
-    # ocp.constraints.idxsh = np.array([0])
-
-    con_upper_bounds = np.array([1e6, 1e6, 0])
-    con_lower_bounds = np.array([0, 0, 1e-6])
+    # constraint bounds
+    con_upper_bounds = np.array([0])
+    con_lower_bounds = np.array([-1e6])
 
     # hard constraint
     ocp.constraints.uh_0 = con_upper_bounds
@@ -189,14 +167,32 @@ def create_ocp_tube(yaml_file):
     ocp.constraints.lh = con_lower_bounds
 
     # soft constraint
-
     ocp.constraints.lsh_0 = np.zeros((1,))
     ocp.constraints.ush_0 = np.zeros((1,))
-    ocp.constraints.idxsh_0 = np.array([2])
+    ocp.constraints.idxsh_0 = np.array([0])
 
     ocp.constraints.lsh = np.zeros((1,))
     ocp.constraints.ush = np.zeros((1,))
-    ocp.constraints.idxsh = np.array([2])
+    ocp.constraints.idxsh = np.array([0])
+
+    # con_upper_bounds = np.array([1e6, 1e6, 0])
+    # con_lower_bounds = np.array([0, 0, 1e-6])
+    #
+    # # hard constraint
+    # ocp.constraints.uh_0 = con_upper_bounds
+    # ocp.constraints.lh_0 = con_lower_bounds
+    # ocp.constraints.uh = con_upper_bounds
+    # ocp.constraints.lh = con_lower_bounds
+    #
+    # # soft constraint
+    #
+    # ocp.constraints.lsh_0 = np.zeros((1,))
+    # ocp.constraints.ush_0 = np.zeros((1,))
+    # ocp.constraints.idxsh_0 = np.array([2])
+    #
+    # ocp.constraints.lsh = np.zeros((1,))
+    # ocp.constraints.ush = np.zeros((1,))
+    # ocp.constraints.idxsh = np.array([2])
 
     grad_cost = 100
     hess_cost = 1

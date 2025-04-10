@@ -347,7 +347,8 @@ void MPCCROS::publishVel()
 
     while (ros::ok())
     {
-        _velPub.publish(_vel_msg);
+        if (_trajectory.points.size() > 0) _velPub.publish(_vel_msg);
+
         std::this_thread::sleep_for(pub_loop_period);
     }
 }
@@ -406,6 +407,13 @@ void MPCCROS::odomcb(const nav_msgs::Odometry::ConstPtr& msg)
  **********************************************************************/
 void MPCCROS::trajectorycb(const trajectory_msgs::JointTrajectory::ConstPtr& msg)
 {
+    ROS_INFO("Trajectory received!");
+    if (msg->points.size() == 0)
+    {
+        ROS_WARN("Trajectory is empty!");
+        return;
+    }
+
     _prev_ref     = _ref;
     _prev_ref_len = _true_ref_len;
 
@@ -424,6 +432,8 @@ void MPCCROS::trajectorycb(const trajectory_msgs::JointTrajectory::ConstPtr& msg
         xs(i) = msg->points[i].positions[0];
         ys(i) = msg->points[i].positions[1];
         ss(i) = msg->points[i].time_from_start.toSec();
+
+        ROS_INFO("%.2f:\t(%.2f, %.2f)", ss(i), xs(i), ys(i));
     }
 
     _ref_len      = ss(ss.size() - 1);
@@ -446,6 +456,8 @@ void MPCCROS::trajectorycb(const trajectory_msgs::JointTrajectory::ConstPtr& msg
         double py  = splineY(end).coeff(0);
         double dx  = splineX.derivatives(end, 1).coeff(1);
         double dy  = splineY.derivatives(end, 1).coeff(1);
+
+        /*ROS_WARN("(%.2f, %.2f)\t(%.2f, %.2f)", px, py, dx, dy);*/
 
         double ds = _mpc_ref_len_sz / (N - 1);
 
@@ -552,6 +564,8 @@ void MPCCROS::mpcc_ctrl_loop(const ros::TimerEvent& event)
             std::cout << "ref_len size is: " << _ref_len << std::endl;
             status = utils::get_tubes(_tube_degree, _tube_samples, _max_tube_width, _ref,
                                       _ref_len, len_start, horizon, _odom, _grid_map, _tubes);
+
+            ROS_INFO("finished tube generation");
         }
         else
         {

@@ -348,6 +348,8 @@ inline bool get_tubes(int d, int N, double max_dist, const std::array<Spline1D, 
     // setup_lp(d, N, horizon, 0, ds_above);
     cpg_solve();
 
+    std::cout << "solved!" << std::endl;
+
     std::string solved_str = "solved";
     // std::string status = CPG_Info.status;
     // if(strcmp(CPG_Info.status, solved_str.c_str()) != 0)
