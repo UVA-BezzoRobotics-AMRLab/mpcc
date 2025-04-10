@@ -25,7 +25,7 @@ roslaunch mpcc jackal_mpc_track.launch
 To run the trajectory generator, run the following:
 
 ```bash
-roslaunch cbf_tracking planner_gurobi.launch
+roslaunch robust_fast_navigation planner_gurobi.launch
 ```
 
 To view the planning process, you can open an rviz pane by using the rviz configuration in `rviz/`:
