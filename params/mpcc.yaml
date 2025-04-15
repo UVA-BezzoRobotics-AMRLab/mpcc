@@ -19,7 +19,7 @@ w_speed: .5
 # CLF Params
 w_lyap_lag_e: 1
 w_lyap_contour_e: 1
-clf_gamma: 5
+clf_gamma: .5
 
 # CBF params
 use_cbf: false
@@ -28,9 +28,9 @@ cbf_alpha_blw: 100
 cbf_colinear: .05
 cbf_padding: .05
 
-prop_gain: 1.5
-prop_gain_thresh: .349
-# prop_gain_thresh: 2.0
+prop_gain: 3 #1.5
+prop_gain_thresh: .5
+# prop_gain_thresh: .349
 
 max_tube_width: .75
 

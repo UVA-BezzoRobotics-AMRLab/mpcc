@@ -80,6 +80,7 @@ class MPCCROS
      * currently), odometry, and trajectory
      **********************************************************************/
     void odomcb(const nav_msgs::Odometry::ConstPtr &msg);
+    void dynaobscb(const nav_msgs::Odometry::ConstPtr &msg);
     void mapcb(const nav_msgs::OccupancyGrid::ConstPtr &msg);
     void goalcb(const geometry_msgs::PoseStamped::ConstPtr &msg);
     void trajectorycb(const trajectory_msgs::JointTrajectory::ConstPtr &msg);
@@ -109,6 +110,8 @@ class MPCCROS
      * trajectory from obstacles.
      **********************************************************************/
 
+    void visualizeTraj();
+
     /************************
      * Class variables
      ************************/
@@ -128,6 +131,7 @@ class MPCCROS
     ros::Subscriber _odomSub;
     ros::Subscriber _collisionSub;
     ros::Subscriber _mapSub;
+    ros::Subscriber _dynamicObsSub;
 
     ros::Publisher _velPub;
     ros::Publisher _trajPub;
@@ -141,6 +145,8 @@ class MPCCROS
     ros::Publisher _donePub;
     ros::Publisher _loggingPub;
     ros::Publisher _tubeVizPub;
+    ros::Publisher _refVizPub;
+    ros::Publisher _startPub;
 
     ros::ServiceServer _eStop_srv;
     ros::ServiceServer _mode_srv;

@@ -70,6 +70,7 @@ MPCC::MPCC()
     _ind_state_inc = 6;
     _ind_input_inc = 3;
 
+    _use_dyna_obs  = false;
     _is_shift_warm = false;
     _solve_success = false;
 
@@ -222,6 +223,12 @@ double MPCC::get_s_from_state(const Eigen::VectorXd& state)
     }
 
     return s;
+}
+
+void MPCC::set_dyna_obs(const Eigen::MatrixXd& dyna_obs)
+{
+    _use_dyna_obs = true;
+    _dyna_obs     = dyna_obs;
 }
 
 void MPCC::set_odom(const Eigen::VectorXd& odom) { _odom = odom; }
@@ -379,7 +386,7 @@ bool MPCC::set_solver_parameters(const std::array<Spline1D, 2>& adjusted_ref)
     auto ctrls_x = adjusted_ref[0].ctrls();
     auto ctrls_y = adjusted_ref[1].ctrls();
 
-    int num_params = ctrls_x.size() + ctrls_y.size() + _tubes[0].size() + _tubes[1].size() + 8;
+    int num_params = ctrls_x.size() + ctrls_y.size() + _tubes[0].size() + _tubes[1].size() + 10;
     if (num_params != NP)
     {
         std::cout << "[MPCC] reference size " << num_params
@@ -387,14 +394,16 @@ bool MPCC::set_solver_parameters(const std::array<Spline1D, 2>& adjusted_ref)
         return false;
     }
 
-    params[NP - 8] = _w_qc;
-    params[NP - 7] = _w_ql;
-    params[NP - 6] = _w_q_speed;
-    params[NP - 5] = _alpha_abv;
-    params[NP - 4] = _alpha_blw;
-    params[NP - 3] = _w_qc_lyap;
-    params[NP - 2] = _w_ql_lyap;
-    params[NP - 1] = _gamma;
+    params[NP - 10] = _w_qc;
+    params[NP - 9]  = _w_ql;
+    params[NP - 8]  = _w_q_speed;
+    params[NP - 7]  = _alpha_abv;
+    params[NP - 6]  = _alpha_blw;
+    params[NP - 5]  = _w_qc_lyap;
+    params[NP - 4]  = _w_ql_lyap;
+    params[NP - 3]  = _gamma;
+    params[NP - 2]  = 1e3;
+    params[NP - 1]  = 1e3;
 
     for (int i = 0; i < ctrls_x.size(); ++i)
     {
@@ -408,8 +417,26 @@ bool MPCC::set_solver_parameters(const std::array<Spline1D, 2>& adjusted_ref)
         params[i + 2 * ctrls_x.size() + _tubes[0].size()] = _tubes[1](i);
     }
 
+    Eigen::VectorXd obs_pos, obs_vel;
+    if (_use_dyna_obs)
+    {
+        obs_pos = _dyna_obs.col(0);
+        obs_vel = _dyna_obs.col(1);
+    }
+
     for (int i = 0; i < _mpc_steps + 1; ++i)
+    {
+        if (_use_dyna_obs)
+        {
+            params[NP - 2] = obs_pos(0);
+            params[NP - 1] = obs_pos(1);
+            std::cout << termcolor::red << "[MPCC] obs_pos: " << obs_pos.transpose()
+                      << termcolor::reset << std::endl;
+        }
         unicycle_model_mpcc_acados_update_params(_acados_ocp_capsule, i, params, NP);
+
+        obs_pos += obs_vel * _dt;
+    }
 
     return true;
 }

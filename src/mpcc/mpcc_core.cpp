@@ -37,6 +37,8 @@ void MPCCore::load_params(const std::map<std::string, double> &params)
     _mpc->load_params(params);
 }
 
+void MPCCore::set_dyna_obs(const Eigen::MatrixXd &dyna_obs) { _mpc->set_dyna_obs(dyna_obs); }
+
 void MPCCore::set_odom(const Eigen::Vector3d &odom)
 {
     _odom = odom;

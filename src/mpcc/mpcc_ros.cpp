@@ -166,17 +166,20 @@ MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~")
     _mapSub  = nh.subscribe("/map", 1, &MPCCROS::mapcb, this);
     _odomSub = nh.subscribe("/odometry/filtered", 1, &MPCCROS::odomcb, this);
     _trajSub = nh.subscribe("/reference_trajectory", 1, &MPCCROS::trajectorycb, this);
+    _obsSub  = nh.subscribe("/obs_odom", 1, &MPCCROS::dynaobscb, this);
 
     _timer = nh.createTimer(ros::Duration(_dt), &MPCCROS::mpcc_ctrl_loop, this);
     // _velPubTimer = nh.createTimer(ros::Duration(1./_vel_pub_freq),
     // &MPCCROS::publishVel, this);
 
+    _startPub       = nh.advertise<std_msgs::Float64>("/progress", 10);
     _pathPub        = nh.advertise<nav_msgs::Path>("/spline_path", 10);
     _velPub         = nh.advertise<geometry_msgs::Twist>("/cmd_vel", 10);
     _trajPub        = nh.advertise<nav_msgs::Path>("/mpc_prediction", 10);
     _solveTimePub   = nh.advertise<std_msgs::Float64>("/mpc_solve_time", 0);
-    _pointPub       = nh.advertise<geometry_msgs::PointStamped>("traj_point", 0);
     _goalReachedPub = nh.advertise<std_msgs::Bool>("/mpc_goal_reached", 10);
+    _pointPub       = nh.advertise<geometry_msgs::PointStamped>("traj_point", 0);
+    _refVizPub      = nh.advertise<visualization_msgs::Marker>("/mpc_reference", 0);
     _tubeVizPub     = nh.advertise<visualization_msgs::MarkerArray>("/tube_viz", 0);
     _horizonPub     = nh.advertise<trajectory_msgs::JointTrajectory>("/mpc_horizon", 0);
     _refPub = nh.advertise<trajectory_msgs::JointTrajectoryPoint>("/current_reference", 10);
@@ -339,6 +342,40 @@ void MPCCROS::visualizeTubes()
     // }
 }
 
+void MPCCROS::visualizeTraj()
+{
+    visualization_msgs::Marker traj;
+    traj.header.frame_id    = _frame_id;
+    traj.header.stamp       = ros::Time::now();
+    traj.ns                 = "mpc_reference";
+    traj.id                 = 117;
+    traj.action             = visualization_msgs::Marker::ADD;
+    traj.type               = visualization_msgs::Marker::LINE_STRIP;
+    traj.scale.x            = .075;
+    traj.pose.orientation.w = 1;
+
+    for (double s = 0; s < _ref_len; s += .05)
+    {
+        double px = _ref[0](s).coeff(0);
+        double py = _ref[1](s).coeff(0);
+
+        geometry_msgs::Point& pt_a = traj.points.emplace_back();
+        pt_a.x                     = px;
+        pt_a.y                     = py;
+        pt_a.z                     = 1.0;
+
+        std_msgs::ColorRGBA color_msg;
+        color_msg.r = 0;
+        color_msg.g = 0.0;
+        color_msg.b = 192. / 255.;
+        color_msg.a = 1.0;
+
+        traj.colors.push_back(color_msg);
+    }
+
+    _refVizPub.publish(traj);
+}
+
 void MPCCROS::publishVel()
 {
     constexpr double pub_vel_loop_rate_hz = 50;
@@ -347,7 +384,8 @@ void MPCCROS::publishVel()
 
     while (ros::ok())
     {
-        if (_trajectory.points.size() > 0) _velPub.publish(_vel_msg);
+        /*if (_trajectory.points.size() > 0) _velPub.publish(_vel_msg);*/
+        _velPub.publish(_vel_msg);
 
         std::this_thread::sleep_for(pub_loop_period);
     }
@@ -393,6 +431,16 @@ void MPCCROS::odomcb(const nav_msgs::Odometry::ConstPtr& msg)
     }
 }
 
+void MPCCROS::dynaobscb(const nav_msgs::Odometry::ConstPtr& msg)
+{
+    Eigen::MatrixXd dyna_obs(3, 2);
+    dyna_obs.col(0) << msg->pose.pose.position.x, msg->pose.pose.position.y,
+        msg->pose.pose.position.z;
+    dyna_obs.col(1) << msg->twist.twist.linear.x, msg->twist.twist.linear.y,
+        msg->pose.pose.position.z;
+
+    _mpc_core->set_dyna_obs(dyna_obs);
+}
 /**********************************************************************
  * Function: MPCCROS::trajectorycb(const trajectory_msgs::JointTrajectory::ConstPtr& msg)
  * Description: Callback for trajectory message
@@ -433,7 +481,7 @@ void MPCCROS::trajectorycb(const trajectory_msgs::JointTrajectory::ConstPtr& msg
         ys(i) = msg->points[i].positions[1];
         ss(i) = msg->points[i].time_from_start.toSec();
 
-        ROS_INFO("%.2f:\t(%.2f, %.2f)", ss(i), xs(i), ys(i));
+        /*ROS_INFO("%.2f:\t(%.2f, %.2f)", ss(i), xs(i), ys(i));*/
     }
 
     _ref_len      = ss(ss.size() - 1);
@@ -492,6 +540,8 @@ void MPCCROS::trajectorycb(const trajectory_msgs::JointTrajectory::ConstPtr& msg
 
     _mpc_core->set_trajectory(_ref, _ref_len);
 
+    visualizeTraj();
+
     ROS_INFO("**********************************************************");
     ROS_INFO("MPC received trajectory! Length: %.2f", _ref_len);
     ROS_INFO("**********************************************************");
@@ -522,111 +572,115 @@ void MPCCROS::mpcc_ctrl_loop(const ros::TimerEvent& event)
 {
     if (!_is_init || _estop) return;
 
-    if (_trajectory.points.size() != 0)
+    if (_trajectory.points.size() == 0) return;
+
+    double len_start     = get_s_from_state(_ref, _true_ref_len);
+    double corrected_len = len_start;
+
+    ROS_INFO("len_start is: %.2f / %.2f", len_start, _true_ref_len);
+
+    std_msgs::Float64 start_msg;
+    start_msg.data = len_start / _true_ref_len;
+    _startPub.publish(start_msg);
+
+    // correct len_start and _prev_s if trajectory reset
+    if (_traj_reset && _prev_ref_len > 0)
     {
-        double len_start     = get_s_from_state(_ref, _true_ref_len);
-        double corrected_len = len_start;
+        // get arc_len of previous trajectory
+        double s = get_s_from_state(_prev_ref, _prev_ref_len);
+        corrected_len += s;
 
-        // correct len_start and _prev_s if trajectory reset
-        if (_traj_reset && _prev_ref_len > 0)
+        _traj_reset = false;
+    }
+
+    _s_dot  = std::min(std::max((corrected_len - _prev_s) / _dt, 0.), _max_linvel);
+    _prev_s = len_start;
+
+    if (len_start > _true_ref_len - 3e-1)
+    {
+        ROS_INFO("Reached end of traj %.2f / %.2f", len_start, _true_ref_len);
+        _vel_msg.linear.x  = 0;
+        _vel_msg.angular.z = 0;
+
+        _trajectory.points.clear();
+
+        return;
+    }
+
+    double horizon = _mpc_ref_len_sz;
+
+    if (len_start + horizon > _ref_len) horizon = _ref_len - len_start;
+
+    // generate tubes
+    // std::vector<SplineWrapper> tubes;
+    ros::Time now = ros::Time::now();
+    bool status   = true;
+    if (_use_cbf)
+    {
+        std::cout << "ref_len size is: " << _ref_len << std::endl;
+        status = utils::get_tubes(_tube_degree, _tube_samples, _max_tube_width, _ref, _ref_len,
+                                  len_start, horizon, _odom, _grid_map, _tubes);
+
+        ROS_INFO("finished tube generation");
+    }
+    else
+    {
+        Eigen::VectorXd upper_coeffs(_tube_degree);
+        Eigen::VectorXd lower_coeffs(_tube_degree);
+
+        upper_coeffs.setZero();
+        lower_coeffs.setZero();
+        upper_coeffs(0) = 100;
+        lower_coeffs(0) = -100;
+
+        _tubes[0] = upper_coeffs;
+        _tubes[1] = lower_coeffs;
+    }
+
+    if (!status)
+        ROS_WARN("could not generate tubes, mpc not running");
+    else
+        visualizeTubes();
+
+    _mpc_core->set_tubes(_tubes);
+
+    // get alpha value if logging is enabled
+    if (_is_logging || _is_eval)
+    {
+        // request alpha sets the alpha
+        bool status = _logger->request_alpha(*_mpc_core, _true_ref_len);
+        if (!status)
         {
-            // get arc_len of previous trajectory
-            double s = get_s_from_state(_prev_ref, _prev_ref_len);
-            corrected_len += s;
-
-            _traj_reset = false;
-        }
-
-        _s_dot  = std::min(std::max((corrected_len - _prev_s) / _dt, 0.), _max_linvel);
-        _prev_s = len_start;
-
-        if (len_start > _true_ref_len - 2e-1)
-        {
-            ROS_INFO("Reached end of traj %.2f / %.2f", len_start, _true_ref_len);
-            _vel_msg.linear.x  = 0;
-            _vel_msg.angular.z = 0;
-
-            _trajectory.points.clear();
-
+            ROS_WARN("could not get alpha value from logger");
             return;
         }
-
-        double horizon = _mpc_ref_len_sz;
-
-        if (len_start + horizon > _ref_len) horizon = _ref_len - len_start;
-
-        // generate tubes
-        // std::vector<SplineWrapper> tubes;
-        ros::Time now = ros::Time::now();
-        bool status   = true;
-        if (_use_cbf)
-        {
-            std::cout << "ref_len size is: " << _ref_len << std::endl;
-            status = utils::get_tubes(_tube_degree, _tube_samples, _max_tube_width, _ref,
-                                      _ref_len, len_start, horizon, _odom, _grid_map, _tubes);
-
-            ROS_INFO("finished tube generation");
-        }
-        else
-        {
-            Eigen::VectorXd upper_coeffs(_tube_degree);
-            Eigen::VectorXd lower_coeffs(_tube_degree);
-
-            upper_coeffs.setZero();
-            lower_coeffs.setZero();
-            upper_coeffs(0) = 100;
-            lower_coeffs(0) = -100;
-
-            _tubes[0] = upper_coeffs;
-            _tubes[1] = lower_coeffs;
-        }
-
-        if (!status)
-            ROS_WARN("could not generate tubes, mpc not running");
-        else
-            visualizeTubes();
-
-        _mpc_core->set_tubes(_tubes);
-
-        // get alpha value if logging is enabled
-        if (_is_logging || _is_eval)
-        {
-            // request alpha sets the alpha
-            bool status = _logger->request_alpha(*_mpc_core, _true_ref_len);
-            if (!status)
-            {
-                ROS_WARN("could not get alpha value from logger");
-                return;
-            }
-        }
-
-        Eigen::VectorXd state(6);
-        state << _odom(0), _odom(1), _odom(2), _vel_msg.linear.x, 0, _s_dot;
-
-        std::array<double, 2> mpc_results = _mpc_core->solve(state);
-
-        _vel_msg.linear.x  = mpc_results[0];
-        _vel_msg.angular.z = mpc_results[1];
-
-        // log data back to db if logging enabled
-        if (_is_logging || _is_eval)
-            _logger->log_transition(*_mpc_core, len_start, _true_ref_len);
-
-        publishReference();
-        publishMPCTrajectory();
-
-        geometry_msgs::PointStamped pt;
-        pt.header.frame_id = _frame_id;
-        pt.point.z         = .1;
-
-        double s = get_s_from_state(_ref, _true_ref_len);
-
-        pt.header.stamp = ros::Time::now();
-        pt.point.x      = _ref[0](s).coeff(0);
-        pt.point.y      = _ref[1](s).coeff(0);
-
-        _pointPub.publish(pt);
     }
+
+    Eigen::VectorXd state(6);
+    state << _odom(0), _odom(1), _odom(2), _vel_msg.linear.x, 0, _s_dot;
+
+    std::array<double, 2> mpc_results = _mpc_core->solve(state);
+
+    _vel_msg.linear.x  = mpc_results[0];
+    _vel_msg.angular.z = mpc_results[1];
+
+    // log data back to db if logging enabled
+    if (_is_logging || _is_eval) _logger->log_transition(*_mpc_core, len_start, _true_ref_len);
+
+    publishReference();
+    publishMPCTrajectory();
+
+    geometry_msgs::PointStamped pt;
+    pt.header.frame_id = _frame_id;
+    pt.point.z         = .1;
+
+    double s = get_s_from_state(_ref, _true_ref_len);
+
+    pt.header.stamp = ros::Time::now();
+    pt.point.x      = _ref[0](s).coeff(0);
+    pt.point.y      = _ref[1](s).coeff(0);
+
+    _pointPub.publish(pt);
 }
 
 void MPCCROS::publishReference()

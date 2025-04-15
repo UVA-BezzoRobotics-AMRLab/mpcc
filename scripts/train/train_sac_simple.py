@@ -15,9 +15,9 @@ from os.path import join
 from simple_simulation import SimpleSimulation
 from train_realworld import TrainManager, CustomEnv
 
-# INIT_POSITION = [-2.25, -2, 1.57]  # in world frame
-INIT_POSITION = [-2.25, 8, -1.57]  # in world frame
-GOAL_POSITION = [0, -10]  # relative to the initial position
+INIT_POSITION = [-2.25, -2, 1.57]  # in world frame
+# INIT_POSITION = [-2.25, 8, -1.57]  # in world frame
+GOAL_POSITION = [0, 10]  # relative to the initial position
 
 bag_process = None
 gazebo_process = None
@@ -474,6 +474,7 @@ if __name__ == "__main__":
     if args.test_suite:
         # sample 50 worlds out of 300 excluding 200-229
         eval_worlds = np.sort(eval_worlds)
+        eval_worlds = [6 * i for i in range(50)]
         for world in eval_worlds:
 
             for i in range(5):
