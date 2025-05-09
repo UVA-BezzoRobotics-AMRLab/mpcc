@@ -77,12 +77,17 @@ bool MPCCore::orient_robot()
     // wrap between -pi and pi
     double e = atan2(sin(traj_heading - _odom(2)), cos(traj_heading - _odom(2)));
 
+    if (isnan(e))
+    {
+        std::cout << termcolor::red << "[MPC Core] heading error nan, returning"
+                  << termcolor::reset << std::endl;
+        return false;
+    }
+
     std::cout << termcolor::yellow
               << "[MPC Core] trajectory reset, checking if we need to align... "
                  "error = "
               << e * 180. / M_PI << " deg" << termcolor::reset << std::endl;
-
-    if (isnan(e)) exit(-1);
 
     // if error is larger than _prop_angle_thresh use proportional controller to
     // align

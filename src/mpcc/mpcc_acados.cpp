@@ -36,6 +36,8 @@ MPCC::MPCC()
     _ref_len_sz  = 4.0;
     _ref_length  = 0;
 
+    _has_run = true;
+
     _acados_ocp_capsule = nullptr;
     _new_time_steps     = nullptr;
 
@@ -531,7 +533,13 @@ std::array<double, 2> MPCC::solve(const Eigen::VectorXd& state, bool is_reverse)
     // Eigen::VectorXd x0(NBX0);
     // x0 << state(0), state(1), state(2), state(3), 0, _s_dot;
     Eigen::VectorXd x0 = state;
-    if (x0(2) < 0) x0(2) += 2 * M_PI;
+    if (_has_run)
+    {
+        Eigen::VectorXd prev_x0 = _prev_x0.head(NX);
+        double etheta           = x0(2) - prev_x0(2);
+        if (etheta > M_PI) x0(2) -= 2 * M_PI;
+        if (etheta < -M_PI) x0(2) += 2 * M_PI;
+    }
 
     memcpy(lbx0, &x0[0], NBX0 * sizeof(double));
     memcpy(ubx0, &x0[0], NBX0 * sizeof(double));
@@ -650,6 +658,8 @@ std::array<double, 2> MPCC::solve(const Eigen::VectorXd& state, bool is_reverse)
 
         double signed_d = (x - xr) * obs_dirx + (y - yr) * obs_diry;
     }
+
+    _has_run = true;
 
     _state << _prev_x0[_x_start], _prev_x0[_y_start], _prev_x0[_theta_start],
         _prev_x0[_v_start], s, _prev_x0[_s_dot_start];

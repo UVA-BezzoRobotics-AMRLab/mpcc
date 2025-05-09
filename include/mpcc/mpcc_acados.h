@@ -232,6 +232,7 @@ class MPCC
     bool _is_shift_warm;
     bool _solve_success;
     bool _use_dyna_obs;
+    bool _has_run;
 
     double *_new_time_steps;
 

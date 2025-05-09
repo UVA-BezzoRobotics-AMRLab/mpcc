@@ -363,7 +363,7 @@ void MPCCROS::visualizeTraj()
     traj.scale.x            = .075;
     traj.pose.orientation.w = 1;
 
-    for (double s = 0; s < _ref_len; s += .05)
+    for (double s = 0; s < _true_ref_len; s += .05)
     {
         double px = _ref[0](s).coeff(0);
         double py = _ref[1](s).coeff(0);
