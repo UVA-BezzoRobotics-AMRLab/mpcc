@@ -22,10 +22,11 @@
 
 MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~")
 {
-    _estop      = false;
-    _is_init    = false;
-    _is_goal    = false;
-    _traj_reset = false;
+    _estop        = false;
+    _is_init      = false;
+    _is_goal      = false;
+    _traj_reset   = false;
+    _reverse_mode = false;
 
     _curr_vel     = 0;
     _ref_len      = 0;
@@ -186,6 +187,8 @@ MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~")
 
     timer_thread = std::thread(&MPCCROS::publishVel, this);
 
+    _backup_srv = nh.advertiseService("/mpc_backup", &MPCCROS::toggleBackup, this);
+
     if (_is_logging)
     {
         ROS_WARN("******************");
@@ -200,6 +203,12 @@ MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~")
 MPCCROS::~MPCCROS()
 {
     if (timer_thread.joinable()) timer_thread.join();
+}
+
+bool MPCCROS::toggleBackup(std_srvs::Empty::Request& req, std_srvs::Empty::Response& res)
+{
+    _reverse_mode = !_reverse_mode;
+    return true;
 }
 
 void MPCCROS::visualizeTubes()
@@ -421,6 +430,13 @@ void MPCCROS::odomcb(const nav_msgs::Odometry::ConstPtr& msg)
     _odom(0) = msg->pose.pose.position.x;
     _odom(1) = msg->pose.pose.position.y;
     _odom(2) = yaw;
+
+    if (_reverse_mode)
+    {
+        _odom(2) += M_PI;
+        // wrap to pi
+        if (_odom(2) > M_PI) _odom(2) -= 2 * M_PI;
+    }
 
     _mpc_core->set_odom(_odom);
 
@@ -657,9 +673,11 @@ void MPCCROS::mpcc_ctrl_loop(const ros::TimerEvent& event)
     }
 
     Eigen::VectorXd state(6);
-    state << _odom(0), _odom(1), _odom(2), _vel_msg.linear.x, 0, _s_dot;
+    double vel = _vel_msg.linear.x;
+    if (_reverse_mode) vel *= -1;
+    state << _odom(0), _odom(1), _odom(2), vel, 0, _s_dot;
 
-    std::array<double, 2> mpc_results = _mpc_core->solve(state);
+    std::array<double, 2> mpc_results = _mpc_core->solve(state, _reverse_mode);
 
     _vel_msg.linear.x  = mpc_results[0];
     _vel_msg.angular.z = mpc_results[1];

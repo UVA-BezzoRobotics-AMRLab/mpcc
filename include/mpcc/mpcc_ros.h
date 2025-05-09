@@ -112,6 +112,15 @@ class MPCCROS
 
     void visualizeTraj();
 
+    /**********************************************************************
+     * Function: MPCCROS::toggleBackup()
+     * Description: Toggles backup driving
+     * Parameters:
+     * Returns:
+     * N/A
+     **********************************************************************/
+    bool toggleBackup(std_srvs::Empty::Request &req, std_srvs::Empty::Response &res);
+
     /************************
      * Class variables
      ************************/
@@ -150,6 +159,7 @@ class MPCCROS
 
     ros::ServiceServer _eStop_srv;
     ros::ServiceServer _mode_srv;
+    ros::ServiceServer _backup_srv;
 
     ros::ServiceClient _sac_srv;
 
@@ -197,7 +207,7 @@ class MPCCROS
 
     double _dt, _curr_vel, _curr_ang_vel, _vel_pub_freq;
     bool _is_init, _is_goal, _teleop, _traj_reset, _use_vicon, _estop, _is_at_goal, _use_cbf,
-        _use_dynamic_alpha;
+        _use_dynamic_alpha, _reverse_mode;
 
     bool _is_logging;
     bool _is_eval;

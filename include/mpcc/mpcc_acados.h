@@ -25,7 +25,7 @@ class MPCC
     MPCC();
     ~MPCC();
 
-    std::array<double, 2> solve(const Eigen::VectorXd &state);
+    std::array<double, 2> solve(const Eigen::VectorXd &state, bool is_reverse = false);
 
     void load_params(const std::map<std::string, double> &params);
     /**********************************************************************

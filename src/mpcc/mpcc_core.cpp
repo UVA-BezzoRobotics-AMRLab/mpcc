@@ -119,7 +119,7 @@ double MPCCore::get_s_from_odom() const
     return s;
 }
 
-std::array<double, 2> MPCCore::solve(const Eigen::VectorXd &state)
+std::array<double, 2> MPCCore::solve(const Eigen::VectorXd &state, bool is_reverse)
 {
     if (!_is_set)
     {
@@ -142,7 +142,9 @@ std::array<double, 2> MPCCore::solve(const Eigen::VectorXd &state)
     auto start = std::chrono::high_resolution_clock::now();
     // Eigen::VectorXd state(4);
     // state << _odom(0), _odom(1), _odom(2), _curr_vel;
-    _mpc_results = _mpc->solve(state);
+    if (is_reverse) _curr_vel = -1 * state(3);
+    _mpc_results = _mpc->solve(state, is_reverse);
+    if (is_reverse) _mpc_results[1] *= -1;
 
     // _mpc_results = _mpc->Solve(_state, _reference);
     auto end      = std::chrono::high_resolution_clock::now();

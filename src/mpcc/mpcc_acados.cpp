@@ -503,7 +503,7 @@ void MPCC::reset_horizon()
     }
 }
 
-std::array<double, 2> MPCC::solve(const Eigen::VectorXd& state)
+std::array<double, 2> MPCC::solve(const Eigen::VectorXd& state, bool is_reverse)
 {
     _solve_success = false;
 
@@ -531,6 +531,7 @@ std::array<double, 2> MPCC::solve(const Eigen::VectorXd& state)
     // Eigen::VectorXd x0(NBX0);
     // x0 << state(0), state(1), state(2), state(3), 0, _s_dot;
     Eigen::VectorXd x0 = state;
+    if (x0(2) < 0) x0(2) += 2 * M_PI;
 
     memcpy(lbx0, &x0[0], NBX0 * sizeof(double));
     memcpy(ubx0, &x0[0], NBX0 * sizeof(double));
@@ -652,6 +653,8 @@ std::array<double, 2> MPCC::solve(const Eigen::VectorXd& state)
 
     _state << _prev_x0[_x_start], _prev_x0[_y_start], _prev_x0[_theta_start],
         _prev_x0[_v_start], s, _prev_x0[_s_dot_start];
+
+    /*if (is_reverse) _prev_u0[0] *= -1;*/
 
     return {_prev_u0[1], _prev_u0[0]};
 }
