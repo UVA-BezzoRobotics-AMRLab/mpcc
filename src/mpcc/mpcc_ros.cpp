@@ -393,8 +393,9 @@ void MPCCROS::publishVel()
 
     while (ros::ok())
     {
-        /*if (_trajectory.points.size() > 0) _velPub.publish(_vel_msg);*/
-        _velPub.publish(_vel_msg);
+        if (_trajectory.points.size() > 0) _velPub.publish(_vel_msg); 
+	
+        // _velPub.publish(_vel_msg);
 
         std::this_thread::sleep_for(pub_loop_period);
     }
