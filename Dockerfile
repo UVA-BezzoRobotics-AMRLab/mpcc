@@ -17,6 +17,7 @@ RUN apt-get update && apt-get upgrade -y && \
 WORKDIR /home
 RUN git clone https://github.com/acados/acados.git && \
     cd acados && \
+    git checkout 01452a6 && \
     git submodule update --init --recursive && \
     mkdir -p build && \
     cd build && \
@@ -64,6 +65,7 @@ RUN git clone https://github.com/ANYbotics/grid_map.git src/grid_map && \
 # copy the package to the workspace and build
 COPY . ./src/mpcc
 
+
 RUN apt install -y --no-install-recommends python3.8-venv && \
     python3.8 -m venv venv && \
     . /home/catkin_ws/venv/bin/activate && \
@@ -82,7 +84,7 @@ RUN . /home/catkin_ws/venv/bin/activate && python3 tube_lp_gen.py --yaml=/home/c
 
 WORKDIR /home/catkin_ws
 
-RUN /bin/bash -c "source /opt/ros/noetic/setup.bash && source /home/catkin_ws/venv/bin/activate && catkin build -DCMAKE_BUILD_TYPE=Release -DPYTHON_EXECUTABLE=/usr/bin/python3"
+RUN /bin/bash -c "source /opt/ros/noetic/setup.bash && source /home/catkin_ws/venv/bin/activate && catkin build -DCMAKE_BUILD_TYPE=Release -DPYTHON_EXECUTABLE=/usr/bin/python3 -DCMAKE_POLICY_VERSION_MINIMUM=3.5"
 
 RUN echo "source /opt/ros/noetic/setup.bash" >> /root/.bashrc && \
     echo "source /home/catkin_ws/devel/setup.bash" >> /root/.bashrc && \
