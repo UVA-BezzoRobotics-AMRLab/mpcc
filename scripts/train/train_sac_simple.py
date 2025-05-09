@@ -15,9 +15,9 @@ from os.path import join
 from simple_simulation import SimpleSimulation
 from train_realworld import TrainManager, CustomEnv
 
-# INIT_POSITION = [-2.25, -2, 1.57]  # in world frame
-INIT_POSITION = [-2.25, 8, -1.57]  # in world frame
-GOAL_POSITION = [0, -10]  # relative to the initial position
+INIT_POSITION = [-2.25, -2, 1.57]  # in world frame
+# INIT_POSITION = [-2.25, 8, -1.57]  # in world frame
+GOAL_POSITION = [0, 10]  # relative to the initial position
 
 bag_process = None
 gazebo_process = None
@@ -274,7 +274,7 @@ def run_sim(args):
         bag_process.terminate()
         bag_process.wait()
 
-    if args.bag and status == "timeout":
+    if args.bag and (status == "timeout" or status == "succeeded"):
         print(
             "Navigation timed out, so deleting bag file",
             os.path.join(bag_dir, bag_fname),

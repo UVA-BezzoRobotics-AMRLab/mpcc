@@ -20,6 +20,8 @@ RLLogger::RLLogger(ros::NodeHandle& nh, double min_alpha, double max_alpha, bool
     _done_pub      = _nh.advertise<std_msgs::Bool>("/mpc_done", 100);
     _alpha_pub_abv = _nh.advertise<std_msgs::Float64>("/cbf_alpha_abv", 100);
     _alpha_pub_blw = _nh.advertise<std_msgs::Float64>("/cbf_alpha_blw", 100);
+    _h_pub_abv     = _nh.advertise<std_msgs::Float64>("/h_abv", 100);
+    _h_pub_blw     = _nh.advertise<std_msgs::Float64>("/h_blw", 100);
     _logging_pub   = _nh.advertise<amrl_logging::LoggingData>(_topic_name, 100);
 
     _collision_sub = _nh.subscribe("/collision", 1, &RLLogger::collision_cb, this);
@@ -138,6 +140,14 @@ bool RLLogger::request_alpha(MPCCore& mpc_core, double ref_len)
         std_msgs::Float64 alpha_msg_blw;
         alpha_msg_blw.data = alpha_blw;
         _alpha_pub_blw.publish(alpha_msg_blw);
+
+        std_msgs::Float64 h_abv_msg;
+        h_abv_msg.data = cbf_data_abv[0];
+        _h_pub_abv.publish(h_abv_msg);
+
+        std_msgs::Float64 h_blw_msg;
+        h_blw_msg.data = cbf_data_blw[0];
+        _h_pub_blw.publish(h_blw_msg);
 
         mpc_params["CBF_ALPHA_ABV"] = alpha_abv;
         mpc_params["CBF_ALPHA_BLW"] = alpha_blw;

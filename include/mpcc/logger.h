@@ -51,6 +51,8 @@ class RLLogger
 
     ros::Publisher _done_pub;
     ros::Publisher _logging_pub;
+    ros::Publisher _h_pub_abv;
+    ros::Publisher _h_pub_blw;
     ros::Publisher _alpha_pub_abv;
     ros::Publisher _alpha_pub_blw;
 
