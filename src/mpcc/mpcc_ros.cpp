@@ -472,16 +472,19 @@ void MPCCROS::dynaobscb(const nav_msgs::Odometry::ConstPtr& msg)
 void MPCCROS::trajectorycb(const trajectory_msgs::JointTrajectory::ConstPtr& msg)
 {
     ROS_INFO("Trajectory received!");
+    _trajectory = *msg;
+
     if (msg->points.size() == 0)
     {
-        ROS_WARN("Trajectory is empty!");
+        ROS_WARN("Trajectory is empty, stopping!");
+        _vel_msg.linear.x  = 0;
+        _vel_msg.angular.z = 0;
         return;
     }
 
     _prev_ref     = _ref;
     _prev_ref_len = _true_ref_len;
 
-    _trajectory = *msg;
     _traj_reset = true;
 
     int N = msg->points.size();
