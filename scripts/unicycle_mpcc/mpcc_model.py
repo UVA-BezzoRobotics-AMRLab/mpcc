@@ -446,7 +446,7 @@ def export_mpcc_ode_model_dyna_obs(params) -> AcadosModel:
     Q_c = MX.sym("Q_c")  # 0.1
     Q_l = MX.sym("Q_l")  # 100
     Q_s = MX.sym("Q_s")  # 0.5
-    Q_a = 1e-1
+    Q_a = 1
     Q_w = 1
     Q_sdd = 1e-1
 

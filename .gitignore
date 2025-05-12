@@ -4,6 +4,7 @@ __pycache__
 .vscode
 *.json
 *.txt
+*.swp
 .clang-format*
 
 .cache/
