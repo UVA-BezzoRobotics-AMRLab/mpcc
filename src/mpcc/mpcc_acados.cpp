@@ -316,6 +316,8 @@ void MPCC::warm_start_no_u(double* x_init)
     u_init[1] = 0.0;
     u_init[2] = 0.0;
 
+    x_init[5] = x_init[3];
+
     for (int i = 0; i < _mpc_steps; ++i)
     {
         ocp_nlp_out_set(_nlp_config, _nlp_dims, _nlp_out, i, "x", x_init);
@@ -563,6 +565,10 @@ std::array<double, 2> MPCC::solve(const Eigen::VectorXd& state, bool is_reverse)
     // generate params from reference trajectory starting at current s
     double s                             = get_s_from_state(state);
     std::array<Spline1D, 2> adjusted_ref = compute_adjusted_ref(s);
+
+    std::cout << "[MPCC] starting s is " << s << std::endl;
+    std::cout << "[MPCC] adjusted ref is " << adjusted_ref[0](0).coeff(0) << ", "
+              << adjusted_ref[1](0).coeff(0) << std::endl;
 
     // Eigen::Vector2d prev_pos = _prev_x0.head(2);
     Eigen::Vector2d prev_pos = _prev_x0.segment(NX, 2);

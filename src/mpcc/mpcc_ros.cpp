@@ -393,8 +393,8 @@ void MPCCROS::publishVel()
 
     while (ros::ok())
     {
-        if (_trajectory.points.size() > 0) _velPub.publish(_vel_msg); 
-	
+        if (_trajectory.points.size() > 0) _velPub.publish(_vel_msg);
+
         // _velPub.publish(_vel_msg);
 
         std::this_thread::sleep_for(pub_loop_period);
@@ -604,17 +604,27 @@ void MPCCROS::mpcc_ctrl_loop(const ros::TimerEvent& event)
     _startPub.publish(start_msg);
 
     // correct len_start and _prev_s if trajectory reset
+    if (!_traj_reset) _s_dot = std::min(std::max((len_start - _prev_s) / _dt, 0.), _max_linvel);
+
     if (_traj_reset && _prev_ref_len > 0)
     {
         // get arc_len of previous trajectory
-        double s = get_s_from_state(_prev_ref, _prev_ref_len);
-        corrected_len += s;
+        /*double s = get_s_from_state(_prev_ref, _prev_ref_len);*/
+        /*corrected_len += s;*/
+        /*len_start = get_s_from_state(_prev_ref, _prev_ref_len);*/
 
         _traj_reset = false;
     }
 
-    _s_dot  = std::min(std::max((corrected_len - _prev_s) / _dt, 0.), _max_linvel);
-    _prev_s = len_start;
+    /*_s_dot = std::min(std::max((corrected_len - _prev_s) / _dt, 0.), _max_linvel);*/
+    /*_prev_s = len_start;*/
+
+    _prev_s = get_s_from_state(_ref, _true_ref_len);
+
+    ROS_INFO("S DOT IS: %.2f", _s_dot);
+    ROS_INFO("corrected len is: %.2f / %.2f", corrected_len, _true_ref_len);
+    ROS_INFO("prev_s is: %.2f", _prev_s);
+    ROS_INFO("corrected len - prev_s / dt is %.2f", (corrected_len - _prev_s) / _dt);
 
     if (len_start > _true_ref_len - 3e-1)
     {
