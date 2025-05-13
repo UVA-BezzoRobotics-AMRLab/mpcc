@@ -481,9 +481,9 @@ void MPCC::process_solver_output(double s)
 
     for (int i = 0; i < _mpc_steps - 1; ++i)
     {
-        mpc_angvels[i] = xtraj[_angvel_start + i * _ind_input_inc];
-        mpc_linaccs[i] = xtraj[_linacc_start + i * _ind_input_inc];
-        mpc_s_ddots[i] = xtraj[_s_ddot_start + i * _ind_input_inc];
+        mpc_angvels[i] = utraj[_angvel_start + i * _ind_input_inc];
+        mpc_linaccs[i] = utraj[_linacc_start + i * _ind_input_inc];
+        mpc_s_ddots[i] = utraj[_s_ddot_start + i * _ind_input_inc];
     }
 }
 
@@ -672,6 +672,7 @@ std::array<double, 2> MPCC::solve(const Eigen::VectorXd& state, bool is_reverse)
 
     /*if (is_reverse) _prev_u0[0] *= -1;*/
 
+    std::cout << "[MPCC] commanded input is: " << _prev_u0[0] << " " << _prev_u0[1] << std::endl;
     return {_prev_u0[1], _prev_u0[0]};
 }
 

@@ -806,8 +806,11 @@ void MPCCROS::publishMPCTrajectory()
             double vel_x = linvel * cos(theta);
             double vel_y = linvel * sin(theta);
 
+	    // ROS_INFO("vel_x and vel_y: %.2f, %.2f", vel_x, vel_y);
+
             double acc_x = linacc * cos(theta);
             double acc_y = linacc * sin(theta);
+	    // ROS_INFO("acc_x and acc_y: %.2f, %.2f", acc_x, acc_y);
 
             // manually compute jerk in x and y directions from acceleration
             double jerk_x = 0;
