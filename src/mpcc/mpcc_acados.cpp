@@ -36,6 +36,8 @@ MPCC::MPCC()
     _ref_len_sz  = 4.0;
     _ref_length  = 0;
 
+    _has_run = true;
+
     _acados_ocp_capsule = nullptr;
     _new_time_steps     = nullptr;
 
@@ -314,6 +316,8 @@ void MPCC::warm_start_no_u(double* x_init)
     u_init[1] = 0.0;
     u_init[2] = 0.0;
 
+    x_init[5] = x_init[3];
+
     for (int i = 0; i < _mpc_steps; ++i)
     {
         ocp_nlp_out_set(_nlp_config, _nlp_dims, _nlp_out, i, "x", x_init);
@@ -477,9 +481,9 @@ void MPCC::process_solver_output(double s)
 
     for (int i = 0; i < _mpc_steps - 1; ++i)
     {
-        mpc_angvels[i] = xtraj[_angvel_start + i * _ind_input_inc];
-        mpc_linaccs[i] = xtraj[_linacc_start + i * _ind_input_inc];
-        mpc_s_ddots[i] = xtraj[_s_ddot_start + i * _ind_input_inc];
+        mpc_angvels[i] = utraj[_angvel_start + i * _ind_input_inc];
+        mpc_linaccs[i] = utraj[_linacc_start + i * _ind_input_inc];
+        mpc_s_ddots[i] = utraj[_s_ddot_start + i * _ind_input_inc];
     }
 }
 
@@ -503,7 +507,7 @@ void MPCC::reset_horizon()
     }
 }
 
-std::array<double, 2> MPCC::solve(const Eigen::VectorXd& state)
+std::array<double, 2> MPCC::solve(const Eigen::VectorXd& state, bool is_reverse)
 {
     _solve_success = false;
 
@@ -531,6 +535,13 @@ std::array<double, 2> MPCC::solve(const Eigen::VectorXd& state)
     // Eigen::VectorXd x0(NBX0);
     // x0 << state(0), state(1), state(2), state(3), 0, _s_dot;
     Eigen::VectorXd x0 = state;
+    if (_has_run)
+    {
+        Eigen::VectorXd prev_x0 = _prev_x0.head(NX);
+        double etheta           = x0(2) - prev_x0(2);
+        if (etheta > M_PI) x0(2) -= 2 * M_PI;
+        if (etheta < -M_PI) x0(2) += 2 * M_PI;
+    }
 
     memcpy(lbx0, &x0[0], NBX0 * sizeof(double));
     memcpy(ubx0, &x0[0], NBX0 * sizeof(double));
@@ -554,6 +565,10 @@ std::array<double, 2> MPCC::solve(const Eigen::VectorXd& state)
     // generate params from reference trajectory starting at current s
     double s                             = get_s_from_state(state);
     std::array<Spline1D, 2> adjusted_ref = compute_adjusted_ref(s);
+
+    std::cout << "[MPCC] starting s is " << s << std::endl;
+    std::cout << "[MPCC] adjusted ref is " << adjusted_ref[0](0).coeff(0) << ", "
+              << adjusted_ref[1](0).coeff(0) << std::endl;
 
     // Eigen::Vector2d prev_pos = _prev_x0.head(2);
     Eigen::Vector2d prev_pos = _prev_x0.segment(NX, 2);
@@ -650,9 +665,14 @@ std::array<double, 2> MPCC::solve(const Eigen::VectorXd& state)
         double signed_d = (x - xr) * obs_dirx + (y - yr) * obs_diry;
     }
 
+    _has_run = true;
+
     _state << _prev_x0[_x_start], _prev_x0[_y_start], _prev_x0[_theta_start],
         _prev_x0[_v_start], s, _prev_x0[_s_dot_start];
 
+    /*if (is_reverse) _prev_u0[0] *= -1;*/
+
+    std::cout << "[MPCC] commanded input is: " << _prev_u0[0] << " " << _prev_u0[1] << std::endl;
     return {_prev_u0[1], _prev_u0[0]};
 }
 

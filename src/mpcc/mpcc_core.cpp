@@ -77,12 +77,17 @@ bool MPCCore::orient_robot()
     // wrap between -pi and pi
     double e = atan2(sin(traj_heading - _odom(2)), cos(traj_heading - _odom(2)));
 
+    if (isnan(e))
+    {
+        std::cout << termcolor::red << "[MPC Core] heading error nan, returning"
+                  << termcolor::reset << std::endl;
+        return false;
+    }
+
     std::cout << termcolor::yellow
               << "[MPC Core] trajectory reset, checking if we need to align... "
                  "error = "
               << e * 180. / M_PI << " deg" << termcolor::reset << std::endl;
-
-    if (isnan(e)) exit(-1);
 
     // if error is larger than _prop_angle_thresh use proportional controller to
     // align
@@ -119,7 +124,7 @@ double MPCCore::get_s_from_odom() const
     return s;
 }
 
-std::array<double, 2> MPCCore::solve(const Eigen::VectorXd &state)
+std::array<double, 2> MPCCore::solve(const Eigen::VectorXd &state, bool is_reverse)
 {
     if (!_is_set)
     {
@@ -142,7 +147,9 @@ std::array<double, 2> MPCCore::solve(const Eigen::VectorXd &state)
     auto start = std::chrono::high_resolution_clock::now();
     // Eigen::VectorXd state(4);
     // state << _odom(0), _odom(1), _odom(2), _curr_vel;
-    _mpc_results = _mpc->solve(state);
+    if (is_reverse) _curr_vel = -1 * state(3);
+    _mpc_results = _mpc->solve(state, is_reverse);
+    if (is_reverse) _mpc_results[1] *= -1;
 
     // _mpc_results = _mpc->Solve(_state, _reference);
     auto end      = std::chrono::high_resolution_clock::now();

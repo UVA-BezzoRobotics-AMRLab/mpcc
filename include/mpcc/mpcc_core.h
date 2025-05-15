@@ -40,7 +40,7 @@ class MPCCore
      * reference trajectory if the error is larger than the threshold
      **********************************************************************/
 
-    std::array<double, 2> solve(const Eigen::VectorXd &state);
+    std::array<double, 2> solve(const Eigen::VectorXd &state, bool is_reverse = false);
     /**********************************************************************
      * Function: MPCCore::solve()
      * Description: Solves the MPC problem for the current timestep

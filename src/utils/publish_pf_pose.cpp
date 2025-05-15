@@ -3,6 +3,7 @@
 #include <ros/ros.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 #include <tf2_ros/transform_listener.h>
+
 #include "tf2/exceptions.h"
 
 nav_msgs::Odometry msg;
@@ -16,19 +17,32 @@ std::string child_frame_id;
 
 void odomcb(const nav_msgs::Odometry::ConstPtr& msg)
 {
-    geometry_msgs::TransformStamped odom_to_map =
-        tf_buffer.lookupTransform(frame_id, child_frame_id, ros::Time(0), ros::Duration(1.0));
+    geometry_msgs::TransformStamped odom_to_map;
+    try
+    {
+        odom_to_map = tf_buffer.lookupTransform(frame_id, child_frame_id, msg->header.stamp,
+                                                ros::Duration(1.0));
+    }
+    catch (tf2::TransformException& e)
+    {
+        ROS_WARN("[Particle Filter] Transform Lookup Exception: %s", e.what());
+        return;
+    }
+
     nav_msgs::Odometry gmappingOdom;
     gmappingOdom.header.frame_id = frame_id;
     gmappingOdom.header.stamp    = ros::Time::now();
+
     try
     {
-      tf2::doTransform(msg->pose.pose, gmappingOdom.pose.pose, odom_to_map);
-    } catch (tf2::LookupException &e)
-    {
-      ROS_WARN("[Particle Filter] Lookup Exception: %s", e.what());
-      return;
+        tf2::doTransform(msg->pose.pose, gmappingOdom.pose.pose, odom_to_map);
     }
+    catch (tf2::LookupException& e)
+    {
+        ROS_WARN("[Particle Filter] Lookup Exception: %s", e.what());
+        return;
+    }
+
     gmappingOdom.twist.twist = msg->twist.twist;
     gmappingOdomPub.publish(gmappingOdom);
 }

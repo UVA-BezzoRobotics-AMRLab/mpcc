@@ -25,7 +25,7 @@ class MPCC
     MPCC();
     ~MPCC();
 
-    std::array<double, 2> solve(const Eigen::VectorXd &state);
+    std::array<double, 2> solve(const Eigen::VectorXd &state, bool is_reverse = false);
 
     void load_params(const std::map<std::string, double> &params);
     /**********************************************************************
@@ -232,6 +232,7 @@ class MPCC
     bool _is_shift_warm;
     bool _solve_success;
     bool _use_dyna_obs;
+    bool _has_run;
 
     double *_new_time_steps;
 
