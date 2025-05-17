@@ -219,6 +219,53 @@ MPCCROS::~MPCCROS()
     if (timer_thread.joinable()) timer_thread.join();
 }
 
+bool MPCCROS::executeTrajSrv(std_srvs::Empty::Request &req, std_srvs::Empty::Response &res){
+
+	ROS_INFO("Execute trajectory service called.");
+
+	if (!_is_init) {
+	        ROS_WARN("Cannot execute trajectory: tracker not initialized (no odom?).");
+	        return false;
+	    }
+	
+	    if (_is_executing) {
+	        ROS_WARN("Already executing a trajectory. No changes made.");
+	        return false;
+	    }
+	
+	    if (_requested_ref.empty()) {
+	        ROS_WARN("No requested reference stored. Call modifyTrajSrv first or provide a trajectory.");
+	        return false;
+	    }
+	
+	    if (_requested_len <= 0) {
+	        ROS_WARN("Requested reference length <= 0. Trajectory is invalid.");
+	        return false;
+	    }
+
+	if (!_is_executing){
+		_ref = _requested_ref;
+		_ref_len = _requested_len;
+		_traj_reset = true;
+		_is_executing = true; 
+		_mpc_core->set_trajectory(_requested_ss, _requested_xs, _requested_ys);
+		_x_goal_euclid = _requested_xs.back(); 
+        	_y_goal_euclid = _requested_ys.back();  
+		ROS_INFO("Executing the requested trajectory now. Robot will start moving.");
+		return true;
+    
+	} 
+	else {
+		ROS_WARN("Already executing a trajectory. No changes made.");
+		return false;
+	}
+	
+
+	return true;
+
+
+}
+
 bool MPCCROS::modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req, uvatraj_msgs::ExecuteTraj::Response &res)
 {
 
