@@ -37,7 +37,10 @@ MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~")
     _prev_s = 0;
 
     _ref = {};
-
+    
+    //AR
+    _requested_ref = _requested_ss = _requested_xs = _requested_ys = {};
+    
     _vel_msg.linear.x  = 0;
     _vel_msg.angular.z = 0;
 
@@ -165,7 +168,8 @@ MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~")
     ROS_INFO("done loading params!");
 
     _mapSub  = nh.subscribe("/map", 1, &MPCCROS::mapcb, this);
-    _odomSub = nh.subscribe("/odometry/filtered", 1, &MPCCROS::odomcb, this);
+    //_odomSub = nh.subscribe("/odometry/filtered", 1, &MPCCROS::odomcb, this);
+    _viconSub = nh.subscribe("/vicon/jackal4/jackal4", 1, &MPCCROS::viconcb, this);
     _trajSub = nh.subscribe("/reference_trajectory", 1, &MPCCROS::trajectorycb, this);
     _obsSub  = nh.subscribe("/obs_odom", 1, &MPCCROS::dynaobscb, this);
 
@@ -185,6 +189,16 @@ MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~")
     _horizonPub     = nh.advertise<trajectory_msgs::JointTrajectory>("/mpc_horizon", 0);
     _refPub = nh.advertise<trajectory_msgs::JointTrajectoryPoint>("/current_reference", 10);
 
+
+    _generate_traj_srv = nh.advertiseService("/generate_traj", &MPCCROS::generateTrajSrv, this);
+    
+    _modify_traj_srv = nh.advertiseService("/modify_trajectory", &MPCCROS::modifyTrajSrv, this); 
+    
+    _exec_traj_Srv = nh.advertiseService("/execute_trajectory", &MPCCROS::executeTrajSrv, this);
+    
+
+
+
     timer_thread = std::thread(&MPCCROS::publishVel, this);
 
     _backup_srv = nh.advertiseService("/mpc_backup", &MPCCROS::toggleBackup, this);
@@ -203,6 +217,190 @@ MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~")
 MPCCROS::~MPCCROS()
 {
     if (timer_thread.joinable()) timer_thread.join();
+}
+
+bool MPCCROS::modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req, uvatraj_msgs::ExecuteTraj::Response &res)
+{
+
+//ss is sum of arc lengths for each pt --> like timestamps
+//xs vector of x coords
+//ys vector of y coords
+
+	double total_length = 0;
+	int M = req.ctrl_pts.size();
+	ROS_ERROR("%d POINTS RECEIVED", M);
+	std::vector<double> ss,xs,ys;
+	//calculate total length of the trajectory (i.e sum of euclid from point_i to point_i+1
+	for (int i = 1; i<req.ctrl_pts.size(); ++i){
+	
+		double x0 = req.ctrl_pts[i-1].x;
+		double y0 = req.ctrl_pts[i-1].y;
+
+		double x1 = req.ctrl_pts[i].x;
+		double y1 = req.ctrl_pts[i].y;
+
+		double dx = x1-x0;
+		double dy = y1-y0;
+		double segment_length = std::sqrt(dx*dx + dy*dy);
+			
+		if (std::fabs(segment_length) < 1e-2)
+			continue;
+
+		ss.push_back(total_length);
+		xs.push_back(x0);
+		ys.push_back(y0);
+		total_length += segment_length;
+	
+	}
+
+	ss.push_back(total_length);
+	xs.push_back(req.ctrl_pts.back().x);
+	ys.push_back(req.ctrl_pts.back().y);
+
+
+	tk::spline refx_spline(ss,xs,tk::spline::cspline);
+	tk::spline refy_spline(ss,ys,tk::spline::cspline);
+
+	SplineWrapper refx;
+	refx.spline = refx_spline;
+
+	SplineWrapper refy;
+	refy.spline = refy_spline;
+
+	_true_len = total_length
+	
+	//DEBUG: It was stoppign before the end
+	//FIX: extend the trajectory for 
+	double px =refx.spline(total_length);
+	double py =refx.spline(total_length);
+	double dx = refx.spline.deriv(1,total_length);
+	double dy = refx.spline.deriv(1,total_length);
+
+	double norm = std::sqrt(dx*dx + dy*dy);
+	dx /= norm;
+	dy /= norm;
+
+	double ds = total_length/M
+	int num_ext_pts = 200;
+
+	for (int i = 1; i<=num_ext_pts; ++i){
+	double s = total_length + i*ds;
+	double x = px +dx * i * ds;
+	double y = py+dy*i*ds;
+	
+	ss.push_back(s);
+	xs.push_back(x);
+	ys.push_back(y);
+	}
+
+	refx.spline.set_points(ss, xs, tk::spline::cspline);
+	refy.spline.set_points(ss, xs, tk::spline::cspline);
+
+	_requested_ref.clear();
+	_requested_len = ss.back();
+	
+
+	_requested_ref.push_back(refx);
+	_requested_ref.push_back(refy);
+	
+	_requested_ss = ss;
+	_requested_xs = xs;
+	_requested_ys = ys;
+
+	if (_is_executing){
+	_old_ref = _ref;
+	_old_ref_len = _ref_len;
+
+	_ref = _requested_ref;
+	_ref_len = _requested_len;
+
+	_transition_start_time = ros::Time::now().toSec();
+	_transition_duration = 1.0;
+	_in_transition = true;
+
+	_mpc_core -> set_trajectory(_requested_ss, _requested_xs, _requested_ys);
+	}
+
+	publishReference(_requested_ref, _true_len);
+
+	return true;
+}
+
+bool MPCCROS::generateTrajSrv(uvatraj_msgs::RequestTraj::Request &req, uvatraj_msgs::RequestTraj::Response &res){
+	
+
+	auto response = [&](const std::string_view& msg, const bool& success) -> void{
+		res.success = success;
+		res.status_message = msg;
+		if (!success)
+			ROS_ERROR_STREAM(msg);
+	};
+
+	if (!_is_init){
+		response("NO POSITIONAL DATA", false);
+		return true;
+	}
+
+	std::vector<Eigen::Vector2d> ctrl_pts;
+	ctrl_pts.emplace_back(Eigen::Vector2d(_odom(0),_odom(1)));
+	ctrl_pts.emplace_back(Eigen::Vector2d(req.goal.x,req.goal.y));
+	ctrl_pts = mpcc::arutils::generateLinearTrajectory(ctrl_pts[0], ctrl_pts[1]);
+
+	uvatraj_msgs::ControlPoint holder;
+
+	for (int i=0; i<ctrl_pts.size(); ++i){
+		holder.x = (ctrl_pts[i].x());
+		holder.y = (ctrl_pts[i].y());
+		holder.z = 0.0;
+		holder.metadata = "";
+
+		res.all_ctrl_pts.push_back(holder);
+		res.boundary_ctrl_pts.push_back(holder);
+
+		ROS_INFO_STREAM("GENERATETRAJSRV: Added boundary point " << i << ": (" << holder.x << ", " << holder.y << ")");
+
+	}
+	response("SUCCESSFULLY GENERATED PATH", true);
+	ROS_INFO_STREAM("PATH GENERATED SUCCESSFULY. Total pts:" << res.all_ctrl_pts.size());
+	return true;
+
+	
+}
+
+void MPCCROS::viconcb(const geometry_msgs::TransformStamped data){
+
+
+	tf::Quaternion q(data->transform.translation.x, data->transform.translation.y, data->transform.translation.z, data->transform.rotation.w);
+
+	tf::Matrix3x3 m(q);
+
+	double roll, pitch, yaw;
+
+	m.getRPY(roll,pitch,yaw);
+
+	_odom = Eigen::VectorXd(3);
+
+	_odom(0) = msg->data.transform.translation.x
+	_odom(1) = msg->data.transform.translation.y;
+	_odom(2) = yaw;
+
+
+    	if (_reverse_mode)
+    	{
+        	_odom(2) += M_PI;
+        // wrap to pi
+        	if (_odom(2) > M_PI) _odom(2) -= 2 * M_PI;
+    	}
+
+    	_mpc_core->set_odom(_odom);
+
+    	if (!_is_init)
+    	{
+        	_is_init = true;
+        	ROS_INFO("tracker initialized");
+    	}
+
+
 }
 
 bool MPCCROS::toggleBackup(std_srvs::Empty::Request& req, std_srvs::Empty::Response& res)
@@ -431,6 +629,8 @@ void MPCCROS::odomcb(const nav_msgs::Odometry::ConstPtr& msg)
     _odom(0) = msg->pose.pose.position.x;
     _odom(1) = msg->pose.pose.position.y;
     _odom(2) = yaw;
+
+
 
     if (_reverse_mode)
     {
