@@ -22,6 +22,11 @@
 
 #include "mpcc/utils.h"
 
+
+//import ar utils
+#include "../../include/utils/arutils.h"
+//import the uvatrajmsgs
+
 MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~")
 {
     _estop        = false;
@@ -42,6 +47,8 @@ MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~")
     
     //AR
     _old_ref = _requested_ref = _requested_ss = _requested_xs = _requested_ys = {};
+     
+    _blend_new_s = 0.0
    
     _is_executing = false;
     _in_transition = false;
@@ -257,20 +264,17 @@ bool MPCCROS::executeTrajSrv(std_srvs::Empty::Request &req, std_srvs::Empty::Res
 	if (!_is_executing){
 		_ref = _requested_ref;
 		_ref_len = _requested_len;
-		_true_ref_len = _true_requested_len;
 		_traj_reset = true;
 		_is_executing = true;
 		_in_transition = false; 
 		_mpc_core->set_trajectory(_requested_ss, _requested_xs, _requested_ys);
-		_x_goal_euclid = _requested_xs.back(); 
-        	_y_goal_euclid = _requested_ys.back();  
 		ROS_INFO("Executing the requested trajectory now. Robot will start moving.");
 		return true;
     
 	} 
 	else {
 		ROS_WARN("Already executing a trajectory. No changes made.");
-		return false;
+		return true;
 	}
 	
 
@@ -284,16 +288,13 @@ bool MPCCROS::executeTrajSrv(std_srvs::Empty::Request &req, std_srvs::Empty::Res
 bool MPCCROS::modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req, uvatraj_msgs::ExecuteTraj::Response &res)
 {
 
-//ss is sum of arc lengths for each pt --> like timestamps
-//xs vector of x coords
-//ys vector of y coords
 
 	double total_length = 0;
 	int M = req.ctrl_pts.size();
 	ROS_ERROR("%d POINTS RECEIVED", M);
 	std::vector<double> ss,xs,ys;
 	
-//calculate total length of the trajectory (i.e sum of euclid from point_i to point_i+1
+	//add arc length at each section and x y pair at that arc length 
 	for (int i = 1; i<req.ctrl_pts.size(); ++i){
 	
 		double x0 = req.ctrl_pts[i-1].x;
@@ -316,11 +317,12 @@ bool MPCCROS::modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req, uvatraj_msg
 	
 	}
 
+	//add the final pt
 	ss.push_back(total_length);
 	xs.push_back(req.ctrl_pts.back().x);
 	ys.push_back(req.ctrl_pts.back().y);
 
-
+	//construct splines parameterizing with the arc length
 	tk::spline refx_spline(ss,xs,tk::spline::cspline);
 	tk::spline refy_spline(ss,ys,tk::spline::cspline);
 
@@ -334,35 +336,42 @@ bool MPCCROS::modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req, uvatraj_msg
 	
 	//DEBUG: It was stoppign before the end
 	//FIX: extend the trajectory for 
+	
+	//get the x y pair at the end of the traj and the derivates with respect to x and y
 	double px =refx.spline(total_length);
 	double py =refx.spline(total_length);
 	double dx = refx.spline.deriv(1,total_length);
 	double dy = refx.spline.deriv(1,total_length);
 
+	//get unit derivative/tangent vector
 	double norm = std::sqrt(dx*dx + dy*dy);
 	dx /= norm;
 	dy /= norm;
 
+	// could just set equal to resolution --> don't change yet
 	double ds = total_length/M;
-	int num_ext_pts = 200;
-
+	//int num_ext_pts = 200;
+	int num_ext_pts = 1;
+	//extend it 200 pts???
 	for (int i = 1; i<=num_ext_pts; ++i){
-	double s = total_length + i*ds;
-	double x = px +dx * i * ds;
-	double y = py+dy*i*ds;
+	double s = total_length + i*resolution;
+	double x = px +dx * i * resolution;
+	double y = py+dy*i*resolution;
 	
 	ss.push_back(s);
 	xs.push_back(x);
 	ys.push_back(y);
 	}
 
+
+	//change the spline to be the extended one / with the extended pts
 	refx.spline.set_points(ss, xs, tk::spline::cspline);
 	refy.spline.set_points(ss, ys, tk::spline::cspline);
 
+	
 	_requested_ref.clear();
 	_requested_len = ss.back();
 	
-
 	_requested_ref.push_back(refx);
 	_requested_ref.push_back(refy);
 	
@@ -384,12 +393,12 @@ bool MPCCROS::modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req, uvatraj_msg
 
 	_blend_new_s = std::ceil(_blend_traj_curr_s/resolution);	
 
-	_mpc_core->set_trajectory(_requested_ss, _requested_xs, _requested_ys);
+//	_mpc_core->set_trajectory(_requested_ss, _requested_xs, _requested_ys);
 
 
 	//new goal position 
-	_x_goal_euclid = _requested_xs.back();
-	_y_goal_euclid = _requested_ys.back();
+	//_x_goal_euclid = _requested_xs.back();
+	//_y_goal_euclid = _requested_ys.back();
 
 	_ref = _requested_ref;
 	_ref_len = _requested_len;
@@ -402,26 +411,31 @@ bool MPCCROS::modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req, uvatraj_msg
 	return true;
 }
 
+
+//double checked logic is sound
 bool MPCCROS::generateTrajSrv(uvatraj_msgs::RequestTraj::Request &req, uvatraj_msgs::RequestTraj::Response &res){
 	
-
+	//lambda for repetitive code
 	auto response = [&](const std::string_view& msg, const bool& success) -> void{
 		res.success = success;
 		res.status_message = msg;
 		if (!success)
 			ROS_ERROR_STREAM(msg);
 	};
+	
 
+	//Errors
 	if (!_is_init){
 		response("NO POSITIONAL DATA", false);
 		return true;
 	}
+	
 
+	
 	std::vector<Eigen::Vector2d> ctrl_pts;
 	ctrl_pts.emplace_back(Eigen::Vector2d(_odom(0),_odom(1)));
 	ctrl_pts.emplace_back(Eigen::Vector2d(req.goal.x,req.goal.y));
 	ctrl_pts = mpcc::arutils::generateLinearTrajectory(ctrl_pts[0], ctrl_pts[1], resolution);
-
 	uvatraj_msgs::ControlPoint holder;
 
 	for (int i=0; i<ctrl_pts.size(); ++i){
@@ -900,6 +914,7 @@ void MPCCROS::mpcc_ctrl_loop(const ros::TimerEvent& event)
     if (_in_transition){
 
 	double current_time = ros::Time::now().toSec();
+	elapsed_time = _transition_start_time - current_time;
 	//double blend_factor = (current_time - _transition_start_time)/_transition_duration;
 	double blend_factor = 0.5 * (1 - cos(M_PI * elapsed_time / _transition_duration));
 	if (blend_factor >= 1.0){

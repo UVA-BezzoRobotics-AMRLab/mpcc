@@ -152,11 +152,13 @@ void MPCCore::set_trajectory(const std::vector<double> &ss, const std::vector<do
 }
 
 
+
+//directly from old code
 void MPCCore::updateReferencePoint(double s, double x, double y) {
-    //store all points in one vector array
+    
+    
     _blend_points.push_back(std::make_tuple(s, x, y));
     
-    // claude.ai - once we have enough points set use the set_trajectory function to set the traj
     if (_blend_points.size() > 10) { 
         std::vector<double> ss, xs, ys;
         
