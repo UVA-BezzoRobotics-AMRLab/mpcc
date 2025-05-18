@@ -2,7 +2,6 @@
 #include <cmath>
 #include <Eigen/Core>
 
-/// Euclidean distance between a and b
 inline double computeDistance(
     const Eigen::Vector2d& a,
     const Eigen::Vector2d& b)
@@ -10,7 +9,6 @@ inline double computeDistance(
     return (b - a).norm();
 }
 
-/// Straight‐line samples every `resolution`, including both start and goal
 std::vector<Eigen::Vector2d> generateLinearTrajectory(
     const Eigen::Vector2d& start,
     const Eigen::Vector2d& goal,

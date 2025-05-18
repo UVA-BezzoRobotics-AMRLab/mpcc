@@ -119,6 +119,11 @@ class MPCCROS
      * Returns:
      * N/A
      **********************************************************************/
+    void viconcb(const geometry_msgs::TransformStamped::ConstPtr& msg);
+    bool generateTrajSrv(uvatraj_msgs::RequestTraj::Request &req, uvatraj_msgs::RequestTraj::Response &res);
+    bool modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req, uvatraj_msgs::ExecuteTraj::Response &res);
+    bool executeTrajSrv(std_srvs::Empty::Request &req, std_srvs::Empty::Response &res);
+
     bool toggleBackup(std_srvs::Empty::Request &req, std_srvs::Empty::Response &res);
 
     /************************
@@ -157,9 +162,15 @@ class MPCCROS
     ros::Publisher _refVizPub;
     ros::Publisher _startPub;
 
+    ros::Publisher _requestedPathPub;
+
     ros::ServiceServer _eStop_srv;
     ros::ServiceServer _mode_srv;
     ros::ServiceServer _backup_srv;
+
+    ros::ServiceServer _generate_traj_srv;
+    ros::ServiceServer _modify_traj_srv;
+    ros::ServiceServer _exec_traj_Srv;
 
     ros::ServiceClient _sac_srv;
 
@@ -179,8 +190,24 @@ class MPCCROS
     std::array<Spline1D, 2> _ref;
     std::array<Spline1D, 2> _prev_ref;
     std::array<Eigen::VectorXd, 2> _tubes;
+    std::array<Spline1D, 2> _ref;         // Current active trajectory for MPC
+    std::array<Spline1D, 2> _old_ref;     // Previous trajectory
+    std::array<Spline1D, 2> _requested_ref; // Trajectory from modifyTrajSrv
+
+    std::vector<double> _requested_ss_fit, _requested_xs_fit, _requested_ys_fit;
+    std::vector<double> _requested_xs_orig, _requested_ys_orig;
 
     std::map<std::string, double> _mpc_params;
+
+
+    double _ref_len;      // Length of _ref (potentially extended for MPC)
+    double _true_ref_len; // True, unextended length of current _ref
+
+    double _requested_len; // Length of _requested_ref (potentially extended for MPC)
+    double _true_requested_len; // True, unextended length of _requested_ref
+
+    double _old_ref_len;  // Could be true or mpc-extended length of _old_ref
+
 
     double _mpc_steps, _w_vel, _w_angvel, _w_linvel, _w_angvel_d, _w_linvel_d, _w_etheta,
         _max_angvel, _max_linvel, _bound_value, _x_goal, _y_goal, _theta_goal, _tol,
@@ -205,12 +232,16 @@ class MPCCROS
     double _s_dot;
     double _prev_s;
 
+    double _x_goal_euclid, _y_goal_euclid;
+
     double _dt, _curr_vel, _curr_ang_vel, _vel_pub_freq;
     bool _is_init, _is_goal, _teleop, _traj_reset, _use_vicon, _estop, _is_at_goal, _use_cbf,
         _use_dynamic_alpha, _reverse_mode;
 
     bool _is_logging;
     bool _is_eval;
+
+    bool _is_executing;
 
     int _tube_degree;
     int _tube_samples;
