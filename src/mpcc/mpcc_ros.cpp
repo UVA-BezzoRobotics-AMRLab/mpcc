@@ -18,6 +18,8 @@
 #include <Eigen/Core>
 #include <algorithm>
 
+#define resolution 0.5
+
 #include "mpcc/utils.h"
 
 MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~")
@@ -39,8 +41,20 @@ MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~")
     _ref = {};
     
     //AR
-    _requested_ref = _requested_ss = _requested_xs = _requested_ys = {};
+    _old_ref = _requested_ref = _requested_ss = _requested_xs = _requested_ys = {};
+   
+    _is_executing = false;
+    _in_transition = false;
+    _transition_start_time = 0.0;
+    _transition_duration = 0.0;
+    _requested_len = 0.0;
+    _true_len = 0.0;
+    _x_goal_euclid = 0.0;
+    _y_goal_euclid = 0.0;
+    _old_ref_len = 0.0;
     
+    
+ 
     _vel_msg.linear.x  = 0;
     _vel_msg.angular.z = 0;
 
@@ -266,6 +280,8 @@ bool MPCCROS::executeTrajSrv(std_srvs::Empty::Request &req, std_srvs::Empty::Res
 
 }
 
+
+//TODO: check if the modified pt is beyond where we currently are then just return true and don't do anything
 bool MPCCROS::modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req, uvatraj_msgs::ExecuteTraj::Response &res)
 {
 
@@ -277,7 +293,8 @@ bool MPCCROS::modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req, uvatraj_msg
 	int M = req.ctrl_pts.size();
 	ROS_ERROR("%d POINTS RECEIVED", M);
 	std::vector<double> ss,xs,ys;
-	//calculate total length of the trajectory (i.e sum of euclid from point_i to point_i+1
+	
+//calculate total length of the trajectory (i.e sum of euclid from point_i to point_i+1
 	for (int i = 1; i<req.ctrl_pts.size(); ++i){
 	
 		double x0 = req.ctrl_pts[i-1].x;
@@ -314,7 +331,7 @@ bool MPCCROS::modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req, uvatraj_msg
 	SplineWrapper refy;
 	refy.spline = refy_spline;
 
-	_true_len = total_length
+	_true_len = total_length;
 	
 	//DEBUG: It was stoppign before the end
 	//FIX: extend the trajectory for 
@@ -327,7 +344,7 @@ bool MPCCROS::modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req, uvatraj_msg
 	dx /= norm;
 	dy /= norm;
 
-	double ds = total_length/M
+	double ds = total_length/M;
 	int num_ext_pts = 200;
 
 	for (int i = 1; i<=num_ext_pts; ++i){
@@ -341,7 +358,7 @@ bool MPCCROS::modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req, uvatraj_msg
 	}
 
 	refx.spline.set_points(ss, xs, tk::spline::cspline);
-	refy.spline.set_points(ss, xs, tk::spline::cspline);
+	refy.spline.set_points(ss, ys, tk::spline::cspline);
 
 	_requested_ref.clear();
 	_requested_len = ss.back();
@@ -357,13 +374,26 @@ bool MPCCROS::modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req, uvatraj_msg
 	if (_is_executing){
 	_old_ref = _ref;
 	_old_ref_len = _ref_len;
+	_blend_traj_curr_s = get_s_from_state(_ref, _true_ref_len);	
 
-	_ref = _requested_ref;
-	_ref_len = _requested_len;
-
+	//blend in 1 second 
 	_transition_start_time = ros::Time::now().toSec();
 	_transition_duration = 1.0;
 	_in_transition = true;
+
+	//get closest pt i.e next pt and start blending from there	
+
+	_blend_new_s = std::ceil(_blend_traj_curr_s/resolution);	
+
+	_mpc_core->set_trajectory(_requested_ss, _requested_xs, _requested_ys);
+
+
+	//new goal position 
+	_x_goal_euclid = _requested_xs.back();
+	_y_goal_euclid = _requested_ys.back();
+
+	_ref = _requested_ref;
+	_ref_len = _requested_len;
 
 	_mpc_core -> set_trajectory(_requested_ss, _requested_xs, _requested_ys);
 	}
@@ -391,7 +421,7 @@ bool MPCCROS::generateTrajSrv(uvatraj_msgs::RequestTraj::Request &req, uvatraj_m
 	std::vector<Eigen::Vector2d> ctrl_pts;
 	ctrl_pts.emplace_back(Eigen::Vector2d(_odom(0),_odom(1)));
 	ctrl_pts.emplace_back(Eigen::Vector2d(req.goal.x,req.goal.y));
-	ctrl_pts = mpcc::arutils::generateLinearTrajectory(ctrl_pts[0], ctrl_pts[1]);
+	ctrl_pts = mpcc::arutils::generateLinearTrajectory(ctrl_pts[0], ctrl_pts[1], resolution);
 
 	uvatraj_msgs::ControlPoint holder;
 
@@ -826,7 +856,7 @@ double MPCCROS::get_s_from_state(const std::array<Spline1D, 2>& ref, double ref_
 
         double d = (pos - p).squaredNorm();
         if (d < min_dist)
-        {
+{
             min_dist = d;
             s        = i;
         }
@@ -840,6 +870,21 @@ void MPCCROS::mpcc_ctrl_loop(const ros::TimerEvent& event)
     if (!_is_init || _estop) return;
 
     if (_trajectory.points.size() == 0) return;
+
+    if (_in_transition){
+
+	double current_time = ros::Time::now().toSec();
+	double blend_factor = (current_time - _transition_start_time)/_transition_duration;
+
+	if (blend_factor >= 1.0){
+	    _in_transition = false;
+	    ROS_INFO("Trajectory blend finished");
+    	} else {
+	    ROS_INFO("Blending trajectories: %.1f%%", blend_factor*100);
+	}
+    }
+
+
 
     double len_start     = get_s_from_state(_ref, _true_ref_len);
     double corrected_len = len_start;
