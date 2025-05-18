@@ -210,9 +210,6 @@ MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~")
     
     _exec_traj_Srv = nh.advertiseService("/execute_trajectory", &MPCCROS::executeTrajSrv, this);
     
-
-
-
     timer_thread = std::thread(&MPCCROS::publishVel, this);
 
     _backup_srv = nh.advertiseService("/mpc_backup", &MPCCROS::toggleBackup, this);
@@ -260,8 +257,10 @@ bool MPCCROS::executeTrajSrv(std_srvs::Empty::Request &req, std_srvs::Empty::Res
 	if (!_is_executing){
 		_ref = _requested_ref;
 		_ref_len = _requested_len;
+		_true_ref_len = _true_requested_len;
 		_traj_reset = true;
-		_is_executing = true; 
+		_is_executing = true;
+		_in_transition = false; 
 		_mpc_core->set_trajectory(_requested_ss, _requested_xs, _requested_ys);
 		_x_goal_euclid = _requested_xs.back(); 
         	_y_goal_euclid = _requested_ys.back();  
@@ -467,6 +466,7 @@ void MPCCROS::viconcb(const geometry_msgs::TransformStamped data){
         	_odom(2) += M_PI;
         // wrap to pi
         	if (_odom(2) > M_PI) _odom(2) -= 2 * M_PI;
+		else if (_odom(2) < -M_PI) _odom(2) += 2*M_PI;
     	}
 
     	_mpc_core->set_odom(_odom);
@@ -865,6 +865,32 @@ double MPCCROS::get_s_from_state(const std::array<Spline1D, 2>& ref, double ref_
     return s;
 }
 
+void MPCCROS::blendTrajectories(double blend_factor)
+{
+    // Use normalized coordinates from 0 to 1
+    double num_points = 10;
+    for (double t = 0; t <= 1.0; t += 1.0/num_points)
+    {
+        // Scale s coordinate for each trajectory
+        double s_old = t * _old_ref_len;
+        double s_new = t * _ref_len;
+        
+        // Get points from both trajectories
+        double old_x = _old_ref[0].spline(s_old);
+        double old_y = _old_ref[1].spline(s_old);
+        double new_x = _ref[0].spline(s_new);
+        double new_y = _ref[1].spline(s_new);
+        
+        // Linear interpolation between trajectories
+        double blended_x = old_x * (1 - blend_factor) + new_x * blend_factor;
+        double blended_y = old_y * (1 - blend_factor) + new_y * blend_factor;
+        
+        // Scale s coordinate for the blended trajectory
+        double s_blended = t * std::min(_old_ref_len, _ref_len);
+        _mpc_core->updateReferencePoint(s_blended, blended_x, blended_y);
+    }
+}
+
 void MPCCROS::mpcc_ctrl_loop(const ros::TimerEvent& event)
 {
     if (!_is_init || _estop) return;
@@ -874,13 +900,14 @@ void MPCCROS::mpcc_ctrl_loop(const ros::TimerEvent& event)
     if (_in_transition){
 
 	double current_time = ros::Time::now().toSec();
-	double blend_factor = (current_time - _transition_start_time)/_transition_duration;
-
+	//double blend_factor = (current_time - _transition_start_time)/_transition_duration;
+	double blend_factor = 0.5 * (1 - cos(M_PI * elapsed_time / _transition_duration));
 	if (blend_factor >= 1.0){
 	    _in_transition = false;
 	    ROS_INFO("Trajectory blend finished");
     	} else {
 	    ROS_INFO("Blending trajectories: %.1f%%", blend_factor*100);
+	    blendTrajectories(blend_factor);
 	}
     }
 

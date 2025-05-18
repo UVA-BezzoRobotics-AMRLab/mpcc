@@ -124,6 +124,56 @@ double MPCCore::get_s_from_odom() const
     return s;
 }
 
+
+void MPCCore::set_trajectory(const std::vector<double> &ss, const std::vector<double> &xs, const std::vector<double> &ys)
+{
+    _is_set = true;
+
+    // tk::spline sx(ss, xs, tk::spline::cspline, false,
+    //               tk::spline::first_deriv, 1.0,
+    //               tk::spline::first_deriv, 1.0);
+    // tk::spline sy(ss, ys, tk::spline::cspline, false,
+    //               tk::spline::first_deriv, 1.0,
+    //               tk::spline::first_deriv, 1.0);
+
+    tk::spline sx(ss, xs, tk::spline::cspline);
+    tk::spline sy(ss, ys, tk::spline::cspline);
+
+    std::vector<SplineWrapper> ref;
+    SplineWrapper sx_wrap;
+    sx_wrap.spline = sx;
+
+    SplineWrapper sy_wrap;
+    sy_wrap.spline = sy;
+
+    ref.push_back(sx_wrap);
+    ref.push_back(sy_wrap);
+    _mpc->set_reference(ref, ss[ss.size() - 1]);
+}
+
+
+void MPCCore::updateReferencePoint(double s, double x, double y) {
+    //store all points in one vector array
+    _blend_points.push_back(std::make_tuple(s, x, y));
+    
+    // claude.ai - once we have enough points set use the set_trajectory function to set the traj
+    if (_blend_points.size() > 10) { 
+        std::vector<double> ss, xs, ys;
+        
+        // Extract points into separate vectors
+        for (const auto& point : _blend_points) {
+            ss.push_back(std::get<0>(point));
+            xs.push_back(std::get<1>(point));
+            ys.push_back(std::get<2>(point));
+        }
+        set_trajectory(ss, xs, ys);
+        
+        // Clear for the next cycle
+        _blend_points.clear();
+    }
+}
+
+
 std::array<double, 2> MPCCore::solve(const Eigen::VectorXd &state, bool is_reverse)
 {
     if (!_is_set)
