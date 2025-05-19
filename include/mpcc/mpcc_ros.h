@@ -21,6 +21,9 @@
 
 #include "mpcc/mpcc_core.h"
 
+#include <uvatraj_msgs/RequestTraj.h>
+#include <uvatraj_msgs/ExecuteTraj.h>
+
 class MPCCROS
 {
    public:
@@ -111,7 +114,8 @@ class MPCCROS
      **********************************************************************/
 
     void visualizeTraj();
-
+	
+    void updateReferencePoint(double s, double x, double y);
     /**********************************************************************
      * Function: MPCCROS::toggleBackup()
      * Description: Toggles backup driving
@@ -200,8 +204,6 @@ class MPCCROS
     std::map<std::string, double> _mpc_params;
 
 
-    double _ref_len;      // Length of _ref (potentially extended for MPC)
-    double _true_ref_len; // True, unextended length of current _ref
 
     double _requested_len; // Length of _requested_ref (potentially extended for MPC)
     double _true_requested_len; // True, unextended length of _requested_ref

@@ -53,7 +53,8 @@ class MPCCore
      * inputs for the robot. If the robot's heading is not aligned with
      * the reference trajectory, orient_robot generates the control inputs
      **********************************************************************/
-
+	
+    void updateReferencePoint(double s, double x, double y); 
     /***********************
      * Setters and Getters
      ***********************/
@@ -87,7 +88,8 @@ class MPCCore
      * Notes:
      * This function limits the input to the maximum rate
      **********************************************************************/
-
+	
+    std::vector<std::tuple<double, double, double>> _blend_points;
     double _dt;
     double _max_anga;
     double _max_linacc;

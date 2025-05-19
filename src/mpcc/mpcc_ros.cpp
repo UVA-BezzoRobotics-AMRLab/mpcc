@@ -48,7 +48,7 @@ MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~")
     //AR
     _old_ref = _requested_ref = _requested_ss = _requested_xs = _requested_ys = {};
      
-    _blend_new_s = 0.0
+    _blend_new_s = 0.0;
    
     _is_executing = false;
     _in_transition = false;
@@ -262,12 +262,10 @@ bool MPCCROS::executeTrajSrv(std_srvs::Empty::Request &req, std_srvs::Empty::Res
 	    }
 
 	if (!_is_executing){
-		_ref = _requested_ref;
-		_ref_len = _requested_len;
 		_traj_reset = true;
 		_is_executing = true;
 		_in_transition = false; 
-		_mpc_core->set_trajectory(_requested_ss, _requested_xs, _requested_ys);
+		_mpc_core->set_trajectory(_ref, _ref_len);
 		ROS_INFO("Executing the requested trajectory now. Robot will start moving.");
 		return true;
     
@@ -283,9 +281,10 @@ bool MPCCROS::executeTrajSrv(std_srvs::Empty::Request &req, std_srvs::Empty::Res
 
 }
 
-
 //TODO: check if the modified pt is beyond where we currently are then just return true and don't do anything
-bool MPCCROS::modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req, uvatraj_msgs::ExecuteTraj::Response &res)
+
+/*
+ool MPCCROS::modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req, uvatraj_msgs::ExecuteTraj::Response &res)
 {
 
 
@@ -410,6 +409,126 @@ bool MPCCROS::modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req, uvatraj_msg
 
 	return true;
 }
+*/
+
+
+
+bool MPCCROS::modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req, uvatraj_msgs::ExecuteTraj::Response &res)
+{
+
+	if (_is_executing){
+		_old_ref = _ref;
+		_old_ref_len = _ref_len;
+		_blend_traj_curr_s = get_s_from_state(_ref, _true_ref_len);
+
+		_transition_start_time = ros::Time::now().toSec();
+		_transition_duration = 1.0;
+		_transition = true;
+
+		_blend_new_s = std::ceil(_blend_traj_curr_s/resolution);	
+	}
+	
+
+
+	double total_length = 0;
+	size_t N = req.ctrl_pts.size(); 
+	
+	if (N < 2) return false;
+
+	Eigen::RowVectorXd ss(N);
+	Eigen::RowVectorXd xs(N);
+	Eigen::RowVectorXd ys(N);
+
+	_prev_ref = _ref;
+	_prev_ref_len = _true_ref_len;
+
+	_traj_reset = true;
+
+	for(int i = 1; i<req.ctrl_pts.size(); ++i){
+
+		double x0 = req.ctrl_pts[i-1].x;
+		double y0 = req.ctrl_pts[i-1].y;
+		
+		double x1 = req.ctrl_pts[i].x;
+		double y1 = req.ctrl_pts[i].y;
+
+		double dx = x1-x0;
+		double dy = y1-y0;
+		
+		double segment_length = std::sqrt(dx*dx + dy*dy);
+
+		if (std::fabs(segment_length) < 1e-2)
+			continue;
+
+		ss(i) = segment_length;
+		xs(i) = x0;
+		ys(i) = y0;
+		total_length += segment_length;
+	}
+
+	ss(N-1) = total_length;
+	xs(N-1) = req.ctrl_pts[N-1].x;
+	ys(N-1) = req.ctrl_pts[N-1].y;
+
+	_ref_len = ss(ss.size()-1);
+	_true_ref_len = _ref_len;
+
+	const auto fitX = utils::Interp(xs,3,ss);
+	Spline1D splineX(fitX);
+
+	const auto fitY = utils::Interp(ys,3,ss);
+	Spline1D splineY(fitY);
+	
+	if (_ref_len < _mpc_ref_len_sz){
+	
+		double end = _ref_len - 1e-1;
+		double px = splineX(end).coeff(0);
+		double px = splineY(end).coeff(0);
+		double dx = splineX.derivatives(end,1).coeff(1);
+		double dy = splineY.derivatives(end,1).coeff(1);
+
+		double ds = _mpc_ref_len_sz / (N-1);
+
+		for (int i = 0; i<N; ++i){
+
+			double s = ds*i;
+			ss(i) = s;
+
+			if(s<_ref_len){
+			
+				xs(i) = splineX(s).coeff(0);
+				ys(i) = splineY(s).coeff(0);
+			}
+			else
+			{
+				
+				xs(i) = dx*(s-_ref_len) + px;
+				ys(i) = dy*(s-_ref_len) + py;
+			}
+		}
+
+		const auto fitX = utils::Interp(xs,3,ss);
+		splineX = Spline1D(fitX);
+
+		const auto fitY = utils::Interp(ys,3,ss);
+		splineY = Spline1D(fitY);
+
+		_ref_len = _mpc_ref_len_sz;
+
+
+
+	}
+
+	_ref[0] = splineX;
+	_ref[1] = splineY;
+
+	visualizeTraj();	
+
+	
+
+
+
+}
 
 
 //double checked logic is sound
@@ -430,33 +549,39 @@ bool MPCCROS::generateTrajSrv(uvatraj_msgs::RequestTraj::Request &req, uvatraj_m
 		return true;
 	}
 	
-
 	
 	std::vector<Eigen::Vector2d> ctrl_pts;
 	ctrl_pts.emplace_back(Eigen::Vector2d(_odom(0),_odom(1)));
 	ctrl_pts.emplace_back(Eigen::Vector2d(req.goal.x,req.goal.y));
 	ctrl_pts = mpcc::arutils::generateLinearTrajectory(ctrl_pts[0], ctrl_pts[1], resolution);
 	uvatraj_msgs::ControlPoint holder;
-
+	
 	for (int i=0; i<ctrl_pts.size(); ++i){
-		holder.x = (ctrl_pts[i].x());
-		holder.y = (ctrl_pts[i].y());
+	
+		holder.x = ctrl_pts[i].x();
+		holder.y = ctrl_pts[i].y();
 		holder.z = 0.0;
 		holder.metadata = "";
 
 		res.all_ctrl_pts.push_back(holder);
 		res.boundary_ctrl_pts.push_back(holder);
-
+		
 		ROS_INFO_STREAM("GENERATETRAJSRV: Added boundary point " << i << ": (" << holder.x << ", " << holder.y << ")");
 
 	}
+
 	response("SUCCESSFULLY GENERATED PATH", true);
 	ROS_INFO_STREAM("PATH GENERATED SUCCESSFULY. Total pts:" << res.all_ctrl_pts.size());
+	
+	//set trajectory	
+	
 	return true;
 
 	
 }
 
+
+//definitely correct
 void MPCCROS::viconcb(const geometry_msgs::TransformStamped data){
 
 
@@ -470,8 +595,8 @@ void MPCCROS::viconcb(const geometry_msgs::TransformStamped data){
 
 	_odom = Eigen::VectorXd(3);
 
-	_odom(0) = msg->data.transform.translation.x
-	_odom(1) = msg->data.transform.translation.y;
+	_odom(0) = data->transform.translation.x
+	_odom(1) = data->transform.translation.y;
 	_odom(2) = yaw;
 
 

@@ -19,7 +19,8 @@ find_package(catkin REQUIRED COMPONENTS
   grid_map_ros
   costmap_2d
   amrl_logging
-)
+  uvatraj_msgs
+  )
 
 set(CVXPYGEN_OUTPUT ${CMAKE_SOURCE_DIR}/scripts/tube_gen/LP_codegen/c)
 add_subdirectory(${CVXPYGEN_OUTPUT})
@@ -49,7 +50,7 @@ generate_messages(
 )
 
 catkin_package(
-  CATKIN_DEPENDS message_runtime
+  CATKIN_DEPENDS message_runtime uvatraj_msgs
 )
 
 ###########

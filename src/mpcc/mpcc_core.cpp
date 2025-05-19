@@ -14,7 +14,7 @@ MPCCore::MPCCore()
 
     _traj_reset = false;
     _is_set     = false;
-
+    std::vector<std::tuple<double,double,double>> _blend_points;
     _ref_length = 0;
 }
 
@@ -125,56 +125,6 @@ double MPCCore::get_s_from_odom() const
 }
 
 
-void MPCCore::set_trajectory(const std::vector<double> &ss, const std::vector<double> &xs, const std::vector<double> &ys)
-{
-    _is_set = true;
-
-    // tk::spline sx(ss, xs, tk::spline::cspline, false,
-    //               tk::spline::first_deriv, 1.0,
-    //               tk::spline::first_deriv, 1.0);
-    // tk::spline sy(ss, ys, tk::spline::cspline, false,
-    //               tk::spline::first_deriv, 1.0,
-    //               tk::spline::first_deriv, 1.0);
-
-    tk::spline sx(ss, xs, tk::spline::cspline);
-    tk::spline sy(ss, ys, tk::spline::cspline);
-
-    std::vector<SplineWrapper> ref;
-    SplineWrapper sx_wrap;
-    sx_wrap.spline = sx;
-
-    SplineWrapper sy_wrap;
-    sy_wrap.spline = sy;
-
-    ref.push_back(sx_wrap);
-    ref.push_back(sy_wrap);
-    _mpc->set_reference(ref, ss[ss.size() - 1]);
-}
-
-
-
-//directly from old code
-void MPCCore::updateReferencePoint(double s, double x, double y) {
-    
-    
-    _blend_points.push_back(std::make_tuple(s, x, y));
-    
-    if (_blend_points.size() > 10) { 
-        std::vector<double> ss, xs, ys;
-        
-        // Extract points into separate vectors
-        for (const auto& point : _blend_points) {
-            ss.push_back(std::get<0>(point));
-            xs.push_back(std::get<1>(point));
-            ys.push_back(std::get<2>(point));
-        }
-        set_trajectory(ss, xs, ys);
-        
-        // Clear for the next cycle
-        _blend_points.clear();
-    }
-}
-
 
 std::array<double, 2> MPCCore::solve(const Eigen::VectorXd &state, bool is_reverse)
 {
@@ -278,4 +228,36 @@ double MPCCore::limit(double prev_v, double input, double max_rate) const
     }
 
     return ret;
+}
+
+void MPCCore::updateReferencePoint(double s, double x, double y){
+
+
+	_blend_points.emplace_back(s,x,y);
+
+	if (_blend_points.size()>10){
+
+	const size_t N = _blend_points.size();
+	Eigen::RowVectorXd ss(N), xs(N), ys(N);
+
+	for (size_t i = 0; i<N; ++i){
+	
+		ss(i) = std::get<0>(_blend_points[i]);
+		xs(i) = std::get<1>(_blend_points[i]);
+		ys(i) = std::get<2>(_blend_points[i]);
+	}
+
+	auto fitX = utils::Interp(xs,3,ss);
+	auto fitY = utils::Interp(ys,3,ss);
+	Spline1D splineX(fitX), splineY(fitY);
+
+	std::array<Spline1D, 2> ref{ splineX, splineY };
+	double ref_len = ss(N-1);
+	set_trajectory(ref,ref_len);
+
+	_blend_points.clear();
+	
+	}
+
+
 }
