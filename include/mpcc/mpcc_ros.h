@@ -45,6 +45,23 @@ class MPCCROS
      * for initial seeding.
      **********************************************************************/
 
+	
+	
+     void blendTrajectories(double blend_factor);    
+    // Trajectory management
+     Eigen::RowVectorXd _requested_ss, _requested_xs, _requested_ys;
+     double _blend_new_s = 0.0;
+     double _blend_traj_curr_s = 0.0;
+     double _true_len = 0.0;
+    //
+    // // Blending control
+     bool _in_transition = false;
+     double _transition_start_time = 0.0;
+     double _transition_duration = 0.0;
+    
+    // // ROS
+    ros::Subscriber _viconSub;
+     
     void publishReference();
     /**********************************************************************
      * Function: MPCCROS::publishReference()
@@ -123,7 +140,7 @@ class MPCCROS
      * Returns:
      * N/A
      **********************************************************************/
-    void viconcb(const geometry_msgs::TransformStamped::ConstPtr& msg);
+    void viconcb(const geometry_msgs::TransformStamped::ConstPtr& data);
     bool generateTrajSrv(uvatraj_msgs::RequestTraj::Request &req, uvatraj_msgs::RequestTraj::Response &res);
     bool modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req, uvatraj_msgs::ExecuteTraj::Response &res);
     bool executeTrajSrv(std_srvs::Empty::Request &req, std_srvs::Empty::Response &res);
@@ -191,7 +208,6 @@ class MPCCROS
     std::vector<Eigen::Vector3d> poses;
     std::vector<double> mpc_results;
 
-    std::array<Spline1D, 2> _ref;
     std::array<Spline1D, 2> _prev_ref;
     std::array<Eigen::VectorXd, 2> _tubes;
     std::array<Spline1D, 2> _ref;         // Current active trajectory for MPC

@@ -125,7 +125,9 @@ add_custom_target(
 )
 
 
-add_library(cvxpy_lib STATIC ${cpg_src})
+add_library(
+	cvxpy_lib STATIC ${cpg_src}
+	)
 target_compile_options(cvxpy_lib PRIVATE -O3 -w)
 target_include_directories(cvxpy_lib PRIVATE ${cpg_include})
 

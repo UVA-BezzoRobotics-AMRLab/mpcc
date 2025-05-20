@@ -1,11 +1,11 @@
-a once
+#pragma once
 
 #include <vector>
 #include <Eigen/Core>
 #include <uvatraj_msgs/ControlPoint.h>
 
 namespace mpcc {
-namespace utils {
+namespace arutils {
 
 /// Compute Euclidean distance between two 2D points.
 double computeDistance(

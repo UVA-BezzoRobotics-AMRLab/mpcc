@@ -18,13 +18,13 @@
 #include <Eigen/Core>
 #include <algorithm>
 
-#define resolution 0.5
+constexpr double resolution = 0.5;
 
 #include "mpcc/utils.h"
 
 
 //import ar utils
-#include "../../include/utils/arutils.h"
+#include "mpcc/arutils.h"
 //import the uvatrajmsgs
 
 MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~")
@@ -46,8 +46,12 @@ MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~")
     _ref = {};
     
     //AR
-    _old_ref = _requested_ref = _requested_ss = _requested_xs = _requested_ys = {};
-     
+    _requested_ss = Eigen::RowVectorXd();
+    _requested_xs = Eigen::RowVectorXd();
+    _requested_ys = Eigen::RowVectorXd();
+    _requested_ref = {};
+    _old_ref = {}; 
+
     _blend_new_s = 0.0;
    
     _is_executing = false;
@@ -423,7 +427,7 @@ bool MPCCROS::modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req, uvatraj_msg
 
 		_transition_start_time = ros::Time::now().toSec();
 		_transition_duration = 1.0;
-		_transition = true;
+	 	_in_transition = true;
 
 		_blend_new_s = std::ceil(_blend_traj_curr_s/resolution);	
 	}
@@ -483,7 +487,7 @@ bool MPCCROS::modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req, uvatraj_msg
 	
 		double end = _ref_len - 1e-1;
 		double px = splineX(end).coeff(0);
-		double px = splineY(end).coeff(0);
+		double py = splineY(end).coeff(0);
 		double dx = splineX.derivatives(end,1).coeff(1);
 		double dy = splineY.derivatives(end,1).coeff(1);
 
@@ -527,10 +531,10 @@ bool MPCCROS::modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req, uvatraj_msg
 	
 
 
-
+	return true;
 }
 
-
+// store in _ref
 //double checked logic is sound
 bool MPCCROS::generateTrajSrv(uvatraj_msgs::RequestTraj::Request &req, uvatraj_msgs::RequestTraj::Response &res){
 	
@@ -582,7 +586,7 @@ bool MPCCROS::generateTrajSrv(uvatraj_msgs::RequestTraj::Request &req, uvatraj_m
 
 
 //definitely correct
-void MPCCROS::viconcb(const geometry_msgs::TransformStamped data){
+void MPCCROS::viconcb(const geometry_msgs::TransformStamped::ConstPtr& data){
 
 
 	tf::Quaternion q(data->transform.translation.x, data->transform.translation.y, data->transform.translation.z, data->transform.rotation.w);
@@ -595,7 +599,7 @@ void MPCCROS::viconcb(const geometry_msgs::TransformStamped data){
 
 	_odom = Eigen::VectorXd(3);
 
-	_odom(0) = data->transform.translation.x
+	_odom(0) = data->transform.translation.x;
 	_odom(1) = data->transform.translation.y;
 	_odom(2) = yaw;
 
@@ -1015,10 +1019,10 @@ void MPCCROS::blendTrajectories(double blend_factor)
         double s_new = t * _ref_len;
         
         // Get points from both trajectories
-        double old_x = _old_ref[0].spline(s_old);
-        double old_y = _old_ref[1].spline(s_old);
-        double new_x = _ref[0].spline(s_new);
-        double new_y = _ref[1].spline(s_new);
+        double old_x = _old_ref[0](s_old).coeff(0);
+        double old_y = _old_ref[1](s_old).coeff(0);
+        double new_x = _ref[0](s_new).coeff(0);
+        double new_y = _ref[1](s_new).coeff(0);
         
         // Linear interpolation between trajectories
         double blended_x = old_x * (1 - blend_factor) + new_x * blend_factor;
@@ -1039,7 +1043,7 @@ void MPCCROS::mpcc_ctrl_loop(const ros::TimerEvent& event)
     if (_in_transition){
 
 	double current_time = ros::Time::now().toSec();
-	elapsed_time = _transition_start_time - current_time;
+	double elapsed_time = _transition_start_time - current_time;
 	//double blend_factor = (current_time - _transition_start_time)/_transition_duration;
 	double blend_factor = 0.5 * (1 - cos(M_PI * elapsed_time / _transition_duration));
 	if (blend_factor >= 1.0){

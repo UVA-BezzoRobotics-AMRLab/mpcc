@@ -2,6 +2,8 @@
 #include <cmath>
 #include <Eigen/Core>
 
+#include "mpcc/arutils.h"
+
 inline double computeDistance(
     const Eigen::Vector2d& a,
     const Eigen::Vector2d& b)
@@ -30,7 +32,7 @@ std::vector<Eigen::Vector2d> generateLinearTrajectory(
     int numPts = static_cast<int>(std::floor(length / resolution));
 
     std::vector<Eigen::Vector2d> pts;
-    pts.reserve(numSteps + 2);
+    pts.reserve(numPts + 2);
 
     // sample from i=0 (start) to i=numSteps (might land exactly on goal)
     for (int i = 0; i <= numPts; ++i) {
