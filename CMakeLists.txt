@@ -68,6 +68,7 @@ include_directories(
   ${ACADOS_INCLUDE_DIRS}
   ${BLASFEO_INCLUDE_DIRS}
   ${cpg_include}
+  ${PROJECT_SOURCE_DIR}
 )
 
 
@@ -137,7 +138,8 @@ add_executable(mpcc_ros
   src/mpcc/mpcc_ros.cpp
   src/mpcc/mpcc_core.cpp
   src/mpcc/mpcc_acados.cpp
-)
+  src/utils/arutils.cpp
+  )
 target_link_libraries(mpcc_ros
   ${HPIPM_LIBRARIES}
   ${catkin_LIBRARIES}

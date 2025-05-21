@@ -24,7 +24,7 @@ constexpr double resolution = 0.5;
 
 
 //import ar utils
-#include "mpcc/arutils.h"
+#include <include/mpcc/arutils.h> 
 //import the uvatrajmsgs
 
 MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~")
