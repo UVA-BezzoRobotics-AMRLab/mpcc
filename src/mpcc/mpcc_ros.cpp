@@ -194,7 +194,7 @@ MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~")
 
     _mapSub  = nh.subscribe("/map", 1, &MPCCROS::mapcb, this);
     //_odomSub = nh.subscribe("/odometry/filtered", 1, &MPCCROS::odomcb, this);
-    _viconSub = nh.subscribe("/vicon/jackal4/jackal4", 1, &MPCCROS::viconcb, this);
+    _viconSub = nh.subscribe("/vicon/Rosbot_AR_2/Rosbot_AR_2", 1, &MPCCROS::viconcb, this);
     _trajSub = nh.subscribe("/reference_trajectory", 1, &MPCCROS::trajectorycb, this);
     _obsSub  = nh.subscribe("/obs_odom", 1, &MPCCROS::dynaobscb, this);
 
@@ -255,16 +255,6 @@ bool MPCCROS::executeTrajSrv(std_srvs::Empty::Request &req, std_srvs::Empty::Res
 	        return false;
 	    }
 	
-	    if (_requested_ref.empty()) {
-	        ROS_WARN("No requested reference stored. Call modifyTrajSrv first or provide a trajectory.");
-	        return false;
-	    }
-	
-	    if (_requested_len <= 0) {
-	        ROS_WARN("Requested reference length <= 0. Trajectory is invalid.");
-	        return false;
-	    }
-
 	if (!_is_executing){
 		_traj_reset = true;
 		_is_executing = true;
@@ -421,15 +411,21 @@ bool MPCCROS::modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req, uvatraj_msg
 {
 
 	if (_is_executing){
+
+		ROS_INFO("Executing trajectory blend.");	
 		_old_ref = _ref;
 		_old_ref_len = _ref_len;
 		_blend_traj_curr_s = get_s_from_state(_ref, _true_ref_len);
 
+
+		 ROS_DEBUG("Current s from state: %.3f", _blend_traj_curr_s);
 		_transition_start_time = ros::Time::now().toSec();
 		_transition_duration = 1.0;
 	 	_in_transition = true;
 
-		_blend_new_s = std::ceil(_blend_traj_curr_s/resolution);	
+		_blend_new_s = std::ceil(_blend_traj_curr_s/resolution);
+
+		ROS_DEBUG("Blend target s: %.3f", _blend_new_s);	
 	}
 	
 
@@ -437,6 +433,8 @@ bool MPCCROS::modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req, uvatraj_msg
 	double total_length = 0;
 	size_t N = req.ctrl_pts.size(); 
 	
+
+	ROS_INFO("Generating trajectory with %lu control points.", N);
 	if (N < 2) return false;
 
 	Eigen::RowVectorXd ss(N);
@@ -468,15 +466,21 @@ bool MPCCROS::modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req, uvatraj_msg
 		xs(i) = x0;
 		ys(i) = y0;
 		total_length += segment_length;
+		ROS_INFO("Segment %d → %d: (%.2f, %.2f) to (%.2f, %.2f), length = %.3f",
+              i - 1, i, x0, y0, x1, y1, segment_length);
 	}
 
 	ss(N-1) = total_length;
 	xs(N-1) = req.ctrl_pts[N-1].x;
 	ys(N-1) = req.ctrl_pts[N-1].y;
 
+
+	
 	_ref_len = ss(ss.size()-1);
 	_true_ref_len = _ref_len;
 
+
+	ROS_INFO("Total trajectory length: %.3f", _ref_len);
 	const auto fitX = utils::Interp(xs,3,ss);
 	Spline1D splineX(fitX);
 
@@ -485,11 +489,17 @@ bool MPCCROS::modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req, uvatraj_msg
 	
 	if (_ref_len < _mpc_ref_len_sz){
 	
+
+		ROS_INFO("Extrapolating reference trajectory to length %.3f", _mpc_ref_len_sz);
+    
 		double end = _ref_len - 1e-1;
 		double px = splineX(end).coeff(0);
 		double py = splineY(end).coeff(0);
 		double dx = splineX.derivatives(end,1).coeff(1);
 		double dy = splineY.derivatives(end,1).coeff(1);
+
+		ROS_INFO("Extrapolation start point: (%.2f, %.2f), direction = (%.2f, %.2f)", px, py, dx, dy);
+
 
 		double ds = _mpc_ref_len_sz / (N-1);
 
@@ -509,6 +519,8 @@ bool MPCCROS::modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req, uvatraj_msg
 				xs(i) = dx*(s-_ref_len) + px;
 				ys(i) = dy*(s-_ref_len) + py;
 			}
+			ROS_INFO("Sampled point %d: s=%.3f, x=%.2f, y=%.2f", i, s, xs(i), ys(i));
+    
 		}
 
 		const auto fitX = utils::Interp(xs,3,ss);
@@ -525,6 +537,8 @@ bool MPCCROS::modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req, uvatraj_msg
 
 	_ref[0] = splineX;
 	_ref[1] = splineY;
+
+	ROS_INFO("Reference trajectory updated. Length = %.3f", _ref_len);
 
 	visualizeTraj();	
 
@@ -553,13 +567,23 @@ bool MPCCROS::generateTrajSrv(uvatraj_msgs::RequestTraj::Request &req, uvatraj_m
 		return true;
 	}
 	
-	
+        ROS_INFO_STREAM("GOAL_POS " << -req.goal.z << " y: " << req.goal.y);	
 	std::vector<Eigen::Vector2d> ctrl_pts;
+	
+ 	ROS_DEBUG_STREAM("[vicon_bridge] Initial ctrl_pts:"
+                 << " start=(" << _odom(0) << "," << _odom(1) << ")"
+                 << " goal=("  << -req.goal.z << "," << req.goal.y << ")");
+	
 	ctrl_pts.emplace_back(Eigen::Vector2d(_odom(0),_odom(1)));
-	ctrl_pts.emplace_back(Eigen::Vector2d(req.goal.x,req.goal.y));
+	ctrl_pts.emplace_back(Eigen::Vector2d(-req.goal.z,req.goal.y));
 	ctrl_pts = mpcc::arutils::generateLinearTrajectory(ctrl_pts[0], ctrl_pts[1], resolution);
 	uvatraj_msgs::ControlPoint holder;
 	
+	ROS_DEBUG_STREAM("[vicon_bridge] Generated trajectory: "
+                 << ctrl_pts.size() << " points"
+                 << " @ resolution=" << resolution);
+
+
 	for (int i=0; i<ctrl_pts.size(); ++i){
 	
 		holder.x = ctrl_pts[i].x();
@@ -569,15 +593,72 @@ bool MPCCROS::generateTrajSrv(uvatraj_msgs::RequestTraj::Request &req, uvatraj_m
 
 		res.all_ctrl_pts.push_back(holder);
 		res.boundary_ctrl_pts.push_back(holder);
-		
+			
 		ROS_INFO_STREAM("GENERATETRAJSRV: Added boundary point " << i << ": (" << holder.x << ", " << holder.y << ")");
 
 	}
 
 	response("SUCCESSFULLY GENERATED PATH", true);
 	ROS_INFO_STREAM("PATH GENERATED SUCCESSFULY. Total pts:" << res.all_ctrl_pts.size());
-	
+		
 	//set trajectory	
+	
+	 _prev_ref     = _ref;
+    _prev_ref_len = _true_ref_len;
+
+    _traj_reset = true;
+
+    int N = ctrl_pts.size();
+
+    Eigen::RowVectorXd ss, xs, ys;
+    ss.resize(N);
+    xs.resize(N);
+    ys.resize(N);
+/*
+    for (int i = 0; i < N; ++i)
+    {
+        xs(i) = ctrl_pts[i].x();
+        ys(i) = ctrl_pts[i].y();
+        ss(i) = 0;
+
+    }
+*/
+
+     for (int i = 1; i < N; ++i) {
+    	xs(i) = ctrl_pts[i].x();
+    	ys(i) = ctrl_pts[i].y();
+
+    	double dx = xs(i) - xs(i-1);
+    	double dy = ys(i) - ys(i-1);
+    	ss(i) = ss(i-1) + std::hypot(dx, dy);
+	}
+    _ref_len = ss(N - 1);
+
+    _ref_len      = ss(ss.size() - 1);
+    _true_ref_len = _ref_len;
+
+    const auto fitX = utils::Interp(xs, 3, ss);
+    Spline1D splineX(fitX);
+
+    const auto fitY = utils::Interp(ys, 3, ss);
+    Spline1D splineY(fitY);
+
+    // if reference length is less than required mpc size, extend trajectory
+    if (_ref_len < _mpc_ref_len_sz){
+     ROS_WARN("reference length (%.2f) is smaller than %.2fm, extending", _ref_len,
+                 _mpc_ref_len_sz);	
+	}
+
+    _ref[0] = splineX;
+    _ref[1] = splineY;
+
+    _mpc_core->set_trajectory(_ref, _ref_len);
+
+    visualizeTraj();
+
+    ROS_INFO("**********************************************************");
+    ROS_INFO("MPC received trajectory! Length: %.2f", _ref_len);
+    ROS_INFO("**********************************************************");
 	
 	return true;
 
@@ -589,6 +670,17 @@ bool MPCCROS::generateTrajSrv(uvatraj_msgs::RequestTraj::Request &req, uvatraj_m
 void MPCCROS::viconcb(const geometry_msgs::TransformStamped::ConstPtr& data){
 
 
+	/*ROS_ERROR("Received VICON transform: [x=%.3f, y=%.3f, z=%.3f] [qw=%.3f, qx=%.3f, qy=%.3f, qz=%.3f]",
+              data->transform.translation.x,
+              data->transform.translation.y,
+              data->transform.translation.z,
+              data->transform.rotation.w,
+              data->transform.rotation.x,
+              data->transform.rotation.y,
+              data->transform.rotation.z);
+*/
+
+
 	tf::Quaternion q(data->transform.translation.x, data->transform.translation.y, data->transform.translation.z, data->transform.rotation.w);
 
 	tf::Matrix3x3 m(q);
@@ -597,13 +689,16 @@ void MPCCROS::viconcb(const geometry_msgs::TransformStamped::ConstPtr& data){
 
 	m.getRPY(roll,pitch,yaw);
 
+//	ROS_ERROR("Converted RPY: roll=%.3f, pitch=%.3f, yaw=%.3f", roll, pitch, yaw);
+
+
 	_odom = Eigen::VectorXd(3);
 
 	_odom(0) = data->transform.translation.x;
 	_odom(1) = data->transform.translation.y;
 	_odom(2) = yaw;
 
-
+	
     	if (_reverse_mode)
     	{
         	_odom(2) += M_PI;
