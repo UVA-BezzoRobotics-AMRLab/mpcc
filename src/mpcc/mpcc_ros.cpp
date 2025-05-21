@@ -606,8 +606,6 @@ bool MPCCROS::generateTrajSrv(uvatraj_msgs::RequestTraj::Request &req, uvatraj_m
 	 _prev_ref     = _ref;
     _prev_ref_len = _true_ref_len;
 
-    _traj_reset = true;
-
     int N = ctrl_pts.size();
 
     Eigen::RowVectorXd ss, xs, ys;
@@ -901,16 +899,19 @@ void MPCCROS::visualizeTraj()
 void MPCCROS::publishVel()
 {
     constexpr double pub_vel_loop_rate_hz = 50;
-    const std::chrono::milliseconds pub_loop_period(
-        static_cast<int>(1000.0 / pub_vel_loop_rate_hz));
+    //const std::chrono::milliseconds pub_loop_period(
+      ///  static_cast<int>(1000.0 / pub_vel_loop_rate_hz));
 
+
+	ros::Rate loop_rate(pub_vel_loop_rate_hz);
     while (ros::ok())
     {
-        if (_trajectory.points.size() > 0) _velPub.publish(_vel_msg);
-
-        // _velPub.publish(_vel_msg);
-
-        std::this_thread::sleep_for(pub_loop_period);
+        //if (_trajectory.points.size() > 0) _velPub.publish(_vel_msg);
+	if(_is_init){
+        	 _velPub.publish(_vel_msg);
+	}
+        //std::this_thread::sleep_for(pub_loop_period);
+        loop_rate.sleep();
     }
 }
 
@@ -1131,9 +1132,34 @@ void MPCCROS::blendTrajectories(double blend_factor)
 
 void MPCCROS::mpcc_ctrl_loop(const ros::TimerEvent& event)
 {
-    if (!_is_init || _estop) return;
+    if (!_is_init || _estop){
 
-    if (_trajectory.points.size() == 0) return;
+
+	    _vel_msg.linear.x = 0;
+	    _vel_msg.angular.z = 0;
+	    return;
+    }
+
+    //if (_trajectory.points.size() == 0) return;
+
+    if(!_is_executing){
+
+
+	    _vel_msg.linear.x = 0;
+	    _vel_msg.angular.z = 0;
+	    return;
+    }
+
+    if (_ref_len <= 1e-3){
+
+
+	    ROS_WARN("MPC Control Loop: invalid traj length %.2f", _ref_len); 
+	    _vel_msg.linear.x = 0;
+	    _vel_msg.angular.z = 0;
+	    _is_executing = false;
+	    return;
+    }
+
 
     if (_in_transition){
 
