@@ -679,15 +679,19 @@ void MPCCROS::viconcb(const geometry_msgs::TransformStamped::ConstPtr& data){
 */
 
 
-	tf::Quaternion q(data->transform.translation.x, data->transform.translation.y, data->transform.translation.z, data->transform.rotation.w);
+//	tf::Quaternion q(data->transform.translation.x, data->transform.translation.y, data->transform.translation.z, data->transform.rotation.w);
 
-	tf::Matrix3x3 m(q);
+	tf::Quaternion q_tf;
+
+	tf::quaternionMsgToTF(data->transform.rotation, q_tf);
+
+	tf::Matrix3x3 m(q_tf);
 
 	double roll, pitch, yaw;
 
 	m.getRPY(roll,pitch,yaw);
 
-//	ROS_ERROR("Converted RPY: roll=%.3f, pitch=%.3f, yaw=%.3f", roll, pitch, yaw);
+	ROS_ERROR("Converted RPY: roll=%.3f, pitch=%.3f, yaw=%.3f", roll, pitch, yaw);
 
 
 	_odom = Eigen::VectorXd(3);
