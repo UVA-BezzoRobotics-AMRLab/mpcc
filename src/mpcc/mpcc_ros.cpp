@@ -106,7 +106,7 @@ MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~")
 
     // Teleop params
     _nh.param("teleop", _teleop, false);
-    _nh.param<std::string>("frame_id", _frame_id, "odom");
+    _nh.param<std::string>("frame_id", _frame_id, "vicon/world");
 
     // clf params
     _nh.param("w_lyap_lag_e", _w_ql_lyap, 1.0);
@@ -204,7 +204,7 @@ MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~")
 
     _startPub       = nh.advertise<std_msgs::Float64>("/progress", 10);
     _pathPub        = nh.advertise<nav_msgs::Path>("/spline_path", 10);
-    _velPub         = nh.advertise<geometry_msgs::Twist>("/cmd_vel", 10);
+    _velPub         = nh.advertise<geometry_msgs::Twist>("/ROSBOT8/cmd_vel", 10);
     _trajPub        = nh.advertise<nav_msgs::Path>("/mpc_prediction", 10);
     _solveTimePub   = nh.advertise<std_msgs::Float64>("/mpc_solve_time", 0);
     _goalReachedPub = nh.advertise<std_msgs::Bool>("/mpc_goal_reached", 10);
@@ -412,136 +412,21 @@ bool MPCCROS::modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req, uvatraj_msg
 
 	if (_is_executing){
 
-		ROS_INFO("Executing trajectory blend.");	
+		printf("Executing trajectory blend.");	
 		_old_ref = _ref;
 		_old_ref_len = _ref_len;
 		_blend_traj_curr_s = get_s_from_state(_ref, _true_ref_len);
 
 
-		 ROS_DEBUG("Current s from state: %.3f", _blend_traj_curr_s);
+		 printf("Current s from state: %.3f", _blend_traj_curr_s);
 		_transition_start_time = ros::Time::now().toSec();
 		_transition_duration = 1.0;
 	 	_in_transition = true;
 
 		_blend_new_s = std::ceil(_blend_traj_curr_s/resolution);
 
-		ROS_DEBUG("Blend target s: %.3f", _blend_new_s);	
+		printf("Blend target s: %.3f", _blend_new_s);	
 	}
-	
-
-
-	double total_length = 0;
-	size_t N = req.ctrl_pts.size(); 
-	
-
-	ROS_INFO("Generating trajectory with %lu control points.", N);
-	if (N < 2) return false;
-
-	Eigen::RowVectorXd ss(N);
-	Eigen::RowVectorXd xs(N);
-	Eigen::RowVectorXd ys(N);
-
-	_prev_ref = _ref;
-	_prev_ref_len = _true_ref_len;
-
-	_traj_reset = true;
-
-	for(int i = 1; i<req.ctrl_pts.size(); ++i){
-
-		double x0 = req.ctrl_pts[i-1].x;
-		double y0 = req.ctrl_pts[i-1].y;
-		
-		double x1 = req.ctrl_pts[i].x;
-		double y1 = req.ctrl_pts[i].y;
-
-		double dx = x1-x0;
-		double dy = y1-y0;
-		
-		double segment_length = std::sqrt(dx*dx + dy*dy);
-
-		if (std::fabs(segment_length) < 1e-2)
-			continue;
-
-		ss(i) = segment_length;
-		xs(i) = x0;
-		ys(i) = y0;
-		total_length += segment_length;
-		ROS_INFO("Segment %d → %d: (%.2f, %.2f) to (%.2f, %.2f), length = %.3f",
-              i - 1, i, x0, y0, x1, y1, segment_length);
-	}
-
-	ss(N-1) = total_length;
-	xs(N-1) = req.ctrl_pts[N-1].x;
-	ys(N-1) = req.ctrl_pts[N-1].y;
-
-
-	
-	_ref_len = ss(ss.size()-1);
-	_true_ref_len = _ref_len;
-
-
-	ROS_INFO("Total trajectory length: %.3f", _ref_len);
-	const auto fitX = utils::Interp(xs,3,ss);
-	Spline1D splineX(fitX);
-
-	const auto fitY = utils::Interp(ys,3,ss);
-	Spline1D splineY(fitY);
-	
-	if (_ref_len < _mpc_ref_len_sz){
-	
-
-		ROS_INFO("Extrapolating reference trajectory to length %.3f", _mpc_ref_len_sz);
-    
-		double end = _ref_len - 1e-1;
-		double px = splineX(end).coeff(0);
-		double py = splineY(end).coeff(0);
-		double dx = splineX.derivatives(end,1).coeff(1);
-		double dy = splineY.derivatives(end,1).coeff(1);
-
-		ROS_INFO("Extrapolation start point: (%.2f, %.2f), direction = (%.2f, %.2f)", px, py, dx, dy);
-
-
-		double ds = _mpc_ref_len_sz / (N-1);
-
-		for (int i = 0; i<N; ++i){
-
-			double s = ds*i;
-			ss(i) = s;
-
-			if(s<_ref_len){
-			
-				xs(i) = splineX(s).coeff(0);
-				ys(i) = splineY(s).coeff(0);
-			}
-			else
-			{
-				
-				xs(i) = dx*(s-_ref_len) + px;
-				ys(i) = dy*(s-_ref_len) + py;
-			}
-			ROS_INFO("Sampled point %d: s=%.3f, x=%.2f, y=%.2f", i, s, xs(i), ys(i));
-    
-		}
-
-		const auto fitX = utils::Interp(xs,3,ss);
-		splineX = Spline1D(fitX);
-
-		const auto fitY = utils::Interp(ys,3,ss);
-		splineY = Spline1D(fitY);
-
-		_ref_len = _mpc_ref_len_sz;
-
-
-
-	}
-
-	_ref[0] = splineX;
-	_ref[1] = splineY;
-
-	ROS_INFO("Reference trajectory updated. Length = %.3f", _ref_len);
-
-	visualizeTraj();	
-
 	
 
 
@@ -604,7 +489,7 @@ bool MPCCROS::generateTrajSrv(uvatraj_msgs::RequestTraj::Request &req, uvatraj_m
 	//set trajectory	
 	
 	 _prev_ref     = _ref;
-    _prev_ref_len = _true_ref_len;
+    	_prev_ref_len = _true_ref_len;
 
     int N = ctrl_pts.size();
 
@@ -622,6 +507,9 @@ bool MPCCROS::generateTrajSrv(uvatraj_msgs::RequestTraj::Request &req, uvatraj_m
     }
 */
 
+
+    xs(0) = ctrl_pts[0].x();
+    ys(0) = ctrl_pts[0].y();
      for (int i = 1; i < N; ++i) {
     	xs(i) = ctrl_pts[i].x();
     	ys(i) = ctrl_pts[i].y();
@@ -650,8 +538,80 @@ bool MPCCROS::generateTrajSrv(uvatraj_msgs::RequestTraj::Request &req, uvatraj_m
     _ref[0] = splineX;
     _ref[1] = splineY;
 
-    _mpc_core->set_trajectory(_ref, _ref_len);
 
+    ROS_INFO_STREAM("--- Calculated xs, ys, ss before spline fitting ---");
+    for (int i=0; i<N; ++i) {
+        ROS_INFO_STREAM("Point " << i << ": s=" << ss(i) << ", x=" << xs(i) << ", y=" << ys(i));
+    }
+    ROS_INFO_STREAM("Total calculated _ref_len (before extension): " << _ref_len);
+    ROS_INFO_STREAM("---------------------------------------------------"); 
+
+
+        ROS_INFO("**********************************************************");
+    ROS_INFO("MPC generateTrajSrv: Trajectory set! Original Length (_true_ref_len): %.2f, Effective MPC Length (_ref_len): %.2f", _true_ref_len, _ref_len);
+    ROS_INFO("**********************************************************");
+
+    // --- Add Spline Printing/Sampling Logic Here ---
+    ROS_INFO_STREAM("--- Sampling SplineX (_ref[0]) and SplineY (_ref[1]) ---");
+    ROS_INFO_STREAM("Spline Domain (arc length s) goes from 0 to " << _ref_len);
+
+    int num_samples_to_print = 20; // Or more/less as needed
+    if (_ref_len <= 0.0 || N == 0) { // N from ctrl_pts.size()
+        ROS_WARN_STREAM("Spline length is zero or no control points, cannot sample meaningfully.");
+    } else {
+        double s_step;
+        if (num_samples_to_print > 1) {
+            s_step = _ref_len / (num_samples_to_print -1) ;
+        } else { // Handle case of wanting to print just 1 sample (e.g., at s=0)
+            s_step = _ref_len; // Effectively will loop once for s=0
+            if (num_samples_to_print == 0) num_samples_to_print =1; //ensure at least one sample at s=0
+        }
+
+
+        for (int i = 0; i < num_samples_to_print; ++i) {
+            double current_s;
+            if (num_samples_to_print > 1) {
+                 current_s = i * s_step;
+            } else {
+                current_s = 0.0; // For a single sample, print at s=0
+            }
+            
+            // Ensure current_s does not exceed _ref_len due to floating point issues
+            if (current_s > _ref_len) {
+                current_s = _ref_len;
+            }
+
+            // Evaluate splines. Assuming Spline1D has an operator() or a method like .eval()
+            // and that it returns something from which .coeff(0) can get the value.
+            // Adjust if your Spline1D API is different.
+            double x_val = _ref[0](current_s).coeff(0); // Or splineX(current_s).coeff(0)
+            double y_val = _ref[1](current_s).coeff(0); // Or splineY(current_s).coeff(0)
+
+            // Optionally, print derivatives
+            // double dx_ds_val = _ref[0].derivatives(current_s, 1).coeff(1);
+            // double dy_ds_val = _ref[1].derivatives(current_s, 1).coeff(1);
+
+            ROS_INFO_STREAM("Sample " << i << ": s=" << std::fixed << std::setprecision(3) << current_s
+                                     << ", x(s)=" << x_val
+                                     << ", y(s)=" << y_val);
+                                     // << ", dx/ds=" << dx_ds_val
+                                     // << ", dy/ds=" << dy_ds_val);
+            if (num_samples_to_print == 1) break; // if only one sample requested
+        }
+        // Special print for the very end if not perfectly covered by step
+        if (num_samples_to_print > 1 && ( (num_samples_to_print-1) * s_step < _ref_len - 1e-5) ) {
+             double x_val_end = _ref[0](_ref_len).coeff(0);
+             double y_val_end = _ref[1](_ref_len).coeff(0);
+             ROS_INFO_STREAM("Sample END: s=" << std::fixed << std::setprecision(3) << _ref_len
+                                     << ", x(s)=" << x_val_end
+                                     << ", y(s)=" << y_val_end);
+        }
+    }
+    ROS_INFO_STREAM("------------------------------------------------------");
+
+
+    _mpc_core->set_trajectory(_ref, _ref_len);
+publishReference();
     visualizeTraj();
 
     ROS_INFO("**********************************************************");
@@ -681,17 +641,30 @@ void MPCCROS::viconcb(const geometry_msgs::TransformStamped::ConstPtr& data){
 
 //	tf::Quaternion q(data->transform.translation.x, data->transform.translation.y, data->transform.translation.z, data->transform.rotation.w);
 
-	tf::Quaternion q_tf;
+	//tf::Quaternion q_tf;
 
-	tf::quaternionMsgToTF(data->transform.rotation, q_tf);
+	//tf::quaternionMsgToTF(data->transform.rotation, q_tf);
 
-	tf::Matrix3x3 m(q_tf);
+	
+	
+	//tf::Matrix3x3 m(q_tf);
 
-	double roll, pitch, yaw;
+	//double roll, pitch, yaw;
 
-	m.getRPY(roll,pitch,yaw);
+	//m.getRPY(roll,pitch,yaw);
 
-	ROS_ERROR("Converted RPY: roll=%.3f, pitch=%.3f, yaw=%.3f", roll, pitch, yaw);
+	tf::Quaternion q(
+        data->transform.rotation.x,
+        data->transform.rotation.y,
+        data->transform.rotation.z,
+        data->transform.rotation.w);
+
+    // Convert quaternion to roll, pitch, yaw
+    	tf::Matrix3x3 m(q);
+    	double roll, pitch, yaw;
+    	m.getRPY(roll, pitch, yaw);
+
+	//ROS_ERROR("Converted RPY: roll=%.3f, pitch=%.3f, yaw=%.3f", roll, pitch, yaw);
 
 
 	_odom = Eigen::VectorXd(3);
@@ -1219,7 +1192,8 @@ void MPCCROS::mpcc_ctrl_loop(const ros::TimerEvent& event)
         ROS_INFO("Reached end of traj %.2f / %.2f", len_start, _true_ref_len);
         _vel_msg.linear.x  = 0;
         _vel_msg.angular.z = 0;
-
+	_is_executing = false;
+	_traj_reset = false;
         _trajectory.points.clear();
 
         return;
