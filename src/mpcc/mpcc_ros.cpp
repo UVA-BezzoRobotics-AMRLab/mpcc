@@ -1,4 +1,5 @@
 #include "mpcc/mpcc_ros.h"
+#include <unordered_set>
 
 #include <geometry_msgs/Point32.h>
 #include <geometry_msgs/PointStamped.h>
@@ -406,6 +407,36 @@ ool MPCCROS::modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req, uvatraj_msgs
 */
 
 
+void removePts(Eigen::RowVectorXd*& xs, std::vector<unsigned int> duplicate_pts){
+
+
+
+	std::unordered_set<unsigned int> duplicates_set(duplicate_pts.begin(), duplicate_pts.end());
+	
+	unsigned int new_size = xs->size() - duplicates_set.size();
+
+	unsigned int j = 0;
+
+	
+	Eigen::RowVectorXd* dummy = new Eigen::RowVectorXd(new_size);
+	for(unsigned int i=0; i<xs->size(); i++){
+
+
+		if(duplicates_set.count(i)){
+			continue;
+		}
+
+		(*dummy)(j++) = (*xs)(i);
+
+	}
+
+
+	delete xs;
+
+	xs = dummy;
+
+}
+
 
 bool MPCCROS::modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req, uvatraj_msgs::ExecuteTraj::Response &res)
 {
@@ -429,6 +460,128 @@ bool MPCCROS::modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req, uvatraj_msg
 	}
 	
 
+	_prev_ref     = _ref;
+    	_prev_ref_len = _true_ref_len;	
+
+	int N = req.ctrl_pts.size();
+
+	Eigen::RowVectorXd* ss = new Eigen::RowVectorXd(N);
+    	Eigen::RowVectorXd* xs = new Eigen::RowVectorXd(N);
+        Eigen::RowVectorXd* ys = new Eigen::RowVectorXd(N);
+	
+
+
+	(*xs)(0) = req.ctrl_pts[0].x;
+    	(*ys)(0) = req.ctrl_pts[0].y;
+	(*ss)(0) = 0.0;
+     	for (int i = 1; i < N; ++i) {
+    		(*xs)(i) = req.ctrl_pts[i].x;
+    		(*ys)(i) = req.ctrl_pts[i].y;
+
+    		double dx = (*xs)(i) - (*xs)(i-1);
+    		double dy = (*ys)(i) - (*ys)(i-1);
+    		(*ss)(i) =(*ss)(i-1) + std::hypot(dx, dy);
+	}
+
+
+    	_ref_len = (*ss)(N - 1);
+    	_true_ref_len = _ref_len;
+	
+
+
+	std::vector<unsigned int> duplicate_pts;
+
+	bool valid = true;
+	for (int i = 1; i < ss->size(); ++i) {
+    		if ((*ss)(i) <= (*ss)(i-1)) {
+       			ROS_WARN_STREAM("Non-increasing arc length at i=" << i << ": ss(i)=" << (*ss)(i) << ", ss(i-1)=" << (*ss)(i-1));
+    			duplicate_pts.push_back(i);
+		} 
+	}
+	
+	removePts(xs, duplicate_pts);
+	removePts(ys, duplicate_pts);
+	removePts(ss, duplicate_pts);
+
+    	const auto fitX = utils::Interp(*xs, 3, *ss);
+    	Spline1D splineX(fitX);
+
+    	const auto fitY = utils::Interp(*ys, 3, *ss);
+    	Spline1D splineY(fitY);
+    	
+	_ref[0] = splineX;
+    	_ref[1] = splineY;
+
+	
+
+    	ROS_INFO_STREAM("--- Calculated xs, ys, ss before spline fitting ---");
+    	for (int i=0; i<N; ++i) {
+        	ROS_INFO_STREAM("Point " << i << ": s=" << (*ss)(i) << ", x=" << (*xs)(i) << ", y=" << (*ys)(i));
+    	}
+
+
+
+    	ROS_INFO_STREAM("--- Sampling SplineX (_ref[0]) and SplineY (_ref[1]) ---");
+    	ROS_INFO_STREAM("Spline Domain (arc length s) goes from 0 to " << _ref_len);	
+
+    int num_samples_to_print = 20; // Or more/less as needed
+    if (_ref_len <= 0.0 || N == 0) { // N from ctrl_pts.size()
+        ROS_WARN_STREAM("Spline length is zero or no control points, cannot sample meaningfully.");
+    } else {
+        double s_step;
+        if (num_samples_to_print > 1) {
+            s_step = _ref_len / (num_samples_to_print -1) ;
+        } else { // Handle case of wanting to print just 1 sample (e.g., at s=0)
+            s_step = _ref_len; // Effectively will loop once for s=0
+            if (num_samples_to_print == 0) num_samples_to_print =1; //ensure at least one sample at s=0
+        }
+
+
+        for (int i = 0; i < num_samples_to_print; ++i) {
+            double current_s;
+            if (num_samples_to_print > 1) {
+                 current_s = i * s_step;
+            } else {
+                current_s = 0.0; // For a single sample, print at s=0
+            }
+            
+            // Ensure current_s does not exceed _ref_len due to floating point issues
+            if (current_s > _ref_len) {
+                current_s = _ref_len;
+            }
+
+            // Evaluate splines. Assuming Spline1D has an operator() or a method like .eval()
+            // and that it returns something from which .coeff(0) can get the value.
+            // Adjust if your Spline1D API is different.
+            double x_val = _ref[0](current_s).coeff(0); // Or splineX(current_s).coeff(0)
+            double y_val = _ref[1](current_s).coeff(0); // Or splineY(current_s).coeff(0)
+
+            // Optionally, print derivatives
+            // double dx_ds_val = _ref[0].derivatives(current_s, 1).coeff(1);
+            // double dy_ds_val = _ref[1].derivatives(current_s, 1).coeff(1);
+
+            ROS_INFO_STREAM("Sample " << i << ": s=" << std::fixed << std::setprecision(3) << current_s
+                                     << ", x(s)=" << x_val
+                                     << ", y(s)=" << y_val);
+                                     // << ", dx/ds=" << dx_ds_val
+                                     // << ", dy/ds=" << dy_ds_val);
+            if (num_samples_to_print == 1) break; // if only one sample requested
+        }
+        // Special print for the very end if not perfectly covered by step
+        if (num_samples_to_print > 1 && ( (num_samples_to_print-1) * s_step < _ref_len - 1e-5) ) {
+             double x_val_end = _ref[0](_ref_len).coeff(0);
+             double y_val_end = _ref[1](_ref_len).coeff(0);
+             ROS_INFO_STREAM("Sample END: s=" << std::fixed << std::setprecision(3) << _ref_len
+                                     << ", x(s)=" << x_val_end
+                                     << ", y(s)=" << y_val_end);
+        }
+    }
+    ROS_INFO_STREAM("------------------------------------------------------");
+
+	
+    	_mpc_core->set_trajectory(_ref, _ref_len);
+	publishReference();
+    	visualizeTraj();
 
 	return true;
 }
@@ -452,7 +605,6 @@ bool MPCCROS::generateTrajSrv(uvatraj_msgs::RequestTraj::Request &req, uvatraj_m
 		return true;
 	}
 	
-        ROS_INFO_STREAM("GOAL_POS " << -req.goal.z << " y: " << req.goal.y);	
 	std::vector<Eigen::Vector2d> ctrl_pts;
 	
  	ROS_DEBUG_STREAM("[vicon_bridge] Initial ctrl_pts:"
@@ -476,15 +628,14 @@ bool MPCCROS::generateTrajSrv(uvatraj_msgs::RequestTraj::Request &req, uvatraj_m
 		holder.z = 0.0;
 		holder.metadata = "";
 
-		res.all_ctrl_pts.push_back(holder);
 		res.boundary_ctrl_pts.push_back(holder);
+		res.all_ctrl_pts.push_back(holder);
 			
-		ROS_INFO_STREAM("GENERATETRAJSRV: Added boundary point " << i << ": (" << holder.x << ", " << holder.y << ")");
+		
 
 	}
 
 	response("SUCCESSFULLY GENERATED PATH", true);
-	ROS_INFO_STREAM("PATH GENERATED SUCCESSFULY. Total pts:" << res.all_ctrl_pts.size());
 		
 	//set trajectory	
 	
