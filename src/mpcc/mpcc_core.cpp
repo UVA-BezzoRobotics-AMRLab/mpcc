@@ -231,7 +231,15 @@ double MPCCore::limit(double prev_v, double input, double max_rate) const
 }
 
 void MPCCore::updateReferencePoint(double s, double x, double y){
+"""
+This function adds a new point to the blend points list, which is used to create a new trajectory
+by blending the old and new trajectories. If the number of blend points exceeds 10, it computes a spline
+and sets the trajectory based on the blend points.
 
+@param s The arc length along the trajectory.
+@param x The x-coordinate of the new point.
+@param y The y-coordinate of the new point.
+"""
 
 	_blend_points.emplace_back(s,x,y);
 

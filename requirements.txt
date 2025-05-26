@@ -8,3 +8,4 @@ gtimer==1.0.0b5
 casadi==3.5.5
 cvxpy==1.5.2
 cvxpygen==0.3.6
+empy==3.3.4

@@ -243,6 +243,15 @@ MPCCROS::~MPCCROS()
 }
 
 bool MPCCROS::executeTrajSrv(std_srvs::Empty::Request &req, std_srvs::Empty::Response &res){
+    """
+    Service to execute the trajectory.
+    
+    Parameters:
+    - req: Empty request.
+    - res: Empty response.
+
+    Handles the /execute_trajectory service call in ControlPointInteraction.cs in the Unity-based interface
+    """
 
 	ROS_INFO("Execute trajectory service called.");
 
@@ -408,7 +417,16 @@ ool MPCCROS::modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req, uvatraj_msgs
 
 
 void removePts(Eigen::RowVectorXd*& xs, std::vector<unsigned int> duplicate_pts){
-
+"""
+Removes points from the given Eigen::RowVectorXd based on indices in duplicate_pts.
+This function modifies the input xs by removing points at indices specified in duplicate_pts.
+Uses pointers to avoid unnecessary copies and allocations.
+    Parameters:
+    - xs: Pointer to an Eigen::RowVectorXd containing the x-coordinates of control points.
+    - duplicate_pts: Vector of indices indicating which points to remove from xs.
+    
+    Note: This function assumes that duplicate_pts contains valid indices within the range of xs.
+"""
 
 
 	std::unordered_set<unsigned int> duplicates_set(duplicate_pts.begin(), duplicate_pts.end());
@@ -440,6 +458,16 @@ void removePts(Eigen::RowVectorXd*& xs, std::vector<unsigned int> duplicate_pts)
 
 bool MPCCROS::modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req, uvatraj_msgs::ExecuteTraj::Response &res)
 {
+    """
+    Service to modify the trajectory based on control points provided in the request.
+    Parameters:
+    - req: Request containing control points to modify the trajectory.
+    - res: Response indicating success or failure of the modification.
+    Handles the /modify_trajectory service call in ControlPointInteraction.cs in the Unity-based interface.
+
+    If the trajectory is currently being executed, it will blend the new trajectory with the old one. It constructs a 
+    new trajectory based on the provided control points, calculates the arc length, and updates the reference trajectory.
+    """
 
 	if (_is_executing){
 
@@ -589,7 +617,17 @@ bool MPCCROS::modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req, uvatraj_msg
 // store in _ref
 //double checked logic is sound
 bool MPCCROS::generateTrajSrv(uvatraj_msgs::RequestTraj::Request &req, uvatraj_msgs::RequestTraj::Response &res){
-	
+	"""
+    Service to generate a trajectory based on the current odometry and a goal point.
+
+    Parameters:
+    - req: Request containing the goal point in the form of a Point32 message.
+    - res: Response containing the generated trajectory control points.
+    Handles the /generate_traj service call in ControlPointInteraction.cs in the Unity-based interface.
+
+    Generates a linear trajectory from the current odometry position to the specified goal point using linear interpolation method,
+    fits spline curves to the generated control points, and updates the reference trajectory.
+    """
 	//lambda for repetitive code
 	auto response = [&](const std::string_view& msg, const bool& success) -> void{
 		res.success = success;
@@ -1234,6 +1272,10 @@ double MPCCROS::get_s_from_state(const std::array<Spline1D, 2>& ref, double ref_
 
 void MPCCROS::blendTrajectories(double blend_factor)
 {
+    """
+    Blends the old reference trajectory with the new one based on the blend factor.
+    The blend factor should be between 0 and 1, where 0 means only the old trajectory is used, and 1 means only the new trajectory is used.
+    """
     // Use normalized coordinates from 0 to 1
     double num_points = 10;
     for (double t = 0; t <= 1.0; t += 1.0/num_points)

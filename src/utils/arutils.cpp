@@ -8,6 +8,9 @@ namespace mpcc{
 
 	namespace arutils{
 inline double computeDistance(
+    """
+    Computes the Euclidean distance between two points in 2D space.
+    """
     const Eigen::Vector2d& a,
     const Eigen::Vector2d& b)
 {
@@ -15,6 +18,10 @@ inline double computeDistance(
 }
 
 std::vector<Eigen::Vector2d> generateLinearTrajectory(
+    """
+    Generates a linear trajectory from start to goal with specified resolution.
+    Resolution defines the frequency of control points along the line.
+    """
     const Eigen::Vector2d& start,
     const Eigen::Vector2d& goal,
     double                 resolution)

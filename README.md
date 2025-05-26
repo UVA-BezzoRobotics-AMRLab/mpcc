@@ -40,3 +40,5 @@ The planner will wait until an occupancy map is provided to the `/map` topic and
 ## Adjusting Parameters
 There are several knobs than can be tuned for controller, and they can be found in [mpcc.yaml](./params/mpcc.yaml) and [robo_params.yaml](./params/robo_params.yaml). The former is used for tuning weights and other parameters of the controller, whereas the former is used to adjust the maximum body rates of the system.
 
+## Unity-Vicon Bridge
+To set up ROS_MASTER_URI, first echo the ROS_MASTER_URI
