@@ -1461,6 +1461,46 @@ void MPCCROS::mpcc_ctrl_loop(const ros::TimerEvent& event)
 
 */
 
+	    if (_in_transition) {
+        double current_time = ros::Time::now().toSec();
+        // Ensure elapsed_time is not negative (e.g. if system clock jumps backwards)
+        double elapsed_time = std::max(0.0, current_time - _transition_start_time);
+
+        // Calculate blend_progress_ratio (0 to 1)
+        double blend_progress_ratio = std::min(elapsed_time / _transition_duration, 1.0);
+        // Use cosine easing for a smoother blend_factor (0 to 1)
+        double blend_factor = 0.5 * (1.0 - std::cos(M_PI * blend_progress_ratio));
+
+        if (blend_progress_ratio >= 1.0) {
+            // --- Blend Finished: Officially switch to the new trajectory ---
+            ROS_INFO("Trajectory blend finished. Switching to new trajectory.");
+            _in_transition = false;
+
+            _ref = _requested_ref;          // Active splines become the requested ones
+            _true_ref_len = _requested_len; // Update true geometric length
+            _ref_len = _requested_len;      // Update MPC's effective length (is true_ref_len as per your clarification)
+
+            // Inform the MPC core about the finalized trajectory
+            _mpc_core->set_trajectory(_ref, _ref_len);
+
+            // CRITICAL: Reset the robot's progress parameter ('s') with respect to this NEWLY active trajectory
+            _prev_s = get_s_from_state(_ref, _true_ref_len);
+
+            // Reset or re-evaluate _s_dot (progress speed)
+            _s_dot = 0.0; // Safest to reset. Could also project current vel onto new path tangent.
+
+            ROS_INFO("Switched. New True Length: %.2f, MPC Length: %.2f. Current s on new path: %.2f", _true_ref_len, _ref_len, _prev_s);
+            visualizeTraj(); // Visualize the final active _ref (now the new path)
+
+        } else {
+            // --- Blend In Progress ---
+            ROS_INFO_THROTTLE(0.2, "Blending trajectories: %.1f%% (blend_factor: %.3f)", blend_progress_ratio * 100.0, blend_factor);
+            // Call your blending function to provide temporary horizon to MPC.
+            // MPC is still officially tracking _old_ref (because _ref currently holds _old_ref's data).
+            blendTrajectories(blend_factor);
+        }
+    }
+
 
 
 
