@@ -197,6 +197,9 @@ class MPCCROS
 
     ros::NodeHandle _nh;
 
+    double _old_ref_len;       // True geometric length of the old path  
+    double _old_mpc_len; 
+
     ros::Timer _timer, _velPubTimer;
 
     Eigen::VectorXd _odom;
