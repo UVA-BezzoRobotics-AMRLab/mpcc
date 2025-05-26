@@ -1303,46 +1303,119 @@ void MPCCROS::blendTrajectories(double blend_factor)
 }
 */
 
+#include "mpcc/mpcc_ros.h" // For MPCCROS class members
+#include <algorithm>       // For std::min, std::max
+#include <cmath>           // For std::hypot, M_PI, cos etc. (though not directly in this func)
 
-void MPCCROS::blendTrajectories(double blend_factor){
+// Make sure this is defined within your MPCCROS class
+void MPCCROS::blendTrajectories(double blend_factor) {
+    // _prev_s is the current progress (s) along the true geometric _old_ref.
+    // During transition, _ref points to _old_ref's data, and _ref_len == _old_ref_len.
+    double current_s_on_old_path = _prev_s;
 
-	double current_s_on_old_true = _prev_s;
+    // Get MPC horizon parameters
+    double mpc_horizon_s_span; // How far the MPC looks ahead along its current path
+    int num_samples_horizon;   // Number of discrete points over that horizon
 
-	double mpc_horizon_s_span = _mpc_params.at("REF_LENGTH");
+    try {
+        mpc_horizon_s_span = _mpc_params.at("REF_LENGTH");
+        num_samples_horizon = static_cast<int>(_mpc_params.at("REF_SAMPLES"));
+    } catch (const std::out_of_range& oor) {
+        ROS_ERROR_STREAM_THROTTLE(1.0, "blendTrajectories: MPC param REF_LENGTH or REF_SAMPLES not found! Using defaults.");
+        mpc_horizon_s_span = 2.0; // Default lookahead (e.g., 2 meters)
+        num_samples_horizon = 10; // Default samples
+    }
 
-	int num_samples = static_cast<int>(_mpc_params.at("REF_SAMPLES"));
-
-
-	for (int i =0; i<num_samples_horizon; ++i){
-
-		double s_offset_in_mpc_horizon =  (static_cast<double>(i) / std::max(1, num_samples_horizon - 1)) * mpc_horizon_s_span;
-	
-
-		double s_on_old_for_mpc_update = current_s_on_old_true + s_offset_in_mpc_horizon;
-
-		double x_old = _old_ref[0](s_on_old_for_mpc_update).coeff(0);
-		double y_old = _old_ref[1](s_on_old_for_mpc_update).coeff(0);
-
-		double delta_s_from_sync_old_true = (current_s_on_old_true + s_offset_in_mpc_horizon) - _blend_traj_curr_s;
-
-		double s_on_old_geom_horizon = current_s_old_true + s_offset_in_mpc_horizon; 
-		s_on_old_geom_horizon = std::min(s_on_od_geom_horizon, _old_ref_len);
-
-		double s_on_req_ref_geom = _blend_new_s + (s_on_old_geom_horizon - _blend_traj_curr_s);
-		s_on_req_ref_geom = std::min(std::max(s_on_req_ref_geom, 0.0), _requested_len);
-
-
-		double x_new = (_requested_len > 1e-6) ? _requested_ref[0](s_on_req_ref_geom).coeff(0) : x_old;
-        	double y_new = (_requested_len > 1e-6) ? _requested_ref[1](s_on_req_ref_geom).coeff(0) : y_old;
-
-        	double blended_x = x_old * (1.0 - blend_factor) + x_new * blend_factor;
-        	double blended_y = y_old * (1.0 - blend_factor) + y_new * blend_factor;
-
-        	_mpc_core->updateReferencePoint(s_on_old_for_mpc_update, blended_x, blended_y);
-	}
+    if (num_samples_horizon <= 1) {
+        ROS_WARN_THROTTLE(1.0, "blendTrajectories: num_samples_horizon is <= 1, defaulting to 10.");
+        num_samples_horizon = 10; // Safety fallback
+    }
+    if (mpc_horizon_s_span <= 1e-3) {
+         ROS_WARN_THROTTLE(1.0, "blendTrajectories: mpc_horizon_s_span is very small (<=0.001), blending might be ineffective.");
+         // If horizon is zero, no points to blend, can return early or blend only current point
+         if (num_samples_horizon > 0) num_samples_horizon = 1; // Blend only the current point if horizon is zero
+         else return; // Or nothing to do
+    }
 
 
+    for (int i = 0; i < num_samples_horizon; ++i) {
+        double s_offset_in_horizon = 0.0;
+        if (num_samples_horizon > 1) { // Avoid division by zero if only 1 sample
+            s_offset_in_horizon = (static_cast<double>(i) / (num_samples_horizon - 1)) * mpc_horizon_s_span;
+        } else if (i==0) { // if num_samples_horizon is 1, only process the current point (offset 0)
+             s_offset_in_horizon = 0.0;
+        } else {
+            continue; // Should not happen if num_samples_horizon is 1
+        }
+
+
+        // s_for_mpc_update: the 's' value on the _old_ref for this horizon point.
+        // This is also the geometric 's' on the old path because we assume no MPC-specific extension for _ref_len.
+        double s_for_mpc_update = current_s_on_old_path + s_offset_in_horizon;
+        // Clamp s_for_mpc_update to the valid range of the old path's true geometric length.
+        if (_old_ref_len > 1e-6) { // Only clamp if old path has length
+            s_for_mpc_update = std::min(s_for_mpc_update, _old_ref_len);
+            s_for_mpc_update = std::max(s_for_mpc_update, 0.0); // Ensure it's not negative
+        } else { // If old path has no length, s is always 0
+            s_for_mpc_update = 0.0;
+        }
+
+
+        // Get (x,y) coordinates from the old path at s_for_mpc_update
+        double x_old, y_old;
+        if (_old_ref_len > 1e-6) {
+            x_old = _old_ref[0](s_for_mpc_update).coeff(0);
+            y_old = _old_ref[1](s_for_mpc_update).coeff(0);
+        } else { // If old path is a single point (zero length)
+            x_old = _old_ref[0](0.0).coeff(0); // Sample at s=0
+            y_old = _old_ref[1](0.0).coeff(0);
+        }
+
+        // Now, find the corresponding 's' value on the new (requested) path.
+        // s_for_mpc_update is already the geometric 's' on the old path.
+        // _blend_traj_curr_s: geometric 's' on old path where blend conceptually starts.
+        // _blend_new_s:       geometric 's' on new path where blend conceptually syncs.
+        double s_on_new_geom = _blend_new_s + (s_for_mpc_update - _blend_traj_curr_s);
+
+        // Clamp s_on_new_geom to the valid range of the new path's true geometric length.
+        if (_requested_len > 1e-6) { // Only clamp if new path has length
+            s_on_new_geom = std::min(s_on_new_geom, _requested_len);
+            s_on_new_geom = std::max(s_on_new_geom, 0.0);
+        } else { // If new path has no length, s is always 0
+            s_on_new_geom = 0.0;
+        }
+
+        // Get (x,y) coordinates from the new path at s_on_new_geom
+        double x_new, y_new;
+        if (_requested_len > 1e-6) {
+            x_new = _requested_ref[0](s_on_new_geom).coeff(0);
+            y_new = _requested_ref[1](s_on_new_geom).coeff(0);
+        } else { // If new path is a single point (zero length), use its s=0 point
+                 // Or, if blending from a moving path to a stationary point, might prefer x_old, y_old if blend_factor is low.
+                 // For simplicity, take the new path's point if it exists.
+            x_new = _requested_ref[0](0.0).coeff(0);
+            y_new = _requested_ref[1](0.0).coeff(0);
+        }
+
+
+        // Linearly interpolate between the points from the old and new trajectories
+        double blended_x = x_old * (1.0 - blend_factor) + x_new * blend_factor;
+        double blended_y = y_old * (1.0 - blend_factor) + y_new * blend_factor;
+
+        // Update the MPC's reference point for this solve cycle.
+        // s_for_mpc_update is the 's' value relative to _old_ref (which MPC is currently tracking).
+        _mpc_core->updateReferencePoint(s_for_mpc_update, blended_x, blended_y);
+
+        ROS_DEBUG_STREAM_THROTTLE(1.0, "Blend point " << i << ": s_old=" << s_for_mpc_update
+                             << " (x_old=" << x_old << ", y_old=" << y_old << ")"
+                             << ", s_new=" << s_on_new_geom
+                             << " (x_new=" << x_new << ", y_new=" << y_new << ")"
+                             << ", blend_factor=" << blend_factor
+                             << " -> (x_b=" << blended_x << ", y_b=" << blended_y << ")");
+    }
 }
+
+
 void MPCCROS::mpcc_ctrl_loop(const ros::TimerEvent& event)
 {
     if (!_is_init || _estop){
