@@ -440,7 +440,7 @@ void removePts(Eigen::RowVectorXd*& xs, std::vector<unsigned int> duplicate_pts)
 
 bool MPCCROS::modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req, uvatraj_msgs::ExecuteTraj::Response &res)
 {
-
+/*
 	if (_is_executing){
 
 		printf("Executing trajectory blend.");	
@@ -459,9 +459,11 @@ bool MPCCROS::modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req, uvatraj_msg
 		printf("Blend target s: %.3f", _blend_new_s);	
 	}
 	
+*/
 
-	_prev_ref     = _ref;
-    	_prev_ref_len = _true_ref_len;	
+
+//	_prev_ref     = _ref;
+ //   	_prev_ref_len = _true_ref_len;	
 
 	int N = req.ctrl_pts.size();
 
@@ -484,8 +486,8 @@ bool MPCCROS::modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req, uvatraj_msg
 	}
 
 
-    	_ref_len = (*ss)(N - 1);
-    	_true_ref_len = _ref_len;
+//    	_ref_len = (*ss)(N - 1);
+  //  	_true_ref_len = _ref_len;
 	
 
 
@@ -502,16 +504,25 @@ bool MPCCROS::modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req, uvatraj_msg
 	removePts(xs, duplicate_pts);
 	removePts(ys, duplicate_pts);
 	removePts(ss, duplicate_pts);
+	Eigen::RowVectorXd ss_req;
 
-    	const auto fitX = utils::Interp(*xs, 3, *ss);
+	for (int i = 1; i < xs->size(); ++i) {
+            double dx = (*xs)(i) - (*xs)(i-1);
+            double dy = (*ys)(i) - (*ys)(i-1);
+            ss_req(i) =(*ss)(i-1) + std::hypot(dx, dy);
+        }
+
+    	const auto fitX = utils::Interp(*xs, 3, ss_req);
     	Spline1D splineX(fitX);
 
-    	const auto fitY = utils::Interp(*ys, 3, *ss);
+    	const auto fitY = utils::Interp(*ys, 3, ss_req);
     	Spline1D splineY(fitY);
     	
-	_ref[0] = splineX;
-    	_ref[1] = splineY;
+	//_ref[0] = splineX;
+    	//_ref[1] = splineY;
 
+	_requested_ref[0] = splineX;
+	_requested_ref[1] = splineY;
 	
 
     	ROS_INFO_STREAM("--- Calculated xs, ys, ss before spline fitting ---");
@@ -578,8 +589,39 @@ bool MPCCROS::modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req, uvatraj_msg
     }
     ROS_INFO_STREAM("------------------------------------------------------");
 
+
+	if (_is_executing){
+
+	_old_ref = _ref;
+	_old_ref_len = _true_ref_len;
+	_old_mpc_len = _ref_len
+
+	_blend_traj_curr_s = get_s_from_state(_old_ref, _old_ref_len);
+
+	Eigen::Vector2d robot_pos_world = _odom.head(2);
+	double min_dist_sq_to_new_traj = std::numeric_limits<double>
+	_blend_new_s =0;
+
+
+	_transition_start_time = ros::Time::now().toSec();
+	_transition_duration = 1.5;
+	_in_transition = true;
 	
-    	_mpc_core->set_trajectory(_ref, _ref_len);
+	}
+	else{
+
+	_ref=_requested_ref;
+	_true_ref_len = _requested_len
+	_ref_len = _requested_len
+
+	_mpc_core->set_trajectory(_ref,_ref_len);
+
+	_prev_s = get_s_from_state(_ref, _true_ref_len);
+	s_dot = 0;
+
+
+	}
+	
 	publishReference();
     	visualizeTraj();
 
@@ -1232,6 +1274,8 @@ double MPCCROS::get_s_from_state(const std::array<Spline1D, 2>& ref, double ref_
     return s;
 }
 
+
+/*
 void MPCCROS::blendTrajectories(double blend_factor)
 {
     // Use normalized coordinates from 0 to 1
@@ -1257,7 +1301,48 @@ void MPCCROS::blendTrajectories(double blend_factor)
         _mpc_core->updateReferencePoint(s_blended, blended_x, blended_y);
     }
 }
+*/
 
+
+void MPCCROS::blendTrajectories(double blend_factor){
+
+	double current_s_on_old_true = _prev_s;
+
+	double mpc_horizon_s_span = _mpc_params.at("REF_LENGTH");
+
+	int num_samples = static_cast<int>(_mpc_params.at("REF_SAMPLES"));
+
+
+	for (int i =0; i<num_samples_horizon; ++i){
+
+		double s_offset_in_mpc_horizon =  (static_cast<double>(i) / std::max(1, num_samples_horizon - 1)) * mpc_horizon_s_span;
+	
+
+		double s_on_old_for_mpc_update = current_s_on_old_true + s_offset_in_mpc_horizon;
+
+		double x_old = _old_ref[0](s_on_old_for_mpc_update).coeff(0);
+		double y_old = _old_ref[1](s_on_old_for_mpc_update).coeff(0);
+
+		double delta_s_from_sync_old_true = (current_s_on_old_true + s_offset_in_mpc_horizon) - _blend_traj_curr_s;
+
+		double s_on_old_geom_horizon = current_s_old_true + s_offset_in_mpc_horizon; 
+		s_on_old_geom_horizon = std::min(s_on_od_geom_horizon, _old_ref_len);
+
+		double s_on_req_ref_geom = _blend_new_s + (s_on_old_geom_horizon - _blend_traj_curr_s);
+		s_on_req_ref_geom = std::min(std::max(s_on_req_ref_geom, 0.0), _requested_len);
+
+
+		double x_new = (_requested_len > 1e-6) ? _requested_ref[0](s_on_req_ref_geom).coeff(0) : x_old;
+        	double y_new = (_requested_len > 1e-6) ? _requested_ref[1](s_on_req_ref_geom).coeff(0) : y_old;
+
+        	double blended_x = x_old * (1.0 - blend_factor) + x_new * blend_factor;
+        	double blended_y = y_old * (1.0 - blend_factor) + y_new * blend_factor;
+
+        	_mpc_core->updateReferencePoint(s_on_old_for_mpc_update, blended_x, blended_y);
+	}
+
+
+}
 void MPCCROS::mpcc_ctrl_loop(const ros::TimerEvent& event)
 {
     if (!_is_init || _estop){
@@ -1288,7 +1373,7 @@ void MPCCROS::mpcc_ctrl_loop(const ros::TimerEvent& event)
 	    return;
     }
 
-
+/*
     if (_in_transition){
 
 	double current_time = ros::Time::now().toSec();
@@ -1303,6 +1388,10 @@ void MPCCROS::mpcc_ctrl_loop(const ros::TimerEvent& event)
 	    blendTrajectories(blend_factor);
 	}
     }
+
+*/
+
+
 
 
 
