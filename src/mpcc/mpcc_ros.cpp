@@ -30,6 +30,7 @@ constexpr double resolution = 0.5;
 
 MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~")
 {
+    //emergency stop
     _estop        = false;
     _is_init      = false;
     _is_goal      = false;
@@ -37,6 +38,7 @@ MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~")
     _reverse_mode = false;
 
     _curr_vel     = 0;
+    //reference length 
     _ref_len      = 0;
     _prev_ref_len = 0;
     _true_ref_len = 0;

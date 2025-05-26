@@ -40,5 +40,18 @@ The planner will wait until an occupancy map is provided to the `/map` topic and
 ## Adjusting Parameters
 There are several knobs than can be tuned for controller, and they can be found in [mpcc.yaml](./params/mpcc.yaml) and [robo_params.yaml](./params/robo_params.yaml). The former is used for tuning weights and other parameters of the controller, whereas the former is used to adjust the maximum body rates of the system.
 
-## Unity-Vicon Bridge
-To set up ROS_MASTER_URI, first echo the ROS_MASTER_URI
+## Vicon-Unity Bridge
+In the Unity software, 
+    - Change the IP address to that of Vicon
+    - Port is usually 10000
+
+## ROS Master Setup
+To set up the ROS_MASTER_URI and the ROS_IP (or ROS_HOSTNAME), use the following commands:
+    - export ROS_MASTER_URI=<IP-address>:<Port>
+        - This is the IP Address and the port of the machine that is running roscore, could be desktop or docker container
+    - export ROS_IP=<ROS-IP-address>
+        - This is the IP Address of the machine that is running your ROS node 
+
+Echo the Master URI and the ROS IP to verify that they are indeed correct:
+    - echo $ROS_MASTER_URI
+    - echo $ROS_IP
