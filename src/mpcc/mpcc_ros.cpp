@@ -436,196 +436,193 @@ void removePts(Eigen::RowVectorXd*& xs, std::vector<unsigned int> duplicate_pts)
 	xs = dummy;
 
 }
-
-
 bool MPCCROS::modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req, uvatraj_msgs::ExecuteTraj::Response &res)
 {
-/*
-	if (_is_executing){
+    ROS_INFO("ModifyTrajSrv called with %zu control points.", req.ctrl_pts.size());
 
-		printf("Executing trajectory blend.");	
-		_old_ref = _ref;
-		_old_ref_len = _ref_len;
-		_blend_traj_curr_s = get_s_from_state(_ref, _true_ref_len);
+    int N_raw = req.ctrl_pts.size();
+    if (N_raw == 0) {
+        ROS_ERROR("ModifyTrajSrv: Received empty trajectory request. No action taken.");
+        return true; // Or false, depending on your service success definition
+    }
 
+    // --- 1. Process incoming control points ---
+    Eigen::RowVectorXd* xs_ptr = new Eigen::RowVectorXd(N_raw);
+    Eigen::RowVectorXd* ys_ptr = new Eigen::RowVectorXd(N_raw);
+    Eigen::RowVectorXd* ss_initial_calc_ptr = new Eigen::RowVectorXd(N_raw); // For initial 's' from raw points
 
-		 printf("Current s from state: %.3f", _blend_traj_curr_s);
-		_transition_start_time = ros::Time::now().toSec();
-		_transition_duration = 1.0;
-	 	_in_transition = true;
+    // De-reference for convenience
+    Eigen::RowVectorXd& current_xs = *xs_ptr;
+    Eigen::RowVectorXd& current_ys = *ys_ptr;
+    Eigen::RowVectorXd& initial_ss = *ss_initial_calc_ptr;
 
-		_blend_new_s = std::ceil(_blend_traj_curr_s/resolution);
+    current_xs(0) = req.ctrl_pts[0].x;
+    current_ys(0) = req.ctrl_pts[0].y;
+    initial_ss(0) = 0.0;
 
-		printf("Blend target s: %.3f", _blend_new_s);	
-	}
-	
-*/
+    for (int i = 1; i < N_raw; ++i) {
+        current_xs(i) = req.ctrl_pts[i].x;
+        current_ys(i) = req.ctrl_pts[i].y;
+        double dx = current_xs(i) - current_xs(i-1);
+        double dy = current_ys(i) - current_ys(i-1);
+        initial_ss(i) = initial_ss(i-1) + std::hypot(dx, dy);
+    }
 
-
-//	_prev_ref     = _ref;
- //   	_prev_ref_len = _true_ref_len;	
-
-	int N = req.ctrl_pts.size();
-
-	Eigen::RowVectorXd* ss = new Eigen::RowVectorXd(N);
-    	Eigen::RowVectorXd* xs = new Eigen::RowVectorXd(N);
-        Eigen::RowVectorXd* ys = new Eigen::RowVectorXd(N);
-	
-
-
-	(*xs)(0) = req.ctrl_pts[0].x;
-    	(*ys)(0) = req.ctrl_pts[0].y;
-	(*ss)(0) = 0.0;
-     	for (int i = 1; i < N; ++i) {
-    		(*xs)(i) = req.ctrl_pts[i].x;
-    		(*ys)(i) = req.ctrl_pts[i].y;
-
-    		double dx = (*xs)(i) - (*xs)(i-1);
-    		double dy = (*ys)(i) - (*ys)(i-1);
-    		(*ss)(i) =(*ss)(i-1) + std::hypot(dx, dy);
-	}
-
-
-//    	_ref_len = (*ss)(N - 1);
-  //  	_true_ref_len = _ref_len;
-	
-
-
-	std::vector<unsigned int> duplicate_pts;
-
-	bool valid = true;
-	for (int i = 1; i < ss->size(); ++i) {
-    		if ((*ss)(i) <= (*ss)(i-1)) {
-       			ROS_WARN_STREAM("Non-increasing arc length at i=" << i << ": ss(i)=" << (*ss)(i) << ", ss(i-1)=" << (*ss)(i-1));
-    			duplicate_pts.push_back(i);
-		} 
-	}
-	
-	removePts(xs, duplicate_pts);
-	removePts(ys, duplicate_pts);
-	removePts(ss, duplicate_pts);
-	Eigen::RowVectorXd ss_req;
-
-	for (int i = 1; i < xs->size(); ++i) {
-            double dx = (*xs)(i) - (*xs)(i-1);
-            double dy = (*ys)(i) - (*ys)(i-1);
-            ss_req(i) =(*ss)(i-1) + std::hypot(dx, dy);
-        }
-
-    	const auto fitX = utils::Interp(*xs, 3, ss_req);
-    	Spline1D splineX(fitX);
-
-    	const auto fitY = utils::Interp(*ys, 3, ss_req);
-    	Spline1D splineY(fitY);
-    	
-	//_ref[0] = splineX;
-    	//_ref[1] = splineY;
-
-	_requested_ref[0] = splineX;
-	_requested_ref[1] = splineY;
-	
-
-    	ROS_INFO_STREAM("--- Calculated xs, ys, ss before spline fitting ---");
-    	for (int i=0; i<N; ++i) {
-        	ROS_INFO_STREAM("Point " << i << ": s=" << (*ss)(i) << ", x=" << (*xs)(i) << ", y=" << (*ys)(i));
-    	}
-
-
-
-    	ROS_INFO_STREAM("--- Sampling SplineX (_ref[0]) and SplineY (_ref[1]) ---");
-    	ROS_INFO_STREAM("Spline Domain (arc length s) goes from 0 to " << _ref_len);	
-
-    int num_samples_to_print = 20; // Or more/less as needed
-    if (_ref_len <= 0.0 || N == 0) { // N from ctrl_pts.size()
-        ROS_WARN_STREAM("Spline length is zero or no control points, cannot sample meaningfully.");
-    } else {
-        double s_step;
-        if (num_samples_to_print > 1) {
-            s_step = _ref_len / (num_samples_to_print -1) ;
-        } else { // Handle case of wanting to print just 1 sample (e.g., at s=0)
-            s_step = _ref_len; // Effectively will loop once for s=0
-            if (num_samples_to_print == 0) num_samples_to_print =1; //ensure at least one sample at s=0
-        }
-
-
-        for (int i = 0; i < num_samples_to_print; ++i) {
-            double current_s;
-            if (num_samples_to_print > 1) {
-                 current_s = i * s_step;
-            } else {
-                current_s = 0.0; // For a single sample, print at s=0
+    // --- 2. Identify non-progressing points ---
+    std::vector<unsigned int> duplicate_pts_indices;
+    if (N_raw > 1) {
+        for (int i = 1; i < N_raw; ++i) {
+            if (initial_ss(i) <= initial_ss(i-1) + 1e-6) { // 1e-6 tolerance
+                ROS_WARN_STREAM("ModifyTrajSrv: Non-increasing arc length at raw index " << i
+                                << ". s(" << i << ")=" << initial_ss(i)
+                                << ", s(" << i-1 << ")=" << initial_ss(i-1) << ".");
+                duplicate_pts_indices.push_back(static_cast<unsigned int>(i));
             }
-            
-            // Ensure current_s does not exceed _ref_len due to floating point issues
-            if (current_s > _ref_len) {
-                current_s = _ref_len;
-            }
-
-            // Evaluate splines. Assuming Spline1D has an operator() or a method like .eval()
-            // and that it returns something from which .coeff(0) can get the value.
-            // Adjust if your Spline1D API is different.
-            double x_val = _ref[0](current_s).coeff(0); // Or splineX(current_s).coeff(0)
-            double y_val = _ref[1](current_s).coeff(0); // Or splineY(current_s).coeff(0)
-
-            // Optionally, print derivatives
-            // double dx_ds_val = _ref[0].derivatives(current_s, 1).coeff(1);
-            // double dy_ds_val = _ref[1].derivatives(current_s, 1).coeff(1);
-
-            ROS_INFO_STREAM("Sample " << i << ": s=" << std::fixed << std::setprecision(3) << current_s
-                                     << ", x(s)=" << x_val
-                                     << ", y(s)=" << y_val);
-                                     // << ", dx/ds=" << dx_ds_val
-                                     // << ", dy/ds=" << dy_ds_val);
-            if (num_samples_to_print == 1) break; // if only one sample requested
-        }
-        // Special print for the very end if not perfectly covered by step
-        if (num_samples_to_print > 1 && ( (num_samples_to_print-1) * s_step < _ref_len - 1e-5) ) {
-             double x_val_end = _ref[0](_ref_len).coeff(0);
-             double y_val_end = _ref[1](_ref_len).coeff(0);
-             ROS_INFO_STREAM("Sample END: s=" << std::fixed << std::setprecision(3) << _ref_len
-                                     << ", x(s)=" << x_val_end
-                                     << ", y(s)=" << y_val_end);
         }
     }
-    ROS_INFO_STREAM("------------------------------------------------------");
+
+    // --- 3. Filter xs and ys using your removePts ---
+    if (!duplicate_pts_indices.empty()) {
+        ROS_INFO("Filtering %zu non-progressing points from xs and ys.", duplicate_pts_indices.size());
+        removePts(xs_ptr, duplicate_pts_indices); // xs_ptr now points to a new, shorter Eigen::RowVectorXd
+        removePts(ys_ptr, duplicate_pts_indices); // ys_ptr now points to a new, shorter Eigen::RowVectorXd
+        // IMPORTANT: ss_initial_calc_ptr still points to the original 's' values or a filtered version of them,
+        //            but these 's' values are NOT the correct cumulative arc lengths for the NEW *xs_ptr and *ys_ptr.
+    }
+
+    int N_filtered = xs_ptr->size(); // Get the size of the filtered trajectory
+    if (N_filtered == 0) {
+        ROS_ERROR("ModifyTrajSrv: All points removed after filtering or initial request was invalid. No trajectory to set.");
+        delete xs_ptr;
+        delete ys_ptr;
+        delete ss_initial_calc_ptr; // Clean up original ss calculation
+        return true;
+    }
+
+    // --- 4. CRITICAL: Recalculate 's' values for the filtered xs and ys ---
+    // You CANNOT use the 'ss' vector that would result from calling removePts(ss_initial_calc_ptr, ...)
+    // because that would just remove elements, not recalculate arc lengths.
+    // So, we create a new ss vector specifically for the filtered points.
+    Eigen::RowVectorXd* ss_final_ptr = new Eigen::RowVectorXd(N_filtered);
+    Eigen::RowVectorXd& final_ss = *ss_final_ptr;
+
+    if (N_filtered > 0) {
+        final_ss(0) = 0.0;
+        for (int i = 1; i < N_filtered; ++i) {
+            double dx = (*xs_ptr)(i) - (*xs_ptr)(i-1); // Use filtered xs
+            double dy = (*ys_ptr)(i) - (*ys_ptr)(i-1); // Use filtered ys
+            final_ss(i) = final_ss(i-1) + std::hypot(dx, dy);
+        }
+    }
+
+    // --- 5. Create splines for the new (_requested_) trajectory ---
+    double new_trajectory_true_length = (N_filtered > 0) ? final_ss(N_filtered - 1) : 0.0;
+    if (N_filtered == 1) { // Single point path
+        new_trajectory_true_length = 0.0;
+    }
+
+    Spline1D splineX_req, splineY_req;
+    if (N_filtered > 0) {
+        // Use the filtered *xs_ptr, *ys_ptr and the newly recalculated final_ss
+        const auto fitX_req = utils::Interp(*xs_ptr, 3, final_ss);
+        splineX_req = Spline1D(fitX_req);
+
+        const auto fitY_req = utils::Interp(*ys_ptr, 3, final_ss);
+        splineY_req = Spline1D(fitY_req);
+    } else { // Should have been caught by N_filtered == 0 check above
+        ROS_ERROR("ModifyTrajSrv: Logic error, N_filtered is 0 before spline creation. This should not happen.");
+        delete xs_ptr; delete ys_ptr; delete ss_initial_calc_ptr; delete ss_final_ptr;
+        return true;
+    }
+
+    _requested_ref[0] = splineX_req;
+    _requested_ref[1] = splineY_req;
+    _requested_len = new_trajectory_true_length;
+
+    ROS_INFO("Processed _requested_ trajectory. Filtered Points: %d, True Length: %.2f m", N_filtered, _requested_len);
+
+    // --- 6. Conditional logic for blending or direct set ---
+    if (_is_executing) {
+        ROS_INFO("Currently executing. Setting up for trajectory blend.");
+        _old_ref = _ref;
+        _old_ref_len = _true_ref_len;
+        _old_mpc_len = _ref_len; // Assuming _ref_len was the true geometric length for the old path
+
+        _blend_traj_curr_s = get_s_from_state(_old_ref, _old_ref_len);
+        ROS_INFO("Current progress on old path (true_len=%.2f, mpc_len=%.2f): s_old=%.3f", _old_ref_len, _old_mpc_len, _blend_traj_curr_s);
+
+        Eigen::Vector2d robot_pos_world = _odom.head(2);
+        double min_dist_sq_to_new_traj = std::numeric_limits<double>::max();
+        _blend_new_s = 0.0;
+
+        if (_requested_len > 1e-6) {
+            for (double s_cand_new = 0.0; s_cand_new <= _requested_len; s_cand_new += (resolution / 2.0)) {
+                Eigen::Vector2d p_new_cand(_requested_ref[0](s_cand_new).coeff(0),
+                                           _requested_ref[1](s_cand_new).coeff(0));
+                double dist_sq = (p_new_cand - robot_pos_world).squaredNorm();
+                if (dist_sq < min_dist_sq_to_new_traj) {
+                    min_dist_sq_to_new_traj = dist_sq;
+                    _blend_new_s = s_cand_new;
+                }
+            }
+        }
+        ROS_INFO("Target sync point on new path (true_len=%.2f): s_new=%.3f", _requested_len, _blend_new_s);
+
+        _transition_start_time = ros::Time::now().toSec();
+        _transition_duration = 1.5; // Example duration
+        _in_transition = true;
+        ROS_INFO("Blend initiated. Blend duration: %.2f s.", _transition_duration);
+
+    } else {
+        ROS_INFO("Not executing. Setting new trajectory directly.");
+        _ref = _requested_ref;
+        _true_ref_len = _requested_len;
+        _ref_len = _requested_len; // MPC uses true geometric length
+
+        _mpc_core->set_trajectory(_ref, _ref_len);
+
+        _prev_s = get_s_from_state(_ref, _true_ref_len);
+        _s_dot = 0.0;
+        ROS_INFO("New trajectory set directly. Length: %.2f", _ref_len);
+    }
+
+    // Visualization
+    // The ROS_INFO_STREAM block for sampling splines from your original code
+    // would sample the _ref (old path during blend). If you want to see samples
+    // of _requested_ref, you'd add that logic here specifically.
+    // Example for _requested_ref:
+    if (N_filtered > 0 && _requested_len > 1e-6) { // Check if _requested_ref is valid
+        ROS_INFO_STREAM("--- Sampling _requested_ref Splines ---");
+        ROS_INFO_STREAM("Spline Domain (arc length s) goes from 0 to " << _requested_len);
+        int num_samples_to_print = std::min(N_filtered, 10); // Print up to 10 samples or N_filtered
+        if (num_samples_to_print > 0) {
+            double s_step_print = _requested_len / std::max(1, (num_samples_to_print -1) );
+             if (num_samples_to_print == 1) s_step_print = 0; // only print s=0 for single point
+
+            for (int i = 0; i < num_samples_to_print; ++i) {
+                double current_s_print = (num_samples_to_print == 1) ? 0.0 : i * s_step_print;
+                current_s_print = std::min(current_s_print, _requested_len); // Clamp
+
+                double x_val = _requested_ref[0](current_s_print).coeff(0);
+                double y_val = _requested_ref[1](current_s_print).coeff(0);
+                ROS_INFO_STREAM("Sample " << i << ": s=" << std::fixed << std::setprecision(3) << current_s_print
+                                         << ", x(s)=" << x_val << ", y(s)=" << y_val);
+            }
+        }
+         ROS_INFO_STREAM("------------------------------------------------------");
+    }
 
 
-	if (_is_executing){
+    publishReference(); // Publishes based on _trajectory, which should reflect _ref
+    visualizeTraj();    // Visualizes _ref
 
-	_old_ref = _ref;
-	_old_ref_len = _true_ref_len;
-	_old_mpc_len = _ref_len
+    // --- 7. MEMORY CLEANUP ---
+    delete xs_ptr;
+    delete ys_ptr;
+    delete ss_initial_calc_ptr; // Pointer to original s calculations
+    delete ss_final_ptr;        // Pointer to the recalculated s values used for splines
 
-	_blend_traj_curr_s = get_s_from_state(_old_ref, _old_ref_len);
-
-	Eigen::Vector2d robot_pos_world = _odom.head(2);
-	double min_dist_sq_to_new_traj = std::numeric_limits<double>
-	_blend_new_s =0;
-
-
-	_transition_start_time = ros::Time::now().toSec();
-	_transition_duration = 1.5;
-	_in_transition = true;
-	
-	}
-	else{
-
-	_ref=_requested_ref;
-	_true_ref_len = _requested_len
-	_ref_len = _requested_len
-
-	_mpc_core->set_trajectory(_ref,_ref_len);
-
-	_prev_s = get_s_from_state(_ref, _true_ref_len);
-	s_dot = 0;
-
-
-	}
-	
-	publishReference();
-    	visualizeTraj();
-
-	return true;
+    return true;
 }
 
 // store in _ref
