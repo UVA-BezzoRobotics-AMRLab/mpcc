@@ -20,7 +20,6 @@ std::vector<Eigen::Vector2d> generateLinearTrajectory(
     double                 resolution)
 {
 
-    std::vector<Eigen::Vector2d> pts;
     // compute delta and length
     Eigen::Vector2d delta = goal - start;
     double         length = delta.norm();
