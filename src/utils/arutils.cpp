@@ -31,15 +31,17 @@ std::vector<Eigen::Vector2d> generateLinearTrajectory(
     // unit direction
     Eigen::Vector2d dir = delta / length;
 
-    // how many full steps of size `resolution`
-    int numPts = static_cast<int>(std::floor(length / 20));
+    int M = 20;
+    int ds = length / M;
 
     std::vector<Eigen::Vector2d> pts;
     pts.reserve(numPts + 2);
 
     // sample from i=0 (start) to i=numSteps (might land exactly on goal)
-    for (int i = 0; i <= numPts; ++i) {
-        pts.emplace_back(start + dir * (resolution * i));
+    for (int i = 0; i <= M; ++i) {
+        double s = i*ds
+	    
+	    pts.emplace_back(start + dir * s);
     }
 
     // ensure exact goal at the end
