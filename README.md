@@ -45,6 +45,11 @@ In the Unity software,
     - Change the IP address to that of Vicon
     - Port is usually 10000
 
+ssh into Husarion to connect to the rosbot
+    - ssh husarion@<rosbot-ip-addr>
+
+roslaunch the launch file of the vicon and the driver of the rosbot
+
 ## ROS Master Setup
 To set up the ROS_MASTER_URI and the ROS_IP (or ROS_HOSTNAME), use the following commands:
     - export ROS_MASTER_URI=<IP-address>:<Port>
