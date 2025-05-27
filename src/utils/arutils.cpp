@@ -44,11 +44,6 @@ std::vector<Eigen::Vector2d> generateLinearTrajectory(
 	    pts.emplace_back(start + dir * s);
     }
 
-    // ensure exact goal at the end
-    if ((pts.back() - goal).norm() > 1e-6) {
-        pts.emplace_back(goal);
-    }
-
     return pts;
 }
 }
