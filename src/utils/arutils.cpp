@@ -32,7 +32,7 @@ std::vector<Eigen::Vector2d> generateLinearTrajectory(
     Eigen::Vector2d dir = delta / length;
 
     // how many full steps of size `resolution`
-    int numPts = static_cast<int>(std::floor(length / resolution));
+    int numPts = static_cast<int>(std::floor(length / 20));
 
     std::vector<Eigen::Vector2d> pts;
     pts.reserve(numPts + 2);
