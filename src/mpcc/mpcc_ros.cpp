@@ -249,6 +249,7 @@ bool MPCCROS::pauseExecutionSrv(std_srvs::SetBool::Request &req, std_srvs::SetBo
 
 
 	_is_paused=!_is_paused;
+	_is_executing=!_is_executing;
 	res.success = true;
 	res.message = "User set _is_paused to" + std::to_string(_is_paused); 
 	ROS_ERROR_STREAM("USER PAUSED OR UNPAUSE"<< _is_paused);
@@ -473,7 +474,6 @@ bool MPCCROS::modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req, uvatraj_msg
 
 		printf("Blend target s: %.3f", _blend_new_s);	
 	}
-	
 
 	_prev_ref     = _ref;
     	_prev_ref_len = _true_ref_len;	
@@ -482,9 +482,7 @@ bool MPCCROS::modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req, uvatraj_msg
 
 	Eigen::RowVectorXd* ss = new Eigen::RowVectorXd(N);
     	Eigen::RowVectorXd* xs = new Eigen::RowVectorXd(N);
-        Eigen::RowVectorXd* ys = new Eigen::RowVectorXd(N);
-	
-
+        Eigen::RowVectorXd* ys = new Eigen::RowVectorXd(N);	
 
 	(*xs)(0) = req.ctrl_pts[0].x;
     	(*ys)(0) = req.ctrl_pts[0].y;
@@ -492,6 +490,9 @@ bool MPCCROS::modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req, uvatraj_msg
      	for (int i = 1; i < N; ++i) {
     		(*xs)(i) = req.ctrl_pts[i].x;
     		(*ys)(i) = req.ctrl_pts[i].y;
+		
+		//_prediction_x(i) = req.ctrl_pts[i].x;
+		//_prediction_y(i) = req.ctrl_pts[i].y;
 
     		double dx = (*xs)(i) - (*xs)(i-1);
     		double dy = (*ys)(i) - (*ys)(i-1);
@@ -640,6 +641,10 @@ bool MPCCROS::generateTrajSrv(uvatraj_msgs::RequestTraj::Request &req, uvatraj_m
 	
 		holder.x = ctrl_pts[i].x();
 		holder.y = ctrl_pts[i].y();
+
+		//_prediction_x(i)=ctrl_pts[i].x();
+		//_prediction_y(i)=ctrl_pts[i].y();
+		
 		holder.z = 0.0;
 		holder.metadata = "";
 
@@ -1325,12 +1330,6 @@ void MPCCROS::mpcc_ctrl_loop(const ros::TimerEvent& event)
 	    _vel_msg.angular.z = 0.0;
 	    return;
     }
-    if(!_is_paused){
-
-	_is_executing = true;
-    }
-
-
 
     double len_start     = get_s_from_state(_ref, _true_ref_len);
     double corrected_len = len_start;
