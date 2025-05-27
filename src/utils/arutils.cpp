@@ -35,7 +35,7 @@ std::vector<Eigen::Vector2d> generateLinearTrajectory(
     int ds = length / M;
 
     std::vector<Eigen::Vector2d> pts;
-    pts.reserve(numPts + 2);
+    pts.reserve(M + 1);
 
     // sample from i=0 (start) to i=numSteps (might land exactly on goal)
     for (int i = 0; i <= M; ++i) {
