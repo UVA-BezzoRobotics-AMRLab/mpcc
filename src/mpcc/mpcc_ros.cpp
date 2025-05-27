@@ -1321,9 +1321,8 @@ void MPCCROS::mpcc_ctrl_loop(const ros::TimerEvent& event)
 
     if(_is_paused){
 	    ROS_INFO_STREAM("paused");
-	    _vel_msg.angular.x = 0.0;
+	    _vel_msg.linear.x = 0.0;
 	    _vel_msg.angular.z = 0.0;
-	    _is_executing = false;
 	    return;
     }
     if(!_is_paused){
