@@ -1,6 +1,6 @@
 #include "mpcc/mpcc_ros.h"
 #include <unordered_set>
-
+#include <std_srvs/SetBool.h>
 #include <geometry_msgs/Point32.h>
 #include <geometry_msgs/PointStamped.h>
 #include <geometry_msgs/PolygonStamped.h>
@@ -35,6 +35,7 @@ MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~")
     _is_goal      = false;
     _traj_reset   = false;
     _reverse_mode = false;
+    _is_paused = false;
 
     _curr_vel     = 0;
     _ref_len      = 0;
@@ -221,7 +222,9 @@ MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~")
     _modify_traj_srv = nh.advertiseService("/modify_trajectory", &MPCCROS::modifyTrajSrv, this); 
     
     _exec_traj_Srv = nh.advertiseService("/execute_trajectory", &MPCCROS::executeTrajSrv, this);
-    
+
+    _pause_execution_Srv = nh.advertiseService("/pause_execution", &MPCCROS::pauseExecutionSrv, this);
+
     timer_thread = std::thread(&MPCCROS::publishVel, this);
 
     _backup_srv = nh.advertiseService("/mpc_backup", &MPCCROS::toggleBackup, this);
@@ -240,6 +243,18 @@ MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~")
 MPCCROS::~MPCCROS()
 {
     if (timer_thread.joinable()) timer_thread.join();
+}
+
+bool MPCCROS::pauseExecutionSrv(std_srvs::SetBool::Request &req, std_srvs::SetBool::Response &res){
+
+
+	_is_paused=!_is_paused;
+	res.success = true;
+	res.message = "User set _is_paused to" + std::to_string(_is_paused); 
+	ROS_ERROR_STREAM("USER PAUSED OR UNPAUSE"<< _is_paused);
+	return true; 
+
+
 }
 
 bool MPCCROS::executeTrajSrv(std_srvs::Empty::Request &req, std_srvs::Empty::Response &res){
@@ -1302,6 +1317,18 @@ void MPCCROS::mpcc_ctrl_loop(const ros::TimerEvent& event)
 	    ROS_INFO("Blending trajectories: %.1f%%", blend_factor*100);
 	    blendTrajectories(blend_factor);
 	}
+    }
+
+    if(_is_paused){
+	    ROS_INFO_STREAM("paused");
+	    _vel_msg.angular.x = 0.0;
+	    _vel_msg.angular.z = 0.0;
+	    _is_executing = false;
+	    return;
+    }
+    if(!_is_paused){
+
+	_is_executing = true;
     }
 
 
