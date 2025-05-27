@@ -40,7 +40,7 @@ std::vector<Eigen::Vector2d> generateLinearTrajectory(
 
     // sample from i=0 (start) to i=numSteps (might land exactly on goal)
     for (int i = 0; i <= M; ++i) {
-        double s = i*ds
+        double s = i*ds;
 	    
 	    pts.emplace_back(start + dir * s);
     }
