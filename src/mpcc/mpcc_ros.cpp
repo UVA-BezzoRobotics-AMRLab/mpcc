@@ -588,11 +588,11 @@ bool MPCCROS::modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req, uvatraj_msg
 	reparam_curve(xs,ys,ss);
 
 	
-	for (int i = 0; i<xs->size(); ++i){	
-		_traj_executed[i] = Eigen::Vector2d((*xs)(i),(*ys)(i));
-	}
+//	for (int i = 0; i<xs->size(); ++i){	
+//		_traj_executed[i] = Eigen::Vector2d((*xs)(i),(*ys)(i));
+//	}
 
-	reparam_curve(xs,ys,ss);
+//	reparam_curve(xs,ys,ss);
 
     	const auto fitX = utils::Interp(*xs, 3, *ss);
     	Spline1D splineX(fitX);
