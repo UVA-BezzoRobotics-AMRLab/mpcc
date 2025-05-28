@@ -460,7 +460,56 @@ void removePts(Eigen::RowVectorXd*& xs, std::vector<unsigned int> duplicate_pts)
 
 void reparam_curve(Eigen::RowVectorXd*& xs, Eigen::RowVectorXd*& ys, Eigen::RowVectorXd*& ss){
 
+   int N=xs->size();
 
+   std::vector<double> x_vec(xs->data(), xs->data()+xs->size());
+   std::vector<double> y_vec(ys->data(), ys->data()+ys->size());
+   std::vector<double> s_vec(ss->data(), ss->data()+ss->size());
+
+   Eigen::RowVectorXd* xs_new = new Eigen::RowVectorXd(20);
+   Eigen::RowVectorXd* ys_new = new Eigen::RowVectorXd(20);
+   Eigen::RowVectorXd* ss_new = new Eigen::RowVectorXd(20);
+
+   tk::spline spline_x, spline_y;
+
+   spline_x.set_points(s_vec,x_vec);
+   spline_y.set_points(s_vec,y_vec);
+
+   int M=20;
+   
+   double total_len = s_vec.back();
+   double step = total_len/double(M-1);
+   
+   (*xs_new)(0) = spline_x(0.0);
+   (*ys_new)(0) = spline_y(0.0);
+   (*ss_new)(0) = 0.0;
+
+
+   for (int  i = 1; i<M;++i){
+
+	double s = i*step;
+	double x_i = spline_x(s);
+	double y_i = spline_y(s);
+
+	std::cout << "Point " << i << ": (" << x_i << ", " << y_i <<")\n";
+
+	(*xs_new)(i) = x_i;
+	(*ys_new)(i) = y_i;
+
+	double dx = x_i-(*xs_new)(i-1);
+	double dy = y_i-(*ys_new)(i-1);
+
+        (*ss_new)(i) = (*ss_new)(i-1)+std::hypot(dx,dy);
+
+   }
+
+   delete xs;
+   delete ys;
+   delete ss;
+
+   xs = xs_new;
+   ys = ys_new;
+   ss = ss_new;
 
 
 }
@@ -536,9 +585,9 @@ bool MPCCROS::modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req, uvatraj_msg
 	removePts(ys, duplicate_pts);
 	removePts(ss, duplicate_pts);
 	
-	std::vector<double> reparam_x, reparam_y, reparam_z; 
+	reparam_curve(xs,ys,ss);
 
-	_traj_executed.resize(xs->size());
+	
 	for (int i = 0; i<xs->size(); ++i){	
 		_traj_executed[i] = Eigen::Vector2d((*xs)(i),(*ys)(i));
 	}
@@ -656,14 +705,14 @@ bool MPCCROS::generateTrajSrv(uvatraj_msgs::RequestTraj::Request &req, uvatraj_m
 	ctrl_pts.emplace_back(Eigen::Vector2d(_odom(0),_odom(1)));
 	ctrl_pts.emplace_back(Eigen::Vector2d(-req.goal.z,req.goal.y));
 	ctrl_pts = mpcc::arutils::generateLinearTrajectory(ctrl_pts[0], ctrl_pts[1], resolution);
-	_traj_executed = ctrl_pts;
+
 	uvatraj_msgs::ControlPoint holder;
 	
 	ROS_DEBUG_STREAM("[vicon_bridge] Generated trajectory: "
                  << ctrl_pts.size() << " points"
                  << " @ resolution=" << resolution);
 
-
+	_traj_executed.clear();
 	for (int i=0; i<ctrl_pts.size(); ++i){
 	
 		holder.x = ctrl_pts[i].x();
@@ -675,9 +724,12 @@ bool MPCCROS::generateTrajSrv(uvatraj_msgs::RequestTraj::Request &req, uvatraj_m
 		holder.z = 0.0;
 		holder.metadata = "";
 
-		if (i%5==0) res.boundary_ctrl_pts.push_back(holder);
+		if (i%5==0){
+		       	res.boundary_ctrl_pts.push_back(holder);
+			_traj_executed.push_back(Eigen::Vector2d(ctrl_pts[i].x(),ctrl_pts[i].y()));
+		}
 		res.all_ctrl_pts.push_back(holder);
-			
+				
 		
 
 	}
