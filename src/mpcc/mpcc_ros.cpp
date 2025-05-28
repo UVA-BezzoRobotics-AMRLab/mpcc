@@ -225,6 +225,10 @@ MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~")
 
     _pause_execution_Srv = nh.advertiseService("/pause_execution", &MPCCROS::pauseExecutionSrv, this);
 
+    _traj_sender = nh.serviceClient<uvatraj_msgs::ExecuteTraj>("/traj_send");
+
+    _traj_executed.clear();
+
     timer_thread = std::thread(&MPCCROS::publishVel, this);
 
     _backup_srv = nh.advertiseService("/mpc_backup", &MPCCROS::toggleBackup, this);
@@ -454,6 +458,14 @@ void removePts(Eigen::RowVectorXd*& xs, std::vector<unsigned int> duplicate_pts)
 }
 
 
+void reparam_curve(Eigen::RowVectorXd*& xs, Eigen::RowVectorXd*& ys, Eigen::RowVectorXd*& ss){
+
+
+
+
+}
+
+
 bool MPCCROS::modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req, uvatraj_msgs::ExecuteTraj::Response &res)
 {
 
@@ -494,6 +506,9 @@ bool MPCCROS::modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req, uvatraj_msg
 		//_prediction_x(i) = req.ctrl_pts[i].x;
 		//_prediction_y(i) = req.ctrl_pts[i].y;
 
+		//_traj_executed.push_back(Eigen::Vector2d(req.ctrl_pts[i].x,req.ctrl_pts.y))
+
+
     		double dx = (*xs)(i) - (*xs)(i-1);
     		double dy = (*ys)(i) - (*ys)(i-1);
     		(*ss)(i) =(*ss)(i-1) + std::hypot(dx, dy);
@@ -515,9 +530,20 @@ bool MPCCROS::modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req, uvatraj_msg
 		} 
 	}
 	
+
+	
 	removePts(xs, duplicate_pts);
 	removePts(ys, duplicate_pts);
 	removePts(ss, duplicate_pts);
+	
+	std::vector<double> reparam_x, reparam_y, reparam_z; 
+
+	_traj_executed.resize(xs->size());
+	for (int i = 0; i<xs->size(); ++i){	
+		_traj_executed[i] = Eigen::Vector2d((*xs)(i),(*ys)(i));
+	}
+
+	reparam_curve(xs,ys,ss);
 
     	const auto fitX = utils::Interp(*xs, 3, *ss);
     	Spline1D splineX(fitX);
@@ -630,6 +656,7 @@ bool MPCCROS::generateTrajSrv(uvatraj_msgs::RequestTraj::Request &req, uvatraj_m
 	ctrl_pts.emplace_back(Eigen::Vector2d(_odom(0),_odom(1)));
 	ctrl_pts.emplace_back(Eigen::Vector2d(-req.goal.z,req.goal.y));
 	ctrl_pts = mpcc::arutils::generateLinearTrajectory(ctrl_pts[0], ctrl_pts[1], resolution);
+	_traj_executed = ctrl_pts;
 	uvatraj_msgs::ControlPoint holder;
 	
 	ROS_DEBUG_STREAM("[vicon_bridge] Generated trajectory: "
@@ -648,7 +675,7 @@ bool MPCCROS::generateTrajSrv(uvatraj_msgs::RequestTraj::Request &req, uvatraj_m
 		holder.z = 0.0;
 		holder.metadata = "";
 
-		res.boundary_ctrl_pts.push_back(holder);
+		if (i%5==0) res.boundary_ctrl_pts.push_back(holder);
 		res.all_ctrl_pts.push_back(holder);
 			
 		
@@ -1278,6 +1305,29 @@ void MPCCROS::blendTrajectories(double blend_factor)
     }
 }
 
+
+void MPCCROS::sendTraj(){
+
+   uvatraj_msgs::ExecuteTraj msg;
+   uvatraj_msgs::ControlPoint pt;
+
+   for(int i = 0; i<_traj_executed.size(); ++i){
+
+	   pt.x = _traj_executed[i][0];
+	   pt.y = _traj_executed[i][1];
+	   msg.request.ctrl_pts.push_back(pt);
+
+   } 
+   if (_traj_sender.call(msg)){
+	ROS_INFO("sendTraj: success=%s, msg=%s",
+                 msg.response.success ? "true" : "false",
+                 msg.response.status_message.c_str());
+		   }else{
+	ROS_ERROR("Failed to call traj_send service");
+	}
+}
+
+
 void MPCCROS::mpcc_ctrl_loop(const ros::TimerEvent& event)
 {
     if (!_is_init || _estop){
@@ -1371,7 +1421,7 @@ void MPCCROS::mpcc_ctrl_loop(const ros::TimerEvent& event)
 	_is_executing = false;
 	_traj_reset = false;
         _trajectory.points.clear();
-
+	sendTraj();
         return;
     }
 
