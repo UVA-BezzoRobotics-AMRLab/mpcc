@@ -66,8 +66,6 @@ MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~")
     _y_goal_euclid = 0.0;
     _old_ref_len = 0.0;
     
-    
- 
     _vel_msg.linear.x  = 0;
     _vel_msg.angular.z = 0;
 
@@ -225,6 +223,8 @@ MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~")
 
     _pause_execution_Srv = nh.advertiseService("/pause_execution", &MPCCROS::pauseExecutionSrv, this);
 
+    _traj_suggest_Srv = nh.serviceClient<uvatraj_msgs::ExecuteTraj>("/traj_predict_srv");
+
     _traj_sender = nh.serviceClient<uvatraj_msgs::ExecuteTraj>("/traj_send");
 
     _traj_executed.clear();
@@ -261,6 +261,31 @@ bool MPCCROS::pauseExecutionSrv(std_srvs::SetBool::Request &req, std_srvs::SetBo
 
 
 }
+
+
+void MPCCROS::suggestTrajSrv(Eigen::RowVectorXd*& xs, Eigen::RowVectorXd*& ys){
+
+	
+   uvatraj_msgs::ExecuteTraj msg;
+   uvatraj_msgs::ControlPoint pt;
+
+   for(int i = 0; i<(*xs).size(); ++i){
+	   pt.x = (*xs)(i);
+	   pt.y = (*ys)(i);
+	   msg.request.ctrl_pts.push_back(pt);
+   } 
+   if (_traj_suggest_Srv.call(msg)){
+	ROS_INFO("suggestTrajSrv success=%s, msg=%s",
+                 msg.response.success ? "true" : "false",
+                 msg.response.status_message.c_str());
+		   }else{
+	ROS_ERROR("Failed to call suggestTrajSrv service");
+	}
+
+
+
+}
+
 
 bool MPCCROS::executeTrajSrv(std_srvs::Empty::Request &req, std_srvs::Empty::Response &res){
 
@@ -587,10 +612,10 @@ bool MPCCROS::modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req, uvatraj_msg
 	
 	reparam_curve(xs,ys,ss);
 
-	
-//	for (int i = 0; i<xs->size(); ++i){	
-//		_traj_executed[i] = Eigen::Vector2d((*xs)(i),(*ys)(i));
-//	}
+	_traj_executed.resize(xs->size());
+	for (int i = 0; i<xs->size(); ++i){	
+		_traj_executed[i] = Eigen::Vector2d((*xs)(i),(*ys)(i));
+	}
 
 //	reparam_curve(xs,ys,ss);
 
@@ -743,11 +768,16 @@ bool MPCCROS::generateTrajSrv(uvatraj_msgs::RequestTraj::Request &req, uvatraj_m
 
     int N = ctrl_pts.size();
 
-    Eigen::RowVectorXd ss, xs, ys;
-    ss.resize(N);
-    xs.resize(N);
-    ys.resize(N);
-/*
+    Eigen::RowVectorXd* ss = new Eigen::RowVectorXd(N);
+    Eigen::RowVectorXd* xs = new Eigen::RowVectorXd(N);
+    Eigen::RowVectorXd* ys = new Eigen::RowVectorXd(N);
+    //ss->resize(N);
+    //xs->resize(N);
+    //ys->resize(N);
+
+
+    
+    /*
     for (int i = 0; i < N; ++i)
     {
         xs(i) = ctrl_pts[i].x();
@@ -758,25 +788,40 @@ bool MPCCROS::generateTrajSrv(uvatraj_msgs::RequestTraj::Request &req, uvatraj_m
 */
 
 
-    xs(0) = ctrl_pts[0].x();
-    ys(0) = ctrl_pts[0].y();
+    (*xs)(0) = ctrl_pts[0].x();
+    (*ys)(0) = ctrl_pts[0].y();
      for (int i = 1; i < N; ++i) {
-    	xs(i) = ctrl_pts[i].x();
-    	ys(i) = ctrl_pts[i].y();
+    	(*xs)(i) = ctrl_pts[i].x();
+    	(*ys)(i) = ctrl_pts[i].y();
 
-    	double dx = xs(i) - xs(i-1);
-    	double dy = ys(i) - ys(i-1);
-    	ss(i) = ss(i-1) + std::hypot(dx, dy);
+    	double dx = (*xs)(i) - (*xs)(i-1);
+    	double dy = (*ys)(i) - (*ys)(i-1);
+    	(*ss)(i) = (*ss)(i-1) + std::hypot(dx, dy);
 	}
-    _ref_len = ss(N - 1);
 
-    _ref_len      = ss(ss.size() - 1);
+    reparam_curve(xs,ys,ss);
+    
+    
+    _traj_executed.resize(xs->size());
+    for (int i = 0; i<xs->size(); ++i){	
+		_traj_executed[i] = Eigen::Vector2d((*xs)(i),(*ys)(i));
+	}
+
+
+    _ref_len = (*ss)(N - 1);
+
+    _ref_len      = (*ss)((*ss).size() - 1);
     _true_ref_len = _ref_len;
+    
+    suggestTrajSrv(xs,ys);  
+	
+	
 
-    const auto fitX = utils::Interp(xs, 3, ss);
+
+    const auto fitX = utils::Interp(*xs, 3, *ss);
     Spline1D splineX(fitX);
 
-    const auto fitY = utils::Interp(ys, 3, ss);
+    const auto fitY = utils::Interp(*ys, 3, *ss);
     Spline1D splineY(fitY);
 
     // if reference length is less than required mpc size, extend trajectory
@@ -791,7 +836,7 @@ bool MPCCROS::generateTrajSrv(uvatraj_msgs::RequestTraj::Request &req, uvatraj_m
 
     ROS_INFO_STREAM("--- Calculated xs, ys, ss before spline fitting ---");
     for (int i=0; i<N; ++i) {
-        ROS_INFO_STREAM("Point " << i << ": s=" << ss(i) << ", x=" << xs(i) << ", y=" << ys(i));
+        ROS_INFO_STREAM("Point " << i << ": s=" << (*ss)(i) << ", x=" << (*xs)(i) << ", y=" << (*ys)(i));
     }
     ROS_INFO_STREAM("Total calculated _ref_len (before extension): " << _ref_len);
     ROS_INFO_STREAM("---------------------------------------------------"); 
@@ -1378,7 +1423,6 @@ void MPCCROS::sendTraj(){
 	ROS_ERROR("Failed to call traj_send service");
 	}
 }
-
 
 void MPCCROS::mpcc_ctrl_loop(const ros::TimerEvent& event)
 {
