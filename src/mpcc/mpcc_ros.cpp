@@ -223,9 +223,9 @@ MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~")
 
     _pause_execution_Srv = nh.advertiseService("/pause_execution", &MPCCROS::pauseExecutionSrv, this);
 
-    _traj_suggest_Srv = nh.serviceClient<uvatraj_msgs::ExecuteTraj>("/traj_predict_srv");
+//    _traj_suggest_Srv = nh.serviceClient<uvatraj_msgs::ExecuteTraj>("/traj_predict_srv");
 
-    _traj_sender = nh.serviceClient<uvatraj_msgs::ExecuteTraj>("/traj_send");
+  //  _traj_sender = nh.serviceClient<uvatraj_msgs::ExecuteTraj>("/traj_send");
 
     _traj_executed.clear();
 

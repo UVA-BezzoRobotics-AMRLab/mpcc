@@ -4,15 +4,17 @@
 
 #include "mpcc/arutils.h"
 namespace mpcc{
-
-
 	namespace arutils{
-inline double computeDistance(
-    const Eigen::Vector2d& a,
-    const Eigen::Vector2d& b)
-{
-    return (b - a).norm();
-}
+		std::vector<Eigen::Vector2d> generateTrajectory(
+		    const Eigen::Vector2d& start,
+		    const Eigen::Vector2d& goal)
+		{
+
+	
+			
+
+		}
+
 
 std::vector<Eigen::Vector2d> generateLinearTrajectory(
     const Eigen::Vector2d& start,

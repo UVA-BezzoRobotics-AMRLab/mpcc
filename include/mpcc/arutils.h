@@ -4,20 +4,30 @@
 #include <Eigen/Core>
 #include <uvatraj_msgs/ControlPoint.h>
 
-namespace mpcc {
-namespace arutils {
+namespace PathPlanning{
+	namespace Obstacle {
+		struct Obstacle {
+			std::string identifier;
+			double position;
+			double amplitude; // strength
+			double sigma; //width
+			}
+		void setPosition(Eigen::Vector2d position);
+		void setUpdateParams(double amplitude, double sigma);
+		double getPotential(Eigen::Vector2d point);
+		Eigen::Vector2d getGradient(Eigen::Vector2d point);
+			
+	}
+	namespace Goal{
+		struct Goal{
+			double position;
+			double k_att;
+			}
+		Eigen::Vector2d getGoalGradient(Eigen::Vector2d point);
+		}
 
-/// Compute Euclidean distance between two 2D points.
-double computeDistance(
-    const Eigen::Vector2d& a,
-    const Eigen::Vector2d& b);
-
-/// Generate a straight‐line trajectory from start → goal,
-/// sampled every `resolution` (meters).
-std::vector<Eigen::Vector2d> generateLinearTrajectory(
-    const Eigen::Vector2d& start,
-    const Eigen::Vector2d& goal,
-    double                 resolution);
-}  // namespace utils
-}  // namespace mpcc
-
+	namespace GaussianPotentialField{
+		Eigen::Vector2d getTotalGradient(Eigen::Vector2d point);
+		std::vector<Eigen::Vector2d> generateTrajectory(Eigen::Vector2d pos_g);
+	}
+}  
