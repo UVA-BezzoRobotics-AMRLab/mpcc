@@ -262,7 +262,7 @@ bool MPCCROS::pauseExecutionSrv(std_srvs::SetBool::Request &req, std_srvs::SetBo
 
 }
 
-
+/*
 void MPCCROS::suggestTrajSrv(Eigen::RowVectorXd*& xs, Eigen::RowVectorXd*& ys){
 
 	
@@ -285,7 +285,7 @@ void MPCCROS::suggestTrajSrv(Eigen::RowVectorXd*& xs, Eigen::RowVectorXd*& ys){
 
 
 }
-
+*/
 
 bool MPCCROS::executeTrajSrv(std_srvs::Empty::Request &req, std_srvs::Empty::Response &res){
 
@@ -813,7 +813,7 @@ bool MPCCROS::generateTrajSrv(uvatraj_msgs::RequestTraj::Request &req, uvatraj_m
     _ref_len      = (*ss)((*ss).size() - 1);
     _true_ref_len = _ref_len;
     
-    suggestTrajSrv(xs,ys);  
+    //suggestTrajSrv(xs,ys);  
 	
 	
 
@@ -1402,7 +1402,7 @@ void MPCCROS::blendTrajectories(double blend_factor)
     }
 }
 
-
+/*
 void MPCCROS::sendTraj(){
 
    uvatraj_msgs::ExecuteTraj msg;
@@ -1423,7 +1423,7 @@ void MPCCROS::sendTraj(){
 	ROS_ERROR("Failed to call traj_send service");
 	}
 }
-
+*/
 void MPCCROS::mpcc_ctrl_loop(const ros::TimerEvent& event)
 {
     if (!_is_init || _estop){
@@ -1517,7 +1517,7 @@ void MPCCROS::mpcc_ctrl_loop(const ros::TimerEvent& event)
 	_is_executing = false;
 	_traj_reset = false;
         _trajectory.points.clear();
-	sendTraj();
+	//sendTraj();
         return;
     }
 

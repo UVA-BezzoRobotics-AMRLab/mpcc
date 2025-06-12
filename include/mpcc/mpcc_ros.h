@@ -24,6 +24,8 @@
 #include <uvatraj_msgs/RequestTraj.h>
 #include <uvatraj_msgs/ExecuteTraj.h>
 
+#include <std_srvs/SetBool.h>
+
 class MPCCROS
 {
    public:
@@ -58,7 +60,7 @@ class MPCCROS
      bool _in_transition = false;
      double _transition_start_time = 0.0;
      double _transition_duration = 0.0;
-    
+    std::vector<Eigen::Vector2d> _traj_executed;
     // // ROS
     ros::Subscriber _viconSub;
      
@@ -144,7 +146,7 @@ class MPCCROS
     bool generateTrajSrv(uvatraj_msgs::RequestTraj::Request &req, uvatraj_msgs::RequestTraj::Response &res);
     bool modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req, uvatraj_msgs::ExecuteTraj::Response &res);
     bool executeTrajSrv(std_srvs::Empty::Request &req, std_srvs::Empty::Response &res);
-
+    bool pauseExecutionSrv(std_srvs::SetBool::Request &req, std_srvs::SetBool::Response &res);
     bool toggleBackup(std_srvs::Empty::Request &req, std_srvs::Empty::Response &res);
 
     /************************
@@ -192,7 +194,11 @@ class MPCCROS
     ros::ServiceServer _generate_traj_srv;
     ros::ServiceServer _modify_traj_srv;
     ros::ServiceServer _exec_traj_Srv;
+    ros::ServiceServer _pause_execution_Srv;
 
+
+    ros::ServiceClient _traj_sender;
+    ros::ServiceClient _traj_suggest_Srv;
     ros::ServiceClient _sac_srv;
 
     ros::NodeHandle _nh;
@@ -255,6 +261,8 @@ class MPCCROS
     double _dt, _curr_vel, _curr_ang_vel, _vel_pub_freq;
     bool _is_init, _is_goal, _teleop, _traj_reset, _use_vicon, _estop, _is_at_goal, _use_cbf,
         _use_dynamic_alpha, _reverse_mode;
+
+    bool _is_paused;
 
     bool _is_logging;
     bool _is_eval;

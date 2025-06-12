@@ -33,7 +33,7 @@ std::vector<Eigen::Vector2d> generateLinearTrajectory(
     Eigen::Vector2d dir = delta / length;
 
     int M = 20;
-    int ds = length / M;
+    double ds = length / M;
 
     std::vector<Eigen::Vector2d> pts;
     pts.reserve(M + 1);
