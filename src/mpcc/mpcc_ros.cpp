@@ -25,11 +25,15 @@ constexpr double resolution = 0.5;
 
 
 //import ar utils
-#include <include/mpcc/arutils.h> 
+//#include <include/mpcc/arutils.h> 
 //import the uvatrajmsgs
+#include <PathPlanning/gaussian_potential_field.hpp>
+
+
 
 MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~")
 {
+
     _estop        = false;
     _is_init      = false;
     _is_goal      = false;
@@ -702,6 +706,37 @@ bool MPCCROS::modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req, uvatraj_msg
 	return true;
 }
 
+std::vector<Eigen::Vector2d> generateTrajectory(Eigen::Vector2d& point, double resolution, PathPlanning::GaussianPotentialField GPR){
+
+	std::vector<Eigen::Vector2d> trajectory{start};
+
+	Eigen::Vector2d current_pt {start}
+
+	for (int i = 0; i < 1000; ++i){
+
+		double dist_to_goal = (start - goal).squaredNorm();
+
+		if (dist_to_goal < 0.2) {
+			break;
+		}
+
+		Eigen::Vector2d grad = GPR.getTotalGradient(point);
+
+		Eigen::Vector2d grad_norm = grad.squaredNorm;
+
+		if grad_norm < 1e-6 break;
+
+		grad /= grad_norm;
+
+		current_pt += resolution * grad;
+
+		trajectory.push_back(current_pt)
+	}
+
+	return trajectory;
+
+}
+
 // store in _ref
 //double checked logic is sound
 bool MPCCROS::generateTrajSrv(uvatraj_msgs::RequestTraj::Request &req, uvatraj_msgs::RequestTraj::Response &res){
@@ -729,8 +764,11 @@ bool MPCCROS::generateTrajSrv(uvatraj_msgs::RequestTraj::Request &req, uvatraj_m
 	
 	ctrl_pts.emplace_back(Eigen::Vector2d(_odom(0),_odom(1)));
 	ctrl_pts.emplace_back(Eigen::Vector2d(-req.goal.z,req.goal.y));
-	ctrl_pts = mpcc::arutils::generateLinearTrajectory(ctrl_pts[0], ctrl_pts[1], resolution);
-
+	//ctrl_pts = mpcc::arutils::generateLinearTrajectory(ctrl_pts[0], ctrl_pts[1], resolution);
+	
+	PathPlanning::GaussianPotentialField GPR(_obstacles, ctrl_pts[1]); 
+	ctrl_pts =  generateTrajectory(ctrl_pts[0], ctrl_pts[1], resolution, GPR)
+	
 	uvatraj_msgs::ControlPoint holder;
 	
 	ROS_DEBUG_STREAM("[vicon_bridge] Generated trajectory: "
