@@ -23,7 +23,7 @@
 
 #include <uvatraj_msgs/RequestTraj.h>
 #include <uvatraj_msgs/ExecuteTraj.h>
-
+#include "PathPlanning/gaussian_potential_field.hpp"   // <-- pull in the structs
 #include <std_srvs/SetBool.h>
 
 class MPCCROS
@@ -46,8 +46,9 @@ class MPCCROS
      * trajectory generators can determine initial pos, vel, acc, etc.
      * for initial seeding.
      **********************************************************************/
-
-	
+    std::vector<PathPlanning::Obstacle> _obstacles;
+    void obstacle1cb(const geometry_msgs::TransformStamped::ConstPtr& msg);
+    void obstacle2cb(const geometry_msgs::TransformStamped::ConstPtr& msg);
 	
      void blendTrajectories(double blend_factor);    
     // Trajectory management
@@ -63,7 +64,7 @@ class MPCCROS
     std::vector<Eigen::Vector2d> _traj_executed;
     // // ROS
     ros::Subscriber _viconSub;
-     
+    ros::Subscriber _sub1, _sub2; 
     void publishReference();
     /**********************************************************************
      * Function: MPCCROS::publishReference()

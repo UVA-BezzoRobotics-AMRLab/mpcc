@@ -27,6 +27,8 @@ public:
 
 	inline void setGoal(const Goal& g) noexcept {_goal = g;}	
 	inline void setObstacles(const std::vector<Obstacle>& obs) noexcept {_obstacles = obs;}
+	
+	inline Eigen::Vector2d getGoal() noexcept {return _goal.getPosition();}
 
 	inline void addObstacle(const Obstacle& o) {_obstacles.push_back(o);}
 	inline void clearObstacles() noexcept {_obstacles.clear();}

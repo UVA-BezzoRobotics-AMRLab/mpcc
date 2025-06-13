@@ -227,7 +227,27 @@ MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~")
 
     _pause_execution_Srv = nh.advertiseService("/pause_execution", &MPCCROS::pauseExecutionSrv, this);
 
-//    _traj_suggest_Srv = nh.serviceClient<uvatraj_msgs::ExecuteTraj>("/traj_predict_srv");
+   
+    _obstacles.resize(2);
+
+    ros::Subscriber _sub1 = nh.subscribe<geometry_msgs::TransformStamped>(
+
+		    "/vicon/obstacle1/obstacle1",
+		    10,
+		    &MPCCROS::obstacle1cb,
+		    this
+
+		    ); 
+    ros::Subscriber _sub2 = nh.subscribe<geometry_msgs::TransformStamped>(
+
+		    "/vicon/obstacle2/obstacle2",
+		    10,
+		    &MPCCROS::obstacle2cb,
+		    this
+
+		    );	
+
+    //    _traj_suggest_Srv = nh.serviceClient<uvatraj_msgs::ExecuteTraj>("/traj_predict_srv");
 
   //  _traj_sender = nh.serviceClient<uvatraj_msgs::ExecuteTraj>("/traj_send");
 
@@ -251,6 +271,26 @@ MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~")
 MPCCROS::~MPCCROS()
 {
     if (timer_thread.joinable()) timer_thread.join();
+}
+
+void obstacle1cb(const geometry_msgs::TransformStamped& msg){
+ 	
+	
+	 const double x = msg.transform.translation.x;
+	 const double y = msg.transform.translation.y;
+
+	_obstacles[0].setPosition({x,y})
+
+}
+
+void obstacle2cb(const geometry_msgs::TransformStamped& msg){
+ 	
+	
+	 const double x = msg.transform.translation.x;
+	 const double y = msg.transform.translation.y;
+
+	_obstacles[1].setPosition({x,y})
+
 }
 
 bool MPCCROS::pauseExecutionSrv(std_srvs::SetBool::Request &req, std_srvs::SetBool::Response &res){
@@ -348,7 +388,7 @@ ool MPCCROS::modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req, uvatraj_msgs
 
 		double dx = x1-x0;
 		double dy = y1-y0;
-		double segment_length = std::sqrt(dx*dx + dy*dy);
+		double segment_length = std::sqrt(dx*dx + /dy*dy);
 			
 		if (std::fabs(segment_length) < 1e-2)
 			continue;
@@ -706,31 +746,31 @@ bool MPCCROS::modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req, uvatraj_msg
 	return true;
 }
 
-std::vector<Eigen::Vector2d> generateTrajectory(Eigen::Vector2d& point, double resolution, PathPlanning::GaussianPotentialField GPR){
+std::vector<Eigen::Vector2d> generateTrajectory(Eigen::Vector2d& start, double resolution, PathPlanning::GaussianPotentialField GPR){
 
 	std::vector<Eigen::Vector2d> trajectory{start};
 
-	Eigen::Vector2d current_pt {start}
+	Eigen::Vector2d current_pt = start;
 
 	for (int i = 0; i < 1000; ++i){
 
-		double dist_to_goal = (start - goal).squaredNorm();
+		double dist_to_goal = (GPR.getGoal() - current_pt).squaredNorm();
 
-		if (dist_to_goal < 0.2) {
+		if (dist_to_goal < 1e-2) {
 			break;
 		}
 
-		Eigen::Vector2d grad = GPR.getTotalGradient(point);
+		Eigen::Vector2d grad = GPR.getTotalGradient(current_pt);
 
-		Eigen::Vector2d grad_norm = grad.squaredNorm;
+		double grad_norm = grad.norm();
 
-		if grad_norm < 1e-6 break;
+		if (grad_norm < 1e-6) break;
 
 		grad /= grad_norm;
 
 		current_pt += resolution * grad;
 
-		trajectory.push_back(current_pt)
+		trajectory.push_back(current_pt);
 	}
 
 	return trajectory;
@@ -765,9 +805,10 @@ bool MPCCROS::generateTrajSrv(uvatraj_msgs::RequestTraj::Request &req, uvatraj_m
 	ctrl_pts.emplace_back(Eigen::Vector2d(_odom(0),_odom(1)));
 	ctrl_pts.emplace_back(Eigen::Vector2d(-req.goal.z,req.goal.y));
 	//ctrl_pts = mpcc::arutils::generateLinearTrajectory(ctrl_pts[0], ctrl_pts[1], resolution);
+	//w
 	
 	PathPlanning::GaussianPotentialField GPR(_obstacles, ctrl_pts[1]); 
-	ctrl_pts =  generateTrajectory(ctrl_pts[0], ctrl_pts[1], resolution, GPR)
+	ctrl_pts =  generateTrajectory(ctrl_pts[0], ctrl_pts[1], resolution, GPR);
 	
 	uvatraj_msgs::ControlPoint holder;
 	
