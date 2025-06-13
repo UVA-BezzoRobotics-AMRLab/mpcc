@@ -6,32 +6,31 @@
 #include <string>
 namespace PathPlanning{
 	struct Goal{
-		Eigen::Vector2d position;
-		double k_att;
+		Eigen::Vector2d position {0.0, 0.0};
+		double k_att {1.0};
 
+		inline void setPosition(Eigen::Vector2d& newPosition) noexcept { position = newPosition}
+		inline void setAttractiveGain(double newForce) noexcept {k_att = newForce}
 
-		inline void setPosition(Eigen::Vector2d& newPosition) { position = newPosition}
-		inline void setAttractiveGain(double newForce) {k_att = newForce}
+		inline const double getAttractiveGain() const noexcept {return k_att}
+		inline const Eigen::Vector2d getPosition() const noexcept {return position}
 
-		inline const double getAttractiveGain() {return k_att}
-		inline const Eigen::Vector2d getPosition() {return position}
-
-		inline const Eigen::Vector2d getAttractiveForce(Eigen::Vector2d point){
+		inline const Eigen::Vector2d getAttractiveForce(Eigen::Vector2d point) const noexcept{
 			return 0.5*k_att * (point-position).squared.Norm()
 		}
-		inline const Eigen::Vector2d getAttractiveGradient(Eigen::Vector2d point){
+		inline const Eigen::Vector2d getAttractiveGradient(Eigen::Vector2d point) const noexcept{
 			return -k_att * (point * goal);
 		}
 
 		};
 	
 	struct Obstacle {
-		std::string id;
-		Eigen::Vector2d position;
-		double amplitude; // strength
-		double sigma; //width
-			
 
+		std::string id;
+		Eigen::Vector2d position {0.0, 0.0};
+		double amplitude {1.0}; // strength
+		double sigma {0.5}; //width
+			
 		//Setters
 		
 		inline void setPosition(Eigen::Vector2d& newPosition){
@@ -72,12 +71,44 @@ namespace PathPlanning{
 		
 	};
 
-	namespace Goal{
-		Eigen::Vector2d getGoalGradient(Eigen::Vector2d point);
-		}
 
-	namespace GaussianPotentialField{
-		Eigen::Vector2d getTotalGradient(Eigen::Vector2d point);
-		std::vector<Eigen::Vector2d> generateTrajectory(Eigen::Vector2d pos_g);
+class GaussianPotentialField
+{
+
+private:
+    std::vector<Obstacle> _obstacles;
+    Goal                  _goal;
+
+public:
+	explicit GaussianPotentialField (std::vector<Obstacle> obs, goal g = {}):
+		_obstacles(std::move(obs)), _goal(std::move(g)) {}
+
+
+	/*
+	 *
+	 *
+	 *	Mutators
+	 *
+	 *
+	*/
+
+	inline void setGoal(const Goal& g) noexcept {_goal = g;}	
+	inline void setObstacles(const std::vector<Obstacle>& obs) noexcept {_obstacles = obs;}
+
+	inline void addObstacle(const Obstacle& o) {_obstacles.push_back(0);}
+	inline void clearObstacles() noexcept {_obstacles.clear();}
+
+	inline double getTotalPotential(const Eigen::Vector2d& p) const noexcept {
+		Eigen::Vector2d ptl = _goal.getAttractiveForce(p);
+		for (const auto& obs : _obstacles) ptl += obs += obs.getPotential(p);
+		return ptl
 	}
-}  
+
+	inline Eigen::Vector2d getTotalGradient(Eigen::Vector2d point){
+		Eigen::Vector2d g = _goal.attractiveForce(point);          // (−∇U_att)
+		for (const auto& obs : _obstacles) g += obs.getGradient(point);
+		return g;
+	}
+
+	}
+}
