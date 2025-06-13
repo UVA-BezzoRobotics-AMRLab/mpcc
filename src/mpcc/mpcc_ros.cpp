@@ -229,8 +229,10 @@ MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~")
 
    
     _obstacles.resize(2);
-
-    ros::Subscriber _sub1 = nh.subscribe<geometry_msgs::TransformStamped>(
+    _obstacles[0] = PathPlanning::Obstacle {"obs1", {0,0}, 50,0.2};
+    _obstacles[1] = PathPlanning::Obstacle {"obs1", {0,0}, 50,0.2};
+    
+    _sub1 = nh.subscribe<geometry_msgs::TransformStamped>(
 
 		    "/vicon/obstacle1/obstacle1",
 		    10,
@@ -238,7 +240,7 @@ MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~")
 		    this
 
 		    ); 
-    ros::Subscriber _sub2 = nh.subscribe<geometry_msgs::TransformStamped>(
+    _sub2 = nh.subscribe<geometry_msgs::TransformStamped>(
 
 		    "/vicon/obstacle2/obstacle2",
 		    10,
@@ -273,23 +275,24 @@ MPCCROS::~MPCCROS()
     if (timer_thread.joinable()) timer_thread.join();
 }
 
-void obstacle1cb(const geometry_msgs::TransformStamped& msg){
+void MPCCROS::obstacle1cb(const geometry_msgs::TransformStamped::ConstPtr& msg){
  	
 	
-	 const double x = msg.transform.translation.x;
-	 const double y = msg.transform.translation.y;
-
-	_obstacles[0].setPosition({x,y})
+	 const double x = msg->transform.translation.x;
+	 const double y = msg->transform.translation.y;
+	 Eigen::Vector2d pos(x,y);
+	_obstacles[0].setPosition(pos);
 
 }
 
-void obstacle2cb(const geometry_msgs::TransformStamped& msg){
+void MPCCROS::obstacle2cb(const geometry_msgs::TransformStamped::ConstPtr& msg){
  	
 	
-	 const double x = msg.transform.translation.x;
-	 const double y = msg.transform.translation.y;
+	 const double x = msg->transform.translation.x;
+	 const double y = msg->transform.translation.y;
 
-	_obstacles[1].setPosition({x,y})
+	 Eigen::Vector2d pos(x,y);
+	_obstacles[1].setPosition(pos);
 
 }
 
@@ -756,7 +759,7 @@ std::vector<Eigen::Vector2d> generateTrajectory(Eigen::Vector2d& start, double r
 
 		double dist_to_goal = (GPR.getGoal() - current_pt).squaredNorm();
 
-		if (dist_to_goal < 1e-2) {
+		if (dist_to_goal < 1e-6) {
 			break;
 		}
 
@@ -765,6 +768,8 @@ std::vector<Eigen::Vector2d> generateTrajectory(Eigen::Vector2d& start, double r
 		double grad_norm = grad.norm();
 
 		if (grad_norm < 1e-6) break;
+		
+		ROS_INFO("Traj added pt");
 
 		grad /= grad_norm;
 
@@ -777,10 +782,74 @@ std::vector<Eigen::Vector2d> generateTrajectory(Eigen::Vector2d& start, double r
 
 }
 
+std::vector<Eigen::Vector2d> sampleEvenly(
+        const std::vector<Eigen::Vector2d>& pts, std::size_t n = 5)
+{
+    if (pts.size() < n) {
+        throw std::invalid_argument("Not enough points to sample");
+    }
+
+    std::vector<Eigen::Vector2d> out;
+    out.reserve(n);
+
+    // Always include the first point
+    out.push_back(pts.front());
+
+    // Step between indices, as a double to avoid rounding drift
+    double step = static_cast<double>(pts.size() - 1) / (n - 1);
+
+    for (std::size_t i = 1; i < n - 1; ++i) {
+        std::size_t idx = static_cast<std::size_t>(std::round(i * step));
+        out.push_back(pts[idx]);
+    }
+
+    // Always include the last point
+    out.push_back(pts.back());
+    return out;
+}
+
+
+std::vector<Eigen::Vector2d> resampleByArcLength(
+        const std::vector<Eigen::Vector2d>& pts, std::size_t n = 5)
+{
+    if (pts.size() < 2)
+        throw std::invalid_argument("Need at least 2 points to resample");
+    if (n < 2)
+        throw std::invalid_argument("Requested sample count must be ≥ 2");
+
+    // --- 1. cumulative arc-length -------------------------------
+    std::vector<double> s(pts.size());
+    s[0] = 0.0;
+    for (std::size_t i = 1; i < pts.size(); ++i)
+        s[i] = s[i-1] + (pts[i] - pts[i-1]).norm();
+
+    const double total_len = s.back();
+    if (total_len == 0.0)
+        throw std::runtime_error("Path has zero length (all points identical)");
+
+    // --- 2. sample targets --------------------------------------
+    std::vector<Eigen::Vector2d> out;
+    out.reserve(n);
+    out.push_back(pts.front());                  // first point
+
+    std::size_t seg = 1;                         // segment cursor
+    for (std::size_t k = 1; k < n - 1; ++k) {
+        double target = (static_cast<double>(k) * total_len) / (n - 1);
+        while (seg < s.size() - 1 && s[seg] < target) ++seg;
+
+        // linear interpolation factor in [0,1]
+        double t = (target - s[seg-1]) / (s[seg] - s[seg-1]);
+        out.emplace_back((1.0 - t) * pts[seg-1] + t * pts[seg]);
+    }
+
+    out.push_back(pts.back());                   // last point
+    return out;
+}
+
 // store in _ref
 //double checked logic is sound
 bool MPCCROS::generateTrajSrv(uvatraj_msgs::RequestTraj::Request &req, uvatraj_msgs::RequestTraj::Response &res){
-	
+	std::cout << "Hello, world!" << std::endl;
 	//lambda for repetitive code
 	auto response = [&](const std::string_view& msg, const bool& success) -> void{
 		res.success = success;
@@ -798,7 +867,7 @@ bool MPCCROS::generateTrajSrv(uvatraj_msgs::RequestTraj::Request &req, uvatraj_m
 	
 	std::vector<Eigen::Vector2d> ctrl_pts;
 	
- 	ROS_DEBUG_STREAM("[vicon_bridge] Initial ctrl_pts:"
+ 	ROS_INFO_STREAM("[vicon_bridge] Initial ctrl_pts:"
                  << " start=(" << _odom(0) << "," << _odom(1) << ")"
                  << " goal=("  << -req.goal.z << "," << req.goal.y << ")");
 	
@@ -806,12 +875,14 @@ bool MPCCROS::generateTrajSrv(uvatraj_msgs::RequestTraj::Request &req, uvatraj_m
 	ctrl_pts.emplace_back(Eigen::Vector2d(-req.goal.z,req.goal.y));
 	//ctrl_pts = mpcc::arutils::generateLinearTrajectory(ctrl_pts[0], ctrl_pts[1], resolution);
 	//w
-	
-	PathPlanning::GaussianPotentialField GPR(_obstacles, ctrl_pts[1]); 
-	ctrl_pts =  generateTrajectory(ctrl_pts[0], ctrl_pts[1], resolution, GPR);
+	PathPlanning::Goal goal {ctrl_pts[1], 10};
+	PathPlanning::GaussianPotentialField GPR(_obstacles, goal); 
+	ctrl_pts =  generateTrajectory(ctrl_pts[0], resolution, GPR);
 	
 	uvatraj_msgs::ControlPoint holder;
 	
+	//ctrl_pts = resampleByArcLength(ctrl_pts, 15);
+
 	ROS_DEBUG_STREAM("[vicon_bridge] Generated trajectory: "
                  << ctrl_pts.size() << " points"
                  << " @ resolution=" << resolution);
