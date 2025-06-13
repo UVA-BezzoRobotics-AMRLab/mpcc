@@ -50,6 +50,7 @@ generate_messages(
 )
 
 catkin_package(
+  INCLUDE_DIRS include
   CATKIN_DEPENDS message_runtime uvatraj_msgs
 )
 
@@ -138,7 +139,6 @@ add_executable(mpcc_ros
   src/mpcc/mpcc_ros.cpp
   src/mpcc/mpcc_core.cpp
   src/mpcc/mpcc_acados.cpp
-  src/utils/arutils.cpp
   )
 target_link_libraries(mpcc_ros
   ${HPIPM_LIBRARIES}
