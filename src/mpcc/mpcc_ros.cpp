@@ -808,42 +808,95 @@ std::vector<Eigen::Vector2d> sampleEvenly(
     return out;
 }
 
+double compute_arclen(double t0, double tf, Spline1D& splineX, Spline1D& splineY){
 
-std::vector<Eigen::Vector2d> resampleByArcLength(
-        const std::vector<Eigen::Vector2d>& pts, std::size_t n = 5)
+
+	double s=0.0;
+	double dt = (tf-t0) / 100;
+
+	double prev_dx = splineX.derivatives(t0,1).coeff(1);
+	double prev_dy = splineY.derivatives(t0,1).coeff(1);
+
+	double dx, dy;
+
+
+	for (double t = t0; t<tf; t+=dt){
+
+		dx = splineX.derivatives(t,1).coeff(1);
+		dy = splineY.derivatives(t,1).coeff(1);
+		s += 0.5 * (std::sqrt(dx*dx + dy*dy) + std::sqrt(prev_dx*prev_dx + prev_dy * prev_dy)) * dt;
+
+		prev_dx = dx;
+		prev_dy = dy;
+	}
+
+	return s; 
+}
+
+
+double binary_search(double dl, double start, double end, double tolerance, Spline1D& splineX, Spline1D& splineY)
 {
-    if (pts.size() < 2)
-        throw std::invalid_argument("Need at least 2 points to resample");
-    if (n < 2)
-        throw std::invalid_argument("Requested sample count must be ≥ 2");
+    double t_left  = start;
+    double t_right = end;
 
-    // --- 1. cumulative arc-length -------------------------------
-    std::vector<double> s(pts.size());
-    s[0] = 0.0;
-    for (std::size_t i = 1; i < pts.size(); ++i)
-        s[i] = s[i-1] + (pts[i] - pts[i-1]).norm();
+    double prev_s = 0;
+    double s      = -1000;
 
-    const double total_len = s.back();
-    if (total_len == 0.0)
-        throw std::runtime_error("Path has zero length (all points identical)");
+    while (fabs(prev_s - s) > tolerance)
+    {
+        prev_s = s;
 
-    // --- 2. sample targets --------------------------------------
-    std::vector<Eigen::Vector2d> out;
-    out.reserve(n);
-    out.push_back(pts.front());                  // first point
+        double t_mid = (t_left + t_right) / 2;
 
-    std::size_t seg = 1;                         // segment cursor
-    for (std::size_t k = 1; k < n - 1; ++k) {
-        double target = (static_cast<double>(k) * total_len) / (n - 1);
-        while (seg < s.size() - 1 && s[seg] < target) ++seg;
+        // always interested in total arc length up to t_mid
+        s = compute_arclen(0, t_mid, splineX, splineY);
 
-        // linear interpolation factor in [0,1]
-        double t = (target - s[seg-1]) / (s[seg] - s[seg-1]);
-        out.emplace_back((1.0 - t) * pts[seg-1] + t * pts[seg]);
+        // std::cout << "\ts at " << t_mid << " is " << s << std::endl;
+
+        if (s < dl)
+            t_left = t_mid;
+        else
+            t_right = t_mid;
     }
 
-    out.push_back(pts.back());                   // last point
-    return out;
+    return (t_left + t_right) / 2;
+}
+
+
+void resampleByArcLength(
+        Spline1D& splineX, Spline1D& splineY, double start, double end)
+{
+
+	double traj_duration = end;
+	double total_length = compute_arclen(start, end, splineX, splineY);
+
+
+	double M = 20;
+	double ds = total_length / M;
+
+	double previous_ti = 0;
+		
+        Eigen::RowVectorXd ss;
+        Eigen::RowVectorXd xs;
+        Eigen::RowVectorXd ys;
+
+
+	for (int i = 0; i <= M; ++i){
+
+		double s = i * ds;
+		double ti = binary_search(s, previous_ti, traj_duration, 1e-3, splineX, splineY);
+		previous_ti = ti;
+		
+		ss(i) = s;
+		xs(i) = splineX(ti).coeff(0);
+		ys(i) = splineY(ti).coeff(0);
+	}
+
+
+	splineX = utils::Interp(xs, 3, ss);
+	splineY = utils::Interp(ys,3,ss);
+	
+
 }
 
 // store in _ref
@@ -940,6 +993,10 @@ bool MPCCROS::generateTrajSrv(uvatraj_msgs::RequestTraj::Request &req, uvatraj_m
 
     (*xs)(0) = ctrl_pts[0].x();
     (*ys)(0) = ctrl_pts[0].y();
+
+
+
+
      for (int i = 1; i < N; ++i) {
     	(*xs)(i) = ctrl_pts[i].x();
     	(*ys)(i) = ctrl_pts[i].y();
@@ -949,7 +1006,7 @@ bool MPCCROS::generateTrajSrv(uvatraj_msgs::RequestTraj::Request &req, uvatraj_m
     	(*ss)(i) = (*ss)(i-1) + std::hypot(dx, dy);
 	}
 
-    reparam_curve(xs,ys,ss);
+   	//reparam_curve(xs,ys,ss);
     
     
     _traj_executed.resize(xs->size());
@@ -973,6 +1030,8 @@ bool MPCCROS::generateTrajSrv(uvatraj_msgs::RequestTraj::Request &req, uvatraj_m
 
     const auto fitY = utils::Interp(*ys, 3, *ss);
     Spline1D splineY(fitY);
+
+    resampleByArcLength(splineX,splineY, (*ss)(0), (*ss)(ss->size()-1));
 
     // if reference length is less than required mpc size, extend trajectory
     if (_ref_len < _mpc_ref_len_sz){
