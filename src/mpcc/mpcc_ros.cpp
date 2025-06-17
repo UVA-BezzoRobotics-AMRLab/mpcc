@@ -741,7 +741,7 @@ void generateTrajectory(const Eigen::Vector2d& start, double resolution, PathPla
 	Eigen::Vector2d current_pt = start;
 
 	int N = 1000;
-	int i = 0;
+	int ctr = 0;
 	
 	ys.resize(N);
 	xs.resize(N);
@@ -750,12 +750,17 @@ void generateTrajectory(const Eigen::Vector2d& start, double resolution, PathPla
 	xs(0) = start(0);
 	ys(0) = start(1);
 	ss(0) = 0.00;
-	for (i=1; i < 1000; ++i){
+	ROS_WARN("Goal position %.2f, %.2f", GPR.getGoal()(0), GPR.getGoal()(1));
+	ROS_WARN("Start position %.2f, %.2f", start(0), start(1));
 
+	for (int i=1; i < 1000; ++i){
+		ROS_WARN("IN LOOP");
+		ctr++;
 		double dist_to_goal = (GPR.getGoal() - current_pt).squaredNorm();
 
-		if (dist_to_goal < 1e-6) {
+		if (dist_to_goal < 1e-2) {
 			break;
+			ROS_WARN("REACHED GOAL");
 		}
 
 		Eigen::Vector2d grad = GPR.getTotalGradient(current_pt);
@@ -775,10 +780,10 @@ void generateTrajectory(const Eigen::Vector2d& start, double resolution, PathPla
 		double dy = (ys)(i) - (ys)(i-1);
 		(ss)(i) = (ss)(i-1) + std::hypot(dx, dy);
 	}
-
-	xs.conservativeResize(i);
-	ys.conservativeResize(i);	
-	ss.conservativeResize(i);
+	ROS_WARN("i value %d", ctr);
+	xs.conservativeResize(ctr);
+	ys.conservativeResize(ctr);	
+	ss.conservativeResize(ctr);
 }
 
 std::vector<Eigen::Vector2d> sampleEvenly(
@@ -889,8 +894,9 @@ double resampleByArcLength(
 		ss(i) = s;
 		xs(i) = splineX(ti).coeff(0);
 		ys(i) = splineY(ti).coeff(0);
+		ROS_WARN("Creating spline xs: %.2f ts: %.2f ss: %.2f", xs(i), ys(i), ss(i));
 	}
-
+	ROS_WARN("AT END OF SPLINE xs: %.2f ts: %.2f ss: %.2f", xs(20), ys(20), ss(20));
 
 	splineX = utils::Interp(xs, 3, ss);
 	splineY = utils::Interp(ys,3,ss);
@@ -931,7 +937,7 @@ bool MPCCROS::generateTrajSrv(uvatraj_msgs::RequestTraj::Request &req, uvatraj_m
 	//Generate the trajectory
 	PathPlanning::Goal goal {Eigen::Vector2d(-req.goal.z,req.goal.y), 10};
 	PathPlanning::GaussianPotentialField GPR(_obstacles, goal); 
-	generateTrajectory(goal.getPosition(), resolution, GPR, xs, ys, ss);
+	generateTrajectory(Eigen::Vector2d(_odom(0), _odom(1)), resolution, GPR, xs, ys, ss);
 	ROS_WARN("Size of xs: %.2f", xs.size());
 	//Convert to a msg for Unity
 	uvatraj_msgs::ControlPoint holder;
@@ -943,7 +949,7 @@ bool MPCCROS::generateTrajSrv(uvatraj_msgs::RequestTraj::Request &req, uvatraj_m
 		holder.z = 0.0;
 		holder.metadata = "";
 	
-		ROS_WARN("pt.x: %.2f, pt.y: %.2f, pt.z: %.2f", xs(i), ys(i), 0);
+		ROS_WARN("pt.x: %.2f, pt.y: %.2f, pt.z: %d", xs(i), ys(i), 0);
 
 		//Only visualize every 5th control pt
 		if (i%5==0){
@@ -966,7 +972,12 @@ bool MPCCROS::generateTrajSrv(uvatraj_msgs::RequestTraj::Request &req, uvatraj_m
     const auto fitY = utils::Interp(ys, 3, ss);
     Spline1D splineY(fitY);
 
+	
+	 ROS_WARN("SUCCESFULLY GENERATED");
+
     _ref_len = resampleByArcLength(splineX,splineY, (ss)(0), (ss)(ss.size()-1));
+
+
 
      //Get the total length 
     _true_ref_len = _ref_len;
