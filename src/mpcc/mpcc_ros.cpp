@@ -949,7 +949,7 @@ bool MPCCROS::generateTrajSrv(uvatraj_msgs::RequestTraj::Request &req, uvatraj_m
 	//Generate the trajectory
 	PathPlanning::Goal goal {Eigen::Vector2d(-req.goal.z,req.goal.y), 10};
 	PathPlanning::GaussianPotentialField GPR(_obstacles, goal); 
-	generateTrajectory(Eigen::Vector2d(_odom(0), _odom(1)), resolution, GPR, xs, ys, ss)
+	generateTrajectory(Eigen::Vector2d(_odom(0), _odom(1)), resolution, GPR, xs, ys, ss);
 
 	 ROS_DEBUG_STREAM_NAMED("traj_srv", "generateTrajectory() returned  "
 	<< "xs.size()=" << xs.size() << ", ys.size()=" << ys.size()
@@ -998,10 +998,7 @@ bool MPCCROS::generateTrajSrv(uvatraj_msgs::RequestTraj::Request &req, uvatraj_m
 
 	    const auto fitY = utils::Interp(ys, 3, ss);
 	    Spline1D splineY(fitY);
-
-	    ROS_DEBUG_STREAM_NAMED("traj_srv", "Spline knots: "
-	<< "fitX rows=" << fitX.rows() << ", cols=" << fitX.cols()
-	<< " | fitY rows=" << fitY.rows() << ", cols=" << fitY.cols());
+	const int N = 20;
 
 
 	 ROS_WARN("SUCCESFULLY GENERATED");
