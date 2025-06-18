@@ -225,8 +225,8 @@ MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~")
    
     _obstacles.resize(2);
 
-    _obstacles[0] = PathPlanning::Obstacle {"obs1", {0,0}, 50,0.2};
-    _obstacles[1] = PathPlanning::Obstacle {"obs1", {0,0}, 50,0.2};
+    _obstacles[0] = PathPlanning::Obstacle {"obs1", {0,0}, 50,1};
+    _obstacles[1] = PathPlanning::Obstacle {"obs1", {0,0}, 50,1};
     
     _sub1 = nh.subscribe<geometry_msgs::TransformStamped>(
 
@@ -775,6 +775,18 @@ void generateTrajectory(const Eigen::Vector2d& start, double resolution, PathPla
 		double dx = (xs)(i) - (xs)(i-1);
 		double dy = (ys)(i) - (ys)(i-1);
 		(ss)(i) = (ss)(i-1) + std::hypot(dx,dy);
+
+
+		ROS_WARN("[step %3d] s=%.3f  pos=(%.3f, %.3f)  "
+                 "grad=(%.3f, %.3f) |∇U|=%.3f  dist_goal=%.3f",
+                 i,
+                 ss(i-1),          // arc-length up to previous point
+                 current_pt.x(),
+                 current_pt.y(),
+                 grad.x(),
+                 grad.y(),
+                 grad_norm,
+                 dist_to_goal);
 	}
 	ROS_WARN("i value %d", ctr);
 	const int n_pts = ctr + 1;  
@@ -949,7 +961,7 @@ bool MPCCROS::generateTrajSrv(uvatraj_msgs::RequestTraj::Request &req, uvatraj_m
 	Eigen::RowVectorXd ys;
 
 	//Generate the trajectory
-	PathPlanning::Goal goal {Eigen::Vector2d(-req.goal.z,req.goal.y), 0.5};
+	PathPlanning::Goal goal {Eigen::Vector2d(-req.goal.z,req.goal.y), 5};
 	PathPlanning::GaussianPotentialField GPR(_obstacles, goal); 
 	generateTrajectory(Eigen::Vector2d(_odom(0), _odom(1)), resolution, GPR, xs, ys, ss);
 
