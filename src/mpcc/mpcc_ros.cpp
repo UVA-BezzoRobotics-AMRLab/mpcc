@@ -224,6 +224,7 @@ MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~")
 
    
     _obstacles.resize(2);
+
     _obstacles[0] = PathPlanning::Obstacle {"obs1", {0,0}, 50,0.2};
     _obstacles[1] = PathPlanning::Obstacle {"obs1", {0,0}, 50,0.2};
     
@@ -735,7 +736,7 @@ void generateTrajectory(const Eigen::Vector2d& start, double resolution, PathPla
 
 	Eigen::Vector2d current_pt = start;
 
-	int N = 1000;
+	int N = 35;
 	int ctr = 0;
 	
 	ys.resize(N);
@@ -748,7 +749,7 @@ void generateTrajectory(const Eigen::Vector2d& start, double resolution, PathPla
 	ROS_WARN("Goal position %.2f, %.2f", GPR.getGoal()(0), GPR.getGoal()(1));
 	ROS_WARN("Start position %.2f, %.2f", start(0), start(1));
 
-	for (int i=1; i < 1000; ++i){
+	for (int i=1; i < 35; ++i){
 		ROS_WARN("IN LOOP");
 		ctr++;
 		double dist_to_goal = (GPR.getGoal() - current_pt).squaredNorm();
@@ -773,12 +774,13 @@ void generateTrajectory(const Eigen::Vector2d& start, double resolution, PathPla
 
 		double dx = (xs)(i) - (xs)(i-1);
 		double dy = (ys)(i) - (ys)(i-1);
-		(ss)(i) = (ss)(i-1) + std::hypot(dx, dy);
+		(ss)(i) = (ss)(i-1) + std::hypot(dx,dy);
 	}
 	ROS_WARN("i value %d", ctr);
-	xs.conservativeResize(ctr);
-	ys.conservativeResize(ctr);	
-	ss.conservativeResize(ctr);
+	const int n_pts = ctr + 1;  
+	xs.conservativeResize(n_pts);
+	ys.conservativeResize(n_pts);	
+	ss.conservativeResize(n_pts);
 }
 
 std::vector<Eigen::Vector2d> sampleEvenly(
@@ -947,7 +949,7 @@ bool MPCCROS::generateTrajSrv(uvatraj_msgs::RequestTraj::Request &req, uvatraj_m
 	Eigen::RowVectorXd ys;
 
 	//Generate the trajectory
-	PathPlanning::Goal goal {Eigen::Vector2d(-req.goal.z,req.goal.y), 10};
+	PathPlanning::Goal goal {Eigen::Vector2d(-req.goal.z,req.goal.y), 0.5};
 	PathPlanning::GaussianPotentialField GPR(_obstacles, goal); 
 	generateTrajectory(Eigen::Vector2d(_odom(0), _odom(1)), resolution, GPR, xs, ys, ss);
 
@@ -998,7 +1000,12 @@ bool MPCCROS::generateTrajSrv(uvatraj_msgs::RequestTraj::Request &req, uvatraj_m
 
 	    const auto fitY = utils::Interp(ys, 3, ss);
 	    Spline1D splineY(fitY);
-	const int N = 20;
+//	Eigen::RowVectorXd u = Eigen::RowVectorXd::LinSpaced(xs.size(), 0.0, 1.0);  // param ∈ [0,1]
+
+//	Spline1D splineX = utils::Interp(xs, 3, u);   // note: utils::Interp returns a Spline1D already,
+//	Spline1D splineY = utils::Interp(ys, 3, u);  
+
+	    const int N = 20;
 
 
 	 ROS_WARN("SUCCESFULLY GENERATED");
@@ -1025,7 +1032,7 @@ bool MPCCROS::generateTrajSrv(uvatraj_msgs::RequestTraj::Request &req, uvatraj_m
 
 
 	ROS_INFO_STREAM("--- Calculated xs, ys, ss before spline fitting ---");
-	for (int i=0; i<N; ++i) {
+	for (int i=0; i<35; ++i) {
 	ROS_INFO_STREAM("Point " << i << ": s=" << ss(i) << ", x=" << xs(i) << ", y=" << ys(i));
 	}
 	ROS_INFO_STREAM("Total calculated _ref_len (before extension): " << _ref_len);
