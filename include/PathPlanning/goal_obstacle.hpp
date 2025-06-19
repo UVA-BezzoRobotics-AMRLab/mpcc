@@ -19,7 +19,7 @@ namespace PathPlanning{
 			return 0.5*k_att * (point-position).squaredNorm();
 		}
 		inline const Eigen::Vector2d getAttractiveGradient(Eigen::Vector2d point) const noexcept{
-			return k_att * (point - position);
+			return -k_att * (point - position);
 		}
 
 		};

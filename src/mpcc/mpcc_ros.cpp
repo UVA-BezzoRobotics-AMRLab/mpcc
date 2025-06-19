@@ -766,7 +766,7 @@ void generateTrajectory(const Eigen::Vector2d& start, double resolution, PathPla
 		if (grad_norm < 1e-6) break;
 		
 		grad /= grad_norm;
-		current_pt -= resolution * grad;
+		current_pt += resolution * grad;
 
 
 
@@ -951,7 +951,7 @@ bool MPCCROS::generateTrajSrv(uvatraj_msgs::RequestTraj::Request &req, uvatraj_m
 	Eigen::RowVectorXd ys;
 
 	//Generate the trajectory
-	PathPlanning::Goal goal {Eigen::Vector2d(-req.goal.z,req.goal.y), 1000};
+	PathPlanning::Goal goal {Eigen::Vector2d(-req.goal.z,req.goal.y), 4};
 	PathPlanning::GaussianPotentialField GPR(_obstacles, goal); 
 	generateTrajectory(Eigen::Vector2d(_odom(0), _odom(1)), resolution, GPR, xs, ys, ss);
 
