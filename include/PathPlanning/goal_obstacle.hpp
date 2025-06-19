@@ -75,15 +75,30 @@ namespace PathPlanning{
 			double d = std::max(1e-6, dist(point));
         		return amplitude * std::exp(-0.5 * d * d / (sigma * sigma));
 		}
-		inline Eigen::Vector2d getGradient(Eigen::Vector2d point) const noexcept{
+		inline Eigen::Vector2d getGradient(Eigen::Vector2d point, const Eigen::Vector2d& goal_pos) const noexcept{
 		//	Eigen::Vector2d diffs = point - position;
 		//	double ssd = diffs.dot(diffs);
 		//	double coeff = std::exp(-ssd / (2.0 * sigma * sigma));
 		//	return amplitude * coeff * diffs / (sigma*sigma);
 
 			double d = std::max(1e-6, dist(point));
-        		double coeff = amplitude * std::exp(-0.5 * d * d / (sigma * sigma))* d / (sigma * sigma);
-        		return coeff * normal(point);                   // points outward
+			Eigen::Vector2d normal_vec = normal(point);
+
+
+        		double ptl_mag = amplitude * std::exp(-0.5 * d * d / (sigma * sigma));
+			
+			Eigen::Vector2d grad_repulsive = ptl_mag * normal_vec / (sigma*sigma);
+
+			Eigen::Vector2d tangent_vec(-normal_vec.y(), normal_vec.x());
+
+			Eigen::Vector2d goal_dir = (goal_pos - point).normalized();
+
+			double rot_sign = (normal_vec.x() * goal_dir.y() - normal_vec.y() * goal_dir.x() > 0 ? 1.0 : -1.0);
+
+			double k_rot  = 0.8;
+			Eigen::Vector2d grad_rot = k_rot * rot_sign * ptl_mag * tangent_vec;
+
+			return grad_repulsive + grad_rot;                  // points outward
 
 		}
 		

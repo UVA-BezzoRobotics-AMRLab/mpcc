@@ -225,8 +225,8 @@ MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~")
    
     _obstacles.resize(2);
 
-    _obstacles[0] = PathPlanning::Obstacle {"obs1", {0,0}, 50,1,0.3};
-    _obstacles[1] = PathPlanning::Obstacle {"obs2", {0,0}, 50,1,0.3};
+    _obstacles[0] = PathPlanning::Obstacle {"obs1", {0,0}, 50,0.36,0.3};
+    _obstacles[1] = PathPlanning::Obstacle {"obs2", {0,0}, 50,0.36,0.3};
     
     _sub1 = nh.subscribe<geometry_msgs::TransformStamped>(
 
@@ -951,7 +951,7 @@ bool MPCCROS::generateTrajSrv(uvatraj_msgs::RequestTraj::Request &req, uvatraj_m
 	Eigen::RowVectorXd ys;
 
 	//Generate the trajectory
-	PathPlanning::Goal goal {Eigen::Vector2d(-req.goal.z,req.goal.y), 4};
+	PathPlanning::Goal goal {Eigen::Vector2d(-req.goal.z,req.goal.y), 0.5};
 	PathPlanning::GaussianPotentialField GPR(_obstacles, goal); 
 	generateTrajectory(Eigen::Vector2d(_odom(0), _odom(1)), resolution, GPR, xs, ys, ss);
 
@@ -968,19 +968,18 @@ bool MPCCROS::generateTrajSrv(uvatraj_msgs::RequestTraj::Request &req, uvatraj_m
 	//Convert to a msg for Unity
 	uvatraj_msgs::ControlPoint holder;
 	for (int i=0; i<ss.size(); ++i){
-		ROS_WARN("Converting for Unity");	
 
 		holder.x = xs(i);
 		holder.y = ys(i);
 		holder.z = 0.0;
 		holder.metadata = "";
-
+		//Only visualize every 5th control pt
+		if (i%20==0){
+			res.boundary_ctrl_pts.push_back(holder);
+			res.all_ctrl_pts.push_back(holder);	
 		ROS_WARN("pt.x: %.2f, pt.y: %.2f, pt.z: %d", xs(i), ys(i), 0);
 
-		//Only visualize every 5th control pt
-		if (i%5==0){
-			res.boundary_ctrl_pts.push_back(holder);
-			res.all_ctrl_pts.push_back(holder);
+
 		}	
 	}
 

@@ -41,7 +41,7 @@ public:
 
 	inline Eigen::Vector2d getTotalGradient(Eigen::Vector2d point){
 		Eigen::Vector2d g = _goal.getAttractiveGradient(point);          // (−∇U_att)
-		for (const auto& obs : _obstacles) g += obs.getGradient(point);
+		for (const auto& obs : _obstacles) g += obs.getGradient(point, _goal.getPosition());
 		return g;
 	}
 
