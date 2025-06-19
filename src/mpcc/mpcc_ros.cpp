@@ -19,7 +19,7 @@
 #include <Eigen/Core>
 #include <algorithm>
 
-constexpr double resolution = 0.5;
+constexpr double resolution = 0.05;
 
 #include "mpcc/utils.h"
 #include <PathPlanning/gaussian_potential_field.hpp>
@@ -225,8 +225,8 @@ MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~")
    
     _obstacles.resize(2);
 
-    _obstacles[0] = PathPlanning::Obstacle {"obs1", {0,0}, 50,1};
-    _obstacles[1] = PathPlanning::Obstacle {"obs1", {0,0}, 50,1};
+    _obstacles[0] = PathPlanning::Obstacle {"obs1", {0,0}, 100,0.36,0.3};
+    _obstacles[1] = PathPlanning::Obstacle {"obs2", {0,0}, 100,0.36,0.3};
     
     _sub1 = nh.subscribe<geometry_msgs::TransformStamped>(
 
@@ -736,7 +736,7 @@ void generateTrajectory(const Eigen::Vector2d& start, double resolution, PathPla
 
 	Eigen::Vector2d current_pt = start;
 
-	int N = 35;
+	int N = 1000;
 	int ctr = 0;
 	
 	ys.resize(N);
@@ -749,7 +749,7 @@ void generateTrajectory(const Eigen::Vector2d& start, double resolution, PathPla
 	ROS_WARN("Goal position %.2f, %.2f", GPR.getGoal()(0), GPR.getGoal()(1));
 	ROS_WARN("Start position %.2f, %.2f", start(0), start(1));
 
-	for (int i=1; i < 35; ++i){
+	for (int i=1; i < N; ++i){
 		ROS_WARN("IN LOOP");
 		ctr++;
 		double dist_to_goal = (GPR.getGoal() - current_pt).squaredNorm();
@@ -766,8 +766,9 @@ void generateTrajectory(const Eigen::Vector2d& start, double resolution, PathPla
 		if (grad_norm < 1e-6) break;
 		
 		grad /= grad_norm;
-
 		current_pt += resolution * grad;
+
+
 
 		xs(i) = current_pt(0);	
 		ys(i) = current_pt(1);
@@ -931,27 +932,16 @@ bool MPCCROS::generateTrajSrv(uvatraj_msgs::RequestTraj::Request &req, uvatraj_m
 		response("NO POSITIONAL DATA", false);
 		return true;
 	}
-
-	ROS_DEBUG_STREAM("[generateTrajSrv] Initial ctrl_pts:"
-		 << " goal=("  << -req.goal.z << "," << req.goal.y << ")");
-
-
-
-		  /* ---------- sanity checks ---------- */
-	    ROS_DEBUG_STREAM_NAMED("traj_srv", "Incoming goal msg:  "
+	  /* ---------- sanity checks ---------- */
+    	ROS_DEBUG_STREAM_NAMED("traj_srv", "Incoming goal msg:  "
 		<< "x=" << -req.goal.z << ", y=" <<  req.goal.y
-		<< " | _is_init=" << std::boolalpha << _is_init);
+		<< " | _is_init=" << std::boolalpha << _is_init); 
 
-	    if (!_is_init){
-		response("NO POSITIONAL DATA", false);
-		return true;
-	    }
-
-	    ROS_DEBUG_STREAM_NAMED("traj_srv", "Current odom: ("
+	ROS_DEBUG_STREAM_NAMED("traj_srv", "Current odom: ("
 		<< _odom(0) << ", " << _odom(1) << "),  "
 		<< "resolution=" << resolution
 		<< ", #obstacles=" << _obstacles.size());
-		//SS (cumulative arclength up to point i) 
+	//SS (cumulative arclength up to point i) 
 	//XS (X value at point i)
 	//YS (Y value at point i)
 	//To be RowVectorsXd
@@ -961,7 +951,7 @@ bool MPCCROS::generateTrajSrv(uvatraj_msgs::RequestTraj::Request &req, uvatraj_m
 	Eigen::RowVectorXd ys;
 
 	//Generate the trajectory
-	PathPlanning::Goal goal {Eigen::Vector2d(-req.goal.z,req.goal.y), 5};
+	PathPlanning::Goal goal {Eigen::Vector2d(-req.goal.z,req.goal.y), 10};
 	PathPlanning::GaussianPotentialField GPR(_obstacles, goal); 
 	generateTrajectory(Eigen::Vector2d(_odom(0), _odom(1)), resolution, GPR, xs, ys, ss);
 
@@ -1044,7 +1034,7 @@ bool MPCCROS::generateTrajSrv(uvatraj_msgs::RequestTraj::Request &req, uvatraj_m
 
 
 	ROS_INFO_STREAM("--- Calculated xs, ys, ss before spline fitting ---");
-	for (int i=0; i<35; ++i) {
+	for (int i=0; i<9; i=i+100) {
 	ROS_INFO_STREAM("Point " << i << ": s=" << ss(i) << ", x=" << xs(i) << ", y=" << ys(i));
 	}
 	ROS_INFO_STREAM("Total calculated _ref_len (before extension): " << _ref_len);

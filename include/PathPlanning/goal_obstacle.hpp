@@ -15,7 +15,7 @@ namespace PathPlanning{
 		inline const double getAttractiveGain() const noexcept {return k_att;}
 		inline const Eigen::Vector2d getPosition() const noexcept {return position;}
 
-		inline const double getAttractiveForce(Eigen::Vector2d point) const noexcept{
+		inline const double getAttractiveForce(Eigen::Vector2d& point) const noexcept{
 			return 0.5*k_att * (point-position).squaredNorm();
 		}
 		inline const Eigen::Vector2d getAttractiveGradient(Eigen::Vector2d point) const noexcept{
@@ -30,7 +30,7 @@ namespace PathPlanning{
 		Eigen::Vector2d center {0.0, 0.0};
 		double amplitude {1.0}; // strength
 		double sigma {0.5}; //width
-		double radius {0.3};
+		double radius {5};
 		//Setters
 	
 		inline double dist(const Eigen::Vector2d& p) const noexcept {
@@ -71,8 +71,8 @@ namespace PathPlanning{
 			//double ssd = diffs.squaredNorm();
 			//double coeff = std::exp(-ssd / (2.0 * sigma * sigma));
 			//return amplitude * coeff;
-			//
-			double d = dist(point);                         // metres
+			//	
+			double d = std::max(1e-6, dist(point));
         		return amplitude * std::exp(-0.5 * d * d / (sigma * sigma));
 		}
 		inline Eigen::Vector2d getGradient(Eigen::Vector2d point) const noexcept{
@@ -80,7 +80,8 @@ namespace PathPlanning{
 		//	double ssd = diffs.dot(diffs);
 		//	double coeff = std::exp(-ssd / (2.0 * sigma * sigma));
 		//	return amplitude * coeff * diffs / (sigma*sigma);
-		        double d = dist(point);
+
+			double d = std::max(1e-6, dist(point));
         		double coeff = amplitude * std::exp(-0.5 * d * d / (sigma * sigma))* d / (sigma * sigma);
         		return coeff * normal(point);                   // points outward
 
