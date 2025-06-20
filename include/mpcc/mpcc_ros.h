@@ -185,6 +185,7 @@ class MPCCROS
     ros::Publisher _tubeVizPub;
     ros::Publisher _refVizPub;
     ros::Publisher _startPub;
+    ros::Publisher _viconPub;
 
     ros::Publisher _requestedPathPub;
 

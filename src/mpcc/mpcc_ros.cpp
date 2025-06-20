@@ -19,7 +19,7 @@
 #include <Eigen/Core>
 #include <algorithm>
 
-constexpr double resolution = 0.5;
+constexpr double resolution = 0.05;
 
 #include "mpcc/utils.h"
 #include <PathPlanning/gaussian_potential_field.hpp>
@@ -212,6 +212,8 @@ MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~")
     _tubeVizPub     = nh.advertise<visualization_msgs::MarkerArray>("/tube_viz", 0);
     _horizonPub     = nh.advertise<trajectory_msgs::JointTrajectory>("/mpc_horizon", 0);
     _refPub = nh.advertise<trajectory_msgs::JointTrajectoryPoint>("/current_reference", 10);
+    _viconPub = nh.advertise<nav_msgs::Odometry>("/vicon_odom", 10);
+
 
 
     _generate_traj_srv = nh.advertiseService("/generate_traj", &MPCCROS::generateTrajSrv, this);
@@ -225,8 +227,8 @@ MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~")
    
     _obstacles.resize(2);
 
-    _obstacles[0] = PathPlanning::Obstacle {"obs1", {0,0}, 50,0.36,0.3};
-    _obstacles[1] = PathPlanning::Obstacle {"obs2", {0,0}, 50,0.36,0.3};
+    _obstacles[0] = PathPlanning::Obstacle {"obs1", {0,0}, 10,0.36,0.3};
+    _obstacles[1] = PathPlanning::Obstacle {"obs2", {0,0}, 10,0.36,0.3};
     
     _sub1 = nh.subscribe<geometry_msgs::TransformStamped>(
 
@@ -305,31 +307,6 @@ bool MPCCROS::pauseExecutionSrv(std_srvs::SetBool::Request &req, std_srvs::SetBo
 
 }
 
-/*
-void MPCCROS::suggestTrajSrv(Eigen::RowVectorXd*& xs, Eigen::RowVectorXd*& ys){
-
-	
-   uvatraj_msgs::ExecuteTraj msg;
-   uvatraj_msgs::ControlPoint pt;
-
-   for(int i = 0; i<(*xs).size(); ++i){
-	   pt.x = (*xs)(i);
-	   pt.y = (*ys)(i);
-	   msg.request.ctrl_pts.push_back(pt);
-   } 
-   if (_traj_suggest_Srv.call(msg)){
-	ROS_INFO("suggestTrajSrv success=%s, msg=%s",
-                 msg.response.success ? "true" : "false",
-                 msg.response.status_message.c_str());
-		   }else{
-	ROS_ERROR("Failed to call suggestTrajSrv service");
-	}
-
-
-
-}
-*/
-
 bool MPCCROS::executeTrajSrv(std_srvs::Empty::Request &req, std_srvs::Empty::Response &res){
 
 	ROS_INFO("Execute trajectory service called.");
@@ -364,137 +341,6 @@ bool MPCCROS::executeTrajSrv(std_srvs::Empty::Request &req, std_srvs::Empty::Res
 
 }
 
-//TODO: check if the modified pt is beyond where we currently are then just return true and don't do anything
-
-/*
-ool MPCCROS::modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req, uvatraj_msgs::ExecuteTraj::Response &res)
-{
-
-
-	double total_length = 0;
-	int M = req.ctrl_pts.size();
-	ROS_ERROR("%d POINTS RECEIVED", M);
-	std::vector<double> ss,xs,ys;
-	
-	//add arc length at each section and x y pair at that arc length 
-	for (int i = 1; i<req.ctrl_pts.size(); ++i){
-	
-		double x0 = req.ctrl_pts[i-1].x;
-		double y0 = req.ctrl_pts[i-1].y;
-
-		double x1 = req.ctrl_pts[i].x;
-		double y1 = req.ctrl_pts[i].y;
-
-		double dx = x1-x0;
-		double dy = y1-y0;
-		double segment_length = std::sqrt(dx*dx + /dy*dy);
-			
-		if (std::fabs(segment_length) < 1e-2)
-			continue;
-
-		ss.push_back(total_length);
-		xs.push_back(x0);
-		ys.push_back(y0);
-		total_length += segment_length;
-	
-	}
-
-	//add the final pt
-	ss.push_back(total_length);
-	xs.push_back(req.ctrl_pts.back().x);
-	ys.push_back(req.ctrl_pts.back().y);
-
-	//construct splines parameterizing with the arc length
-	tk::spline refx_spline(ss,xs,tk::spline::cspline);
-	tk::spline refy_spline(ss,ys,tk::spline::cspline);
-
-	SplineWrapper refx;
-	refx.spline = refx_spline;
-
-	SplineWrapper refy;
-	refy.spline = refy_spline;
-
-	_true_len = total_length;
-	
-	//DEBUG: It was stoppign before the end
-	//FIX: extend the trajectory for 
-	
-	//get the x y pair at the end of the traj and the derivates with respect to x and y
-	double px =refx.spline(total_length);
-	double py =refx.spline(total_length);
-	double dx = refx.spline.deriv(1,total_length);
-	double dy = refx.spline.deriv(1,total_length);
-
-	//get unit derivative/tangent vector
-	double norm = std::sqrt(dx*dx + dy*dy);
-	dx /= norm;
-	dy /= norm;
-
-	// could just set equal to resolution --> don't change yet
-	double ds = total_length/M;
-	//int num_ext_pts = 200;
-	int num_ext_pts = 1;
-	//extend it 200 pts???
-	for (int i = 1; i<=num_ext_pts; ++i){
-	double s = total_length + i*resolution;
-	double x = px +dx * i * resolution;
-	double y = py+dy*i*resolution;
-	
-	ss.push_back(s);
-	xs.push_back(x);
-	ys.push_back(y);
-	}
-
-
-	//change the spline to be the extended one / with the extended pts
-	refx.spline.set_points(ss, xs, tk::spline::cspline);
-	refy.spline.set_points(ss, ys, tk::spline::cspline);
-
-	
-	_requested_ref.clear();
-	_requested_len = ss.back();
-	
-	_requested_ref.push_back(refx);
-	_requested_ref.push_back(refy);
-	
-	_requested_ss = ss;
-	_requested_xs = xs;
-	_requested_ys = ys;
-
-	if (_is_executing){
-	_old_ref = _ref;
-	_old_ref_len = _ref_len;
-	_blend_traj_curr_s = get_s_from_state(_ref, _true_ref_len);	
-
-	//blend in 1 second 
-	_transition_start_time = ros::Time::now().toSec();
-	_transition_duration = 1.0;
-	_in_transition = true;
-
-	//get closest pt i.e next pt and start blending from there	
-
-	_blend_new_s = std::ceil(_blend_traj_curr_s/resolution);	
-
-//	_mpc_core->set_trajectory(_requested_ss, _requested_xs, _requested_ys);
-
-
-	//new goal position 
-	//_x_goal_euclid = _requested_xs.back();
-	//_y_goal_euclid = _requested_ys.back();
-
-	_ref = _requested_ref;
-	_ref_len = _requested_len;
-
-	_mpc_core -> set_trajectory(_requested_ss, _requested_xs, _requested_ys);
-	}
-
-	publishReference(_requested_ref, _true_len);
-
-	return true;
-}
-*/
-
-
 void removePts(Eigen::RowVectorXd*& xs, std::vector<unsigned int> duplicate_pts){
 
 
@@ -522,63 +368,6 @@ void removePts(Eigen::RowVectorXd*& xs, std::vector<unsigned int> duplicate_pts)
 	delete xs;
 
 	xs = dummy;
-
-}
-
-
-void reparam_curve(Eigen::RowVectorXd*& xs, Eigen::RowVectorXd*& ys, Eigen::RowVectorXd*& ss){
-
-   int N=xs->size();
-
-   std::vector<double> x_vec(xs->data(), xs->data()+xs->size());
-   std::vector<double> y_vec(ys->data(), ys->data()+ys->size());
-   std::vector<double> s_vec(ss->data(), ss->data()+ss->size());
-
-   Eigen::RowVectorXd* xs_new = new Eigen::RowVectorXd(20);
-   Eigen::RowVectorXd* ys_new = new Eigen::RowVectorXd(20);
-   Eigen::RowVectorXd* ss_new = new Eigen::RowVectorXd(20);
-
-   tk::spline spline_x, spline_y;
-
-   spline_x.set_points(s_vec,x_vec);
-   spline_y.set_points(s_vec,y_vec);
-
-   int M=20;
-   
-   double total_len = s_vec.back();
-   double step = total_len/double(M-1);
-   
-   (*xs_new)(0) = spline_x(0.0);
-   (*ys_new)(0) = spline_y(0.0);
-   (*ss_new)(0) = 0.0;
-
-
-   for (int  i = 1; i<M;++i){
-
-	double s = i*step;
-	double x_i = spline_x(s);
-	double y_i = spline_y(s);
-
-	std::cout << "Point " << i << ": (" << x_i << ", " << y_i <<")\n";
-
-	(*xs_new)(i) = x_i;
-	(*ys_new)(i) = y_i;
-
-	double dx = x_i-(*xs_new)(i-1);
-	double dy = y_i-(*ys_new)(i-1);
-
-        (*ss_new)(i) = (*ss_new)(i-1)+std::hypot(dx,dy);
-
-   }
-
-   delete xs;
-   delete ys;
-   delete ss;
-
-   xs = xs_new;
-   ys = ys_new;
-   ss = ss_new;
-
 
 }
 
@@ -626,7 +415,9 @@ bool MPCCROS::modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req, uvatraj_msg
 	}
 
 
-    	_ref_len = (*ss)(N - 1);
+	_ref_len = resampleByArcLength(splineX,splineY, (ss)(0), (ss)(ss.size()-1));
+
+    	//_ref_len = (*ss)(N - 1);
     	_true_ref_len = _ref_len;
 	
 
@@ -647,8 +438,6 @@ bool MPCCROS::modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req, uvatraj_msg
 	removePts(ys, duplicate_pts);
 	removePts(ss, duplicate_pts);
 	
-	reparam_curve(xs,ys,ss);
-
     	const auto fitX = utils::Interp(*xs, 3, *ss);
     	Spline1D splineX(fitX);
 
@@ -759,7 +548,7 @@ void generateTrajectory(const Eigen::Vector2d& start, double resolution, PathPla
 		} else{
 			temp.push_front(current_pt);
 		}
-		if (dist_to_goal < 1e-2) {
+		if (dist_to_goal < 0.3) {
 			break;
 			ROS_WARN("REACHED GOAL");
 		}
@@ -776,11 +565,11 @@ void generateTrajectory(const Eigen::Vector2d& start, double resolution, PathPla
 		grad /= grad_norm;
 		current_pt += resolution * grad;
 
-		if (front == current_pt || back == current_pt){
-			ROS_WARN("Oscilating");
+		if (front.isApprox(current_pt, 1e-2) || back.isApprox(current_pt, 1e-2)) {
+			ROS_WARN("Oscillating");
 			break;
 		}
-
+		if (temp.size() > 2) temp.pop_back(); 
 
 		xs(i) = current_pt(0);	
 		ys(i) = current_pt(1);
@@ -802,7 +591,7 @@ void generateTrajectory(const Eigen::Vector2d& start, double resolution, PathPla
                  dist_to_goal);
 	}
 	ROS_WARN("i value %d", ctr);
-	const int n_pts = ctr + 1;  
+	const int n_pts = ctr;  
 	xs.conservativeResize(n_pts);
 	ys.conservativeResize(n_pts);	
 	ss.conservativeResize(n_pts);
@@ -1001,7 +790,9 @@ bool MPCCROS::generateTrajSrv(uvatraj_msgs::RequestTraj::Request &req, uvatraj_m
 
 	 ROS_WARN("SUCCESFULLY GENERATED");
 
-	_ref_len = resampleByArcLength(splineX,splineY, (ss)(0), (ss)(ss.size()-1));
+	//_ref_len = resampleByArcLength(splineX,splineY, (ss)(0), (ss)(ss.size()-1));
+
+	_ref_len = ss(ss.size() - 1);
 
 	ROS_DEBUG("[generateTrajSrv] ref_len= %.2f, mpcc_ref_len_sz=%.2f", _ref_len, _mpc_ref_len_sz);
 
@@ -1020,10 +811,6 @@ bool MPCCROS::generateTrajSrv(uvatraj_msgs::RequestTraj::Request &req, uvatraj_m
 
 
 
-	ROS_INFO_STREAM("--- Calculated xs, ys, ss before spline fitting ---");
-	for (int i=0; i<xs.size(); i=i+(xs.size()/10)) {
-		ROS_INFO_STREAM("Point " << i << ": s=" << ss(i) << ", x=" << xs(i) << ", y=" << ys(i));
-	}
 	ROS_INFO_STREAM("Total calculated _ref_len (before extension): " << _ref_len);
 	ROS_INFO_STREAM("---------------------------------------------------"); 
 
@@ -1112,7 +899,21 @@ void MPCCROS::viconcb(const geometry_msgs::TransformStamped::ConstPtr& data){
         	ROS_INFO("tracker initialized");
     	}
 
+	nav_msgs::Odometry msg_new;
 
+	msg_new.header = data->header;
+	msg_new.pose.pose.position.x = _odom(0);
+	msg_new.pose.pose.position.y = _odom(1);
+	msg_new.pose.pose.position.z = 0;
+
+	msg_new.pose.pose.orientation.x = data->transform.rotation.x;
+	msg_new.pose.pose.orientation.y = data->transform.rotation.y;
+	msg_new.pose.pose.orientation.z = data->transform.rotation.z;
+	msg_new.pose.pose.orientation.w = data->transform.rotation.w;
+	msg_new.header.frame_id = "vicon/world";
+	msg_new.child_frame_id = "/vicon/Rosbot_AR_2/Rosbot_AR_2";
+	_viconPub.publish(msg_new);
+	
 }
 
 bool MPCCROS::toggleBackup(std_srvs::Empty::Request& req, std_srvs::Empty::Response& res)
@@ -1613,9 +1414,17 @@ void MPCCROS::mpcc_ctrl_loop(const ros::TimerEvent& event)
     ROS_INFO("corrected len is: %.2f / %.2f", corrected_len, _true_ref_len);
     ROS_INFO("prev_s is: %.2f", _prev_s);
     ROS_INFO("corrected len - prev_s / dt is %.2f", (corrected_len - _prev_s) / _dt);
+    
+    ROS_INFO("ref len ength: %.2f", _ref_len);
+    ROS_INFO("True ref length: %.2f", _true_ref_len);
+    ROS_INFO("start length: %.2f", len_start);
+
+
+
 
     if (len_start > _true_ref_len - 3e-1)
     {
+	
         ROS_INFO("Reached end of traj %.2f / %.2f", len_start, _true_ref_len);
         _vel_msg.linear.x  = 0;
         _vel_msg.angular.z = 0;
@@ -1706,27 +1515,21 @@ void MPCCROS::mpcc_ctrl_loop(const ros::TimerEvent& event)
 
 void MPCCROS::publishReference()
 {
-    if (_trajectory.points.size() == 0) return;
+    if (_ref_len < 0.1) return;
 
     nav_msgs::Path msg;
     msg.header.stamp    = ros::Time::now();
     msg.header.frame_id = _frame_id;
     msg.poses.reserve(_trajectory.points.size());
-
+    //double s = 0;
     bool published = false;
-    for (const trajectory_msgs::JointTrajectoryPoint& pt : _trajectory.points)
+    for (double s = 0;s<_ref_len; s+=0.5)
     {
-        if (!published)
-        {
-            published = true;
-            _refPub.publish(pt);
-        }
-
         geometry_msgs::PoseStamped& pose = msg.poses.emplace_back();
         pose.header.stamp                = ros::Time::now();
         pose.header.frame_id             = _frame_id;
-        pose.pose.position.x             = pt.positions[0];
-        pose.pose.position.y             = pt.positions[1];
+        pose.pose.position.x             = _ref[0](s).coeff(0);
+        pose.pose.position.y             = _ref[1](s).coeff(0);
         pose.pose.position.z             = 0;
         pose.pose.orientation.x          = 0;
         pose.pose.orientation.y          = 0;
