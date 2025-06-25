@@ -15,11 +15,13 @@
 #include <std_msgs/Float64.h>
 #include <tf/tf.h>
 #include <visualization_msgs/MarkerArray.h>
-
+#include <unsupported/Eigen/Splines>
 #include <Eigen/Core>
 #include <algorithm>
 
-constexpr double resolution = 0.05;
+
+
+constexpr double resolution = 0.03;
 
 #include "mpcc/utils.h"
 #include <PathPlanning/gaussian_potential_field.hpp>
@@ -399,7 +401,7 @@ void generateTrajectory(const Eigen::Vector2d& start, double resolution, PathPla
 		} else{
 			temp.push_front(current_pt);
 		}
-		if (dist_to_goal < 0.3) {
+		if (dist_to_goal < 0.1) {
 			break;
 			ROS_WARN("REACHED GOAL");
 		}
@@ -411,10 +413,15 @@ void generateTrajectory(const Eigen::Vector2d& start, double resolution, PathPla
 
 		double grad_norm = grad.norm();
 
-		if (grad_norm < 1e-6) break;
+		if (grad_norm < 1e-6){
+			ROS_WARN("grad norm is low");
+			break;
+		}
 		
-		grad /= grad_norm;
-		current_pt += resolution * grad;
+//		grad /= grad_norm;
+		double step = std::clamp(grad_norm, 0.0, resolution);   // e.g. 0.02 – 0.10 m
+		current_pt += step * grad / grad_norm;                // same as “dt · v”
+//		current_pt += resolution * grad;
 
 		if (front.isApprox(current_pt, 1e-2) || back.isApprox(current_pt, 1e-2)) {
 			ROS_WARN("Oscillating");
@@ -535,9 +542,67 @@ double resampleByArcLength(
 	}
 	ROS_WARN("AT END OF SPLINE xs: %.2f ts: %.2f ss: %.2f", xs(20), ys(20), ss(20));
 
-	splineX = utils::Interp(xs, 3, ss);
+	splineX = utils::Interp(xs,3, ss);
 	splineY = utils::Interp(ys,3,ss);
 	return static_cast<double>(ss(20));
+
+}
+
+Eigen::RowVectorXd savgolCoeffs(int W, int P)
+{
+    assert(W % 2 == 1 && "window must be odd");
+    assert(P < W && "poly order must be < window");
+
+    const int half = W / 2;
+    Eigen::MatrixXd A(W, P + 1);
+    for (int i = -half; i <= half; ++i)
+        for (int j = 0; j <= P; ++j)
+            A(i + half, j) = std::pow(i, j);
+
+    Eigen::MatrixXd ATA = A.transpose() * A;
+    Eigen::VectorXd e0 = Eigen::VectorXd::Unit(P + 1, 0);   // pick out the 0-th derivative
+    Eigen::VectorXd c  = ATA.colPivHouseholderQr().solve(e0);
+    Eigen::VectorXd coeffs = A * c;                         // length W
+
+    return coeffs.transpose();                              // RowVector
+}
+
+
+void smoothPath(Eigen::RowVectorXd& ss,
+                       Eigen::RowVectorXd& xs,
+                       Eigen::RowVectorXd& ys)
+{
+    const int N = ss.size();
+    if (N < 4) return;
+
+    /* -------------------------------------------------- *
+     *  A)  C U B I C   S P L I N E                       *
+     * -------------------------------------------------- */
+        using Spline1D = Eigen::Spline<double,1>;
+
+        // Eigen’s spline wants input as a matrix: 1×N row of knots
+        Eigen::RowVectorXd knots = ss;
+        Eigen::Matrix<double,1,Eigen::Dynamic> px(1,N), py(1,N);
+        px = xs;   py = ys;
+
+        Spline1D sx = utils::Interp(px, 3, knots);
+        Spline1D sy = utils::Interp(py, 3, knots);
+
+        // --- resample at *uniform* Δs (curves get smoother) ---
+        double ds   = 0.02;                       // 2 cm
+        int    M    = static_cast<int>(ss(N-1) / ds) + 1;
+        Eigen::RowVectorXd xs_new(M), ys_new(M), ss_new(M);
+
+        for (int k = 0; k < M; ++k) {
+            double s = k * ds;
+            xs_new(k) = sx(s)(0);      // spline returns a 1-vector
+            ys_new(k) = sy(s)(0);
+            ss_new(k) = s;
+        }
+        xs.swap(xs_new);
+        ys.swap(ys_new);
+        ss.swap(ss_new);
+        return;
 
 }
 
@@ -599,6 +664,30 @@ void smoothPathMovingAverage(const Eigen::RowVectorXd& xs_in,
 }
 
 
+std::vector<Eigen::Vector2d> catmullToBSpline(
+        const std::vector<Eigen::Vector2d>& catmull)
+{
+    std::vector<Eigen::Vector2d> B;
+    if (catmull.size() < 4) return catmull;
+
+    // reuse segment-by-segment conversion
+    for (size_t i = 0; i+3 < catmull.size(); ++i)
+    {
+        const Eigen::Vector2d& P0 = catmull[i];
+        const Eigen::Vector2d& P1 = catmull[i+1];
+        const Eigen::Vector2d& P2 = catmull[i+2];
+        const Eigen::Vector2d& P3 = catmull[i+3];
+
+        // B-spline control points for this span
+        B.push_back( (P0 + 6*P1 + P2)/8.0 );
+        B.push_back( (2*P1 + 6*P2)/8.0    );
+    }
+    // Add final anchor
+    B.push_back(catmull.back());
+    return B;
+}
+
+
 /**
  * @brief Recalculates the cumulative arc length (ss) for a given path (xs, ys).
  *
@@ -621,6 +710,175 @@ void recalculateArcLength(const Eigen::RowVectorXd& xs,
         double dx = xs(i) - xs(i - 1);
         double dy = ys(i) - ys(i - 1);
         ss(i) = ss(i - 1) + std::hypot(dx, dy);
+    }
+}
+
+
+std::vector<double> generateClampedKnots(int nCtrl, int degree)
+{
+    const int m = nCtrl + degree + 1;        // total #knots
+    std::vector<double> K(m, 0.0);
+
+    // internal knots: 1, 2, …, n-degree
+    for (int i = degree + 1; i < nCtrl + 1; ++i)
+        K[i] = static_cast<double>(i - degree);
+
+    // right-side clamping
+    const double last = static_cast<double>(nCtrl - degree + 1);
+    for (int i = nCtrl + 1; i < m; ++i)
+        K[i] = last;
+
+    return K;
+}
+
+
+
+Eigen::Vector2d deBoor(double t, int degree,
+                              const std::vector<Eigen::Vector2d>& P,
+                              const std::vector<double>&          K)
+{
+    const int n = static_cast<int>(P.size()) - 1;
+
+    /* --- locate knot interval [K[k], K[k+1]) that contains t --- */
+    int k = degree;                                   // default
+    for (int i = degree; i <= n; ++i)
+        if (t >= K[i] && t < K[i + 1]) { k = i; break; }
+
+    // special-case right end (t == K.back())
+    if (t >= K[n + 1]) k = n;
+
+    /* --- copy local control points into working array d[j] --- */
+    std::vector<Eigen::Vector2d> d(degree + 1);
+    for (int j = 0; j <= degree; ++j)
+        d[j] = P[k - degree + j];
+
+    /* --- Cox–de Boor recursion --- */
+    for (int r = 1; r <= degree; ++r)
+        for (int j = degree; j >= r; --j)
+        {
+            double denom = K[j + 1 + k - r] - K[j + k - degree];
+            double alpha = (denom == 0.0) ? 0.0
+                          : (t - K[j + k - degree]) / denom;
+            d[j] = (1.0 - alpha) * d[j - 1] + alpha * d[j];
+        }
+    return d[degree];
+}
+
+
+std::vector<Eigen::Vector2d> generateClampedBSpline(const std::vector<Eigen::Vector2d>& ctrl,
+                       int                                 totalSamples,
+                       int                                 degree = 3)
+{
+    std::vector<Eigen::Vector2d> out;
+
+    /* ---------- basic sanity checks ---------- */
+    if (ctrl.empty() || totalSamples < 2) {
+        if (!ctrl.empty()) out.push_back(ctrl.front());
+        return out;
+    }
+    if (static_cast<int>(ctrl.size()) <= degree) {
+        out.insert(out.end(), ctrl.begin(), ctrl.end());
+        return out;
+    }
+
+    /* ---------- knot vector ---------- */
+    std::vector<double> K = generateClampedKnots(ctrl.size(), degree);
+    const double tMin = K[degree];
+    const double tMax = K[K.size() - 1 - degree];
+
+    /* ---------- evaluate curve ---------- */
+    out.reserve(totalSamples);
+    for (int i = 0; i < totalSamples; ++i)
+    {
+        double u = static_cast<double>(i) / (totalSamples - 1);   // 0--1
+        double t = tMin + u * (tMax - tMin);                      // map
+        out.emplace_back(deBoor(t, degree, ctrl, K));
+    }
+    return out;
+}
+
+void softenCorners(std::vector<Eigen::Vector2d>& ctrl,
+                   double thetaMinDeg = 135.0,
+                   double offsetFrac  = 0.25)
+{
+    std::vector<Eigen::Vector2d> newCtrl;
+    newCtrl.reserve(ctrl.size()*2);
+
+    const double cosMin = std::cos(thetaMinDeg * M_PI/180.0);
+
+    for (size_t i = 0; i < ctrl.size(); ++i)
+    {
+        if (i > 0 && i < ctrl.size()-1)
+        {
+            Eigen::Vector2d v1 = (ctrl[i-1] - ctrl[i]).normalized();
+            Eigen::Vector2d v2 = (ctrl[i+1] - ctrl[i]).normalized();
+
+            double cosAng = v1.dot(v2);
+            if (cosAng < cosMin)                       // corner detected
+            {
+                double d = std::min((ctrl[i]-ctrl[i-1]).norm(),
+                                    (ctrl[i]-ctrl[i+1]).norm());
+                Eigen::Vector2d bis = (v1+v2).normalized();
+                newCtrl.emplace_back(ctrl[i] + bis * offsetFrac * d);
+            }
+        }
+        newCtrl.emplace_back(ctrl[i]);
+    }
+    ctrl.swap(newCtrl);
+}
+
+void dedupNearlyColocated(std::vector<Eigen::Vector2d>& pts,
+                                 double                        eps = 1e-3)
+{
+    if (pts.size() < 2) return;
+
+    const double eps2 = eps * eps;           // compare squared distance
+    std::vector<Eigen::Vector2d> unique;
+    unique.reserve(pts.size());
+
+    unique.push_back(pts.front());
+    for (size_t i = 1; i < pts.size(); ++i)
+    {
+        if ( (pts[i] - unique.back()).squaredNorm() > eps2 )
+            unique.push_back(pts[i]);
+    }
+    pts.swap(unique);                        // overwrite original in-place
+}
+
+void smoothWithClampedBSpline(Eigen::RowVectorXd& xs,
+                              Eigen::RowVectorXd& ys,
+                              Eigen::RowVectorXd& ss,
+                              int                sampleCount   = 500)
+{
+    /* 1.  Weld xs+ys into control-point vector  */
+    std::vector<Eigen::Vector2d> ctrl;
+    ctrl.reserve(xs.size());
+    for (int i = 0; i < xs.size(); ++i)
+        ctrl.emplace_back(xs(i), ys(i));
+
+    dedupNearlyColocated(ctrl, /*eps=*/1e-4);            // <- if you have such a util
+
+
+    ctrl =catmullToBSpline(ctrl);  
+
+    softenCorners(ctrl);
+    /* 2.  Sample cubic clamped B-spline  */
+    std::vector<Eigen::Vector2d> pts =
+        generateClampedBSpline(ctrl, sampleCount, /*degree=*/5);
+
+    /* 3.  Copy back into Eigen RowVectors       */
+    const int M = static_cast<int>(pts.size());
+    xs.resize(M); ys.resize(M); ss.resize(M);
+
+    xs(0) = pts[0].x();  ys(0) = pts[0].y();  ss(0) = 0.0;
+    for (int i = 1; i < M; ++i)
+    {
+        xs(i) = pts[i].x();
+        ys(i) = pts[i].y();
+
+        double dx = xs(i) - xs(i-1);
+        double dy = ys(i) - ys(i-1);
+        ss(i) = ss(i-1) + std::hypot(dx, dy);
     }
 }
 
@@ -657,8 +915,11 @@ bool MPCCROS::generateTrajSrv(uvatraj_msgs::RequestTraj::Request &req, uvatraj_m
 	PathPlanning::GaussianPotentialField GPR(_obstacles, goal); 
 	generateTrajectory(Eigen::Vector2d(_odom(0), _odom(1)), resolution, GPR, xs, ys, ss);
 
-	int smoothing_window = 100;
-	smoothPathMovingAverage(xs,ys,xs,ys,smoothing_window);
+	int smoothing_window = 5;
+	//smoothPathMovingAverage(xs,ys,xs,ys,smoothing_window);
+	//smoothPath(ss,xs,ys);
+	smoothWithClampedBSpline(xs, ys, ss, 450);
+
 	recalculateArcLength(xs,ys,ss);
 	ROS_WARN("[generateTrajSrv] xs.size(): %d ys.size(): %d ss.size(): %d",xs.size(), ys.size(), ss.size());
 
@@ -676,11 +937,9 @@ bool MPCCROS::generateTrajSrv(uvatraj_msgs::RequestTraj::Request &req, uvatraj_m
 		holder.z = 0.0;
 		holder.metadata = "";
 		//Only visualize every 5th control pt
-		if (i%5==0){
-			res.boundary_ctrl_pts.push_back(holder);
-			res.all_ctrl_pts.push_back(holder);	
-			ROS_DEBUG("pt.x: %.2f, pt.y: %.2f, pt.z: %d", xs(i), ys(i), 0);
-		}	
+		res.boundary_ctrl_pts.push_back(holder);
+		res.all_ctrl_pts.push_back(holder);	
+		ROS_DEBUG("pt.x: %.2f, pt.y: %.2f, pt.z: %d", xs(i), ys(i), 0);
 	}
 
 	ROS_DEBUG("[generateTrajSrv] Published trajectory to Unity with %.2f boundary pts ", res.boundary_ctrl_pts.size());
@@ -701,9 +960,9 @@ bool MPCCROS::generateTrajSrv(uvatraj_msgs::RequestTraj::Request &req, uvatraj_m
 
 	 ROS_WARN("SUCCESFULLY GENERATED");
 
-	//_ref_len = resampleByArcLength(splineX,splineY, (ss)(0), (ss)(ss.size()-1));
+	_ref_len = resampleByArcLength(splineX,splineY, (ss)(0), (ss)(ss.size()-1));
 
-	_ref_len = ss(ss.size() - 1);
+	//_ref_len = ss(ss.size() - 1);
 
 	ROS_DEBUG("[generateTrajSrv] ref_len= %.2f, mpcc_ref_len_sz=%.2f", _ref_len, _mpc_ref_len_sz);
 
@@ -810,8 +1069,14 @@ bool MPCCROS::modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req, uvatraj_msg
 	removePts(xs, duplicate_pts);
 	removePts(ys, duplicate_pts);
 	removePts(ss, duplicate_pts);
+
+
+	int smoothing_window = 25;
+	smoothPathMovingAverage((*xs),(*ys),(*xs),(*ys), smoothing_window);
+
+	recalculateArcLength((*xs),(*ys),(*ss));
 	
-    	const auto fitX = utils::Interp(*xs, 3, *ss);
+	const auto fitX = utils::Interp(*xs, 3, *ss);
     	Spline1D splineX(fitX);
 
     	const auto fitY = utils::Interp(*ys, 3, *ss);
@@ -1586,7 +1851,7 @@ void MPCCROS::publishReference()
     msg.poses.reserve(_trajectory.points.size());
     //double s = 0;
     bool published = false;
-    for (double s = 0;s<_ref_len; s+=0.5)
+    for (double s = 0;s<_ref_len; s+=0.05)
     {
         geometry_msgs::PoseStamped& pose = msg.poses.emplace_back();
         pose.header.stamp                = ros::Time::now();
