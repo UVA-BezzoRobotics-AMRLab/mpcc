@@ -372,6 +372,379 @@ void removePts(Eigen::RowVectorXd*& xs, std::vector<unsigned int> duplicate_pts)
 }
 
 
+void generateTrajectory(const Eigen::Vector2d& start, double resolution, PathPlanning::GaussianPotentialField GPR, 	Eigen::RowVectorXd& xs, Eigen::RowVectorXd& ys, Eigen::RowVectorXd& ss){
+
+	Eigen::Vector2d current_pt = start;
+
+	int N = 1000;
+	int ctr = 0;
+	
+	ys.resize(N);
+	xs.resize(N);
+	ss.resize(N);	
+
+	xs(0) = start(0);
+	ys(0) = start(1);
+	ss(0) = 0.00;
+	ROS_WARN("Goal position %.2f, %.2f", GPR.getGoal()(0), GPR.getGoal()(1));
+	ROS_WARN("Start position %.2f, %.2f", start(0), start(1));
+	std::deque<Eigen::Vector2d> temp;
+	
+	for (int i=1; i < N; ++i){
+		ROS_WARN("IN LOOP");
+		ctr++;
+		double dist_to_goal = (GPR.getGoal() - current_pt).squaredNorm();
+		if (i%2==0){ 
+			temp.push_back(current_pt);
+		} else{
+			temp.push_front(current_pt);
+		}
+		if (dist_to_goal < 0.3) {
+			break;
+			ROS_WARN("REACHED GOAL");
+		}
+
+		Eigen::Vector2d front = temp.front();
+		Eigen::Vector2d back = temp.back();
+
+		Eigen::Vector2d grad = GPR.getTotalGradient(current_pt);
+
+		double grad_norm = grad.norm();
+
+		if (grad_norm < 1e-6) break;
+		
+		grad /= grad_norm;
+		current_pt += resolution * grad;
+
+		if (front.isApprox(current_pt, 1e-2) || back.isApprox(current_pt, 1e-2)) {
+			ROS_WARN("Oscillating");
+			break;
+		}
+		if (temp.size() > 2) temp.pop_back(); 
+
+		xs(i) = current_pt(0);	
+		ys(i) = current_pt(1);
+
+		double dx = (xs)(i) - (xs)(i-1);
+		double dy = (ys)(i) - (ys)(i-1);
+		(ss)(i) = (ss)(i-1) + std::hypot(dx,dy);
+
+
+		ROS_WARN("[step %3d] s=%.3f  pos=(%.3f, %.3f)  "
+                 "grad=(%.3f, %.3f) |∇U|=%.3f  dist_goal=%.3f",
+                 i,
+                 ss(i-1),          // arc-length up to previous point
+                 current_pt.x(),
+                 current_pt.y(),
+                 grad.x(),
+                 grad.y(),
+                 grad_norm,
+                 dist_to_goal);
+	}
+	ROS_WARN("i value %d", ctr);
+	const int n_pts = ctr;  
+	xs.conservativeResize(n_pts);
+	ys.conservativeResize(n_pts);	
+	ss.conservativeResize(n_pts);
+}
+
+double compute_arclen(double t0, double tf, Spline1D& splineX, Spline1D& splineY){
+
+
+	double s=0.0;
+	double dt = (tf-t0) / 100;
+
+	double prev_dx = splineX.derivatives(t0,1).coeff(1);
+	double prev_dy = splineY.derivatives(t0,1).coeff(1);
+
+	double dx, dy;
+
+
+	for (double t = t0; t<tf; t+=dt){
+
+		dx = splineX.derivatives(t,1).coeff(1);
+		dy = splineY.derivatives(t,1).coeff(1);
+		s += 0.5 * (std::sqrt(dx*dx + dy*dy) + std::sqrt(prev_dx*prev_dx + prev_dy * prev_dy)) * dt;
+
+		prev_dx = dx;
+		prev_dy = dy;
+	}
+
+	return s; 
+}
+
+
+double binary_search(double dl, double start, double end, double tolerance, Spline1D& splineX, Spline1D& splineY)
+{
+    double t_left  = start;
+    double t_right = end;
+
+    double prev_s = 0;
+    double s      = -1000;
+
+    while (fabs(prev_s - s) > tolerance)
+    {
+        prev_s = s;
+
+        double t_mid = (t_left + t_right) / 2;
+
+        // always interested in total arc length up to t_mid
+        s = compute_arclen(0, t_mid, splineX, splineY);
+
+        // std::cout << "\ts at " << t_mid << " is " << s << std::endl;
+
+        if (s < dl)
+            t_left = t_mid;
+        else
+            t_right = t_mid;
+    }
+
+    return (t_left + t_right) / 2;
+}
+
+
+double resampleByArcLength(
+        Spline1D& splineX, Spline1D& splineY, double start, double end)
+{
+
+	double traj_duration = end;
+	double total_length = compute_arclen(start, end, splineX, splineY);
+
+
+	const int M = 20;
+	double ds = total_length / M;
+
+	double previous_ti = 0;
+		
+        Eigen::RowVectorXd ss(M+1);
+        Eigen::RowVectorXd xs(M+1);
+        Eigen::RowVectorXd ys(M+1);
+
+
+
+	for (int i = 0; i <= M; ++i){
+
+		double s = i * ds;
+		double ti = binary_search(s, previous_ti, traj_duration, 1e-3, splineX, splineY);
+		previous_ti = ti;
+		
+		ss(i) = s;
+		xs(i) = splineX(ti).coeff(0);
+		ys(i) = splineY(ti).coeff(0);
+		ROS_WARN("Creating spline xs: %.2f ts: %.2f ss: %.2f", xs(i), ys(i), ss(i));
+	}
+	ROS_WARN("AT END OF SPLINE xs: %.2f ts: %.2f ss: %.2f", xs(20), ys(20), ss(20));
+
+	splineX = utils::Interp(xs, 3, ss);
+	splineY = utils::Interp(ys,3,ss);
+	return static_cast<double>(ss(20));
+
+}
+
+
+
+/**
+ * @brief Smooths a path using a simple moving average filter.
+ *
+ * @param xs_in The input X coordinates.
+ * @param ys_in The input Y coordinates.
+ * @param xs_out The output smoothed X coordinates.
+ * @param ys_out The output smoothed Y coordinates.
+ * @param window_size The number of points to average over. Must be an odd number (e.g., 3, 5, 7).
+ *                    A larger window results in a smoother path but also more deviation
+ *                    from the original.
+ */
+void smoothPathMovingAverage(const Eigen::RowVectorXd& xs_in,
+                             const Eigen::RowVectorXd& ys_in,
+                             Eigen::RowVectorXd& xs_out,
+                             Eigen::RowVectorXd& ys_out,
+                             int window_size)
+{
+    if (window_size % 2 == 0) {
+        ROS_WARN("Smoothing window size should be odd. Incrementing to %d", window_size + 1);
+        window_size++;
+    }
+
+    const int n_pts = xs_in.size();
+    if (n_pts < window_size) {
+        ROS_WARN("Path has fewer points than window size. Not smoothing.");
+        xs_out = xs_in;
+        ys_out = ys_in;
+        return;
+    }
+
+    xs_out.resize(n_pts);
+    ys_out.resize(n_pts);
+
+    int half_window = window_size / 2;
+
+    // Handle the start points (keep them fixed)
+    for (int i = 0; i < half_window; ++i) {
+        xs_out(i) = xs_in(i);
+        ys_out(i) = ys_in(i);
+    }
+
+    // Apply the moving average to the middle points
+    for (int i = half_window; i < n_pts - half_window; ++i) {
+        // Use a block operation for efficient averaging
+        xs_out(i) = xs_in.segment(i - half_window, window_size).mean();
+        ys_out(i) = ys_in.segment(i - half_window, window_size).mean();
+    }
+
+    // Handle the end points (keep them fixed)
+    for (int i = n_pts - half_window; i < n_pts; ++i) {
+        xs_out(i) = xs_in(i);
+        ys_out(i) = ys_in(i);
+    }
+}
+
+
+/**
+ * @brief Recalculates the cumulative arc length (ss) for a given path (xs, ys).
+ *
+ * @param xs The X coordinates of the path.
+ * @param ys The Y coordinates of the path.
+ * @param ss The output cumulative arc length vector.
+ */
+void recalculateArcLength(const Eigen::RowVectorXd& xs,
+                          const Eigen::RowVectorXd& ys,
+                          Eigen::RowVectorXd& ss)
+{
+    const int n_pts = xs.size();
+    ss.resize(n_pts);
+    if (n_pts == 0) {
+        return;
+    }
+
+    ss(0) = 0.0;
+    for (int i = 1; i < n_pts; ++i) {
+        double dx = xs(i) - xs(i - 1);
+        double dy = ys(i) - ys(i - 1);
+        ss(i) = ss(i - 1) + std::hypot(dx, dy);
+    }
+}
+
+bool MPCCROS::generateTrajSrv(uvatraj_msgs::RequestTraj::Request &req, uvatraj_msgs::RequestTraj::Response &res){
+	
+
+	//lambda for repetitive code
+	auto response = [&](const std::string_view& msg, const bool& success) -> void{
+		res.success = success;
+		res.status_message = msg;
+		if (!success)
+			ROS_ERROR_STREAM(msg);
+	};
+
+
+	//Errors
+	if (!_is_init){
+		response("NO POSITIONAL DATA", false);
+		return true;
+	}
+	/* ---------- sanity checks ---------- */
+    	ROS_DEBUG("[generateTrajSrv] Goal msg of (%.2f, %.2f)", -req.goal.z, req.goal.y);
+	
+	//SS (cumulative arclength up to point i) 
+	//XS (X value at point i)
+	//YS (Y value at point i)
+	//To be RowVectorsXd
+	Eigen::RowVectorXd ss;
+	Eigen::RowVectorXd xs;
+	Eigen::RowVectorXd ys;
+
+	//Generate the trajectory
+	PathPlanning::Goal goal {Eigen::Vector2d(-req.goal.z,req.goal.y), 0.5};
+	PathPlanning::GaussianPotentialField GPR(_obstacles, goal); 
+	generateTrajectory(Eigen::Vector2d(_odom(0), _odom(1)), resolution, GPR, xs, ys, ss);
+
+	int smoothing_window = 100;
+	smoothPathMovingAverage(xs,ys,xs,ys,smoothing_window);
+	recalculateArcLength(xs,ys,ss);
+	ROS_WARN("[generateTrajSrv] xs.size(): %d ys.size(): %d ss.size(): %d",xs.size(), ys.size(), ss.size());
+
+	if (xs.size()==0 || ys.size()==0){
+		response("Trajectory generator produced 0 points", false);
+		return true;
+		};
+
+	//Convert to a msg for Unity
+	uvatraj_msgs::ControlPoint holder;
+	for (int i=0; i<ss.size(); ++i){
+
+		holder.x = xs(i);
+		holder.y = ys(i);
+		holder.z = 0.0;
+		holder.metadata = "";
+		//Only visualize every 5th control pt
+		if (i%5==0){
+			res.boundary_ctrl_pts.push_back(holder);
+			res.all_ctrl_pts.push_back(holder);	
+			ROS_DEBUG("pt.x: %.2f, pt.y: %.2f, pt.z: %d", xs(i), ys(i), 0);
+		}	
+	}
+
+	ROS_DEBUG("[generateTrajSrv] Published trajectory to Unity with %.2f boundary pts ", res.boundary_ctrl_pts.size());
+
+	//Generate the debug meta data
+	response("SUCCESSFULLY GENERATED PATH", true);
+		
+	//MPCC required args
+	_prev_ref     = _ref;
+	_prev_ref_len = _true_ref_len;
+
+	// Fit the splines
+	const auto fitX = utils::Interp(xs, 3, ss);
+	Spline1D splineX(fitX);
+
+	const auto fitY = utils::Interp(ys, 3, ss);
+	Spline1D splineY(fitY);
+
+	 ROS_WARN("SUCCESFULLY GENERATED");
+
+	//_ref_len = resampleByArcLength(splineX,splineY, (ss)(0), (ss)(ss.size()-1));
+
+	_ref_len = ss(ss.size() - 1);
+
+	ROS_DEBUG("[generateTrajSrv] ref_len= %.2f, mpcc_ref_len_sz=%.2f", _ref_len, _mpc_ref_len_sz);
+
+
+	//Get the total length 
+	_true_ref_len = _ref_len;
+
+	// if reference length is less than required mpc size, extend trajectory
+	if (_ref_len < _mpc_ref_len_sz){
+	ROS_WARN("reference length (%.2f) is smaller than %.2fm, extending", _ref_len,
+		 _mpc_ref_len_sz);	
+	}
+
+	_ref[0] = splineX;
+	_ref[1] = splineY;
+
+
+
+	ROS_INFO_STREAM("Total calculated _ref_len (before extension): " << _ref_len);
+	ROS_INFO_STREAM("---------------------------------------------------"); 
+
+
+	ROS_INFO("**********************************************************");
+	ROS_INFO("MPC generateTrajSrv: Trajectory set! Original Length (_true_ref_len): %.2f, Effective MPC Length (_ref_len): %.2f", _true_ref_len, _ref_len);
+	ROS_INFO("**********************************************************");
+
+	_mpc_core->set_trajectory(_ref, _ref_len);
+	publishReference();
+	visualizeTraj();
+
+	ROS_INFO("**********************************************************");
+	ROS_INFO("MPC received trajectory! Length: %.2f", _ref_len);
+	ROS_INFO("**********************************************************");
+
+	return true;
+
+	
+}
+
+
+
 bool MPCCROS::modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req, uvatraj_msgs::ExecuteTraj::Response &res)
 {
 
@@ -415,10 +788,10 @@ bool MPCCROS::modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req, uvatraj_msg
 	}
 
 
-	_ref_len = resampleByArcLength(splineX,splineY, (ss)(0), (ss)(ss.size()-1));
+	//_ref_len = resampleByArcLength(splineX,splineY, (ss)(0), (ss)(ss.size()-1));
 
     	//_ref_len = (*ss)(N - 1);
-    	_true_ref_len = _ref_len;
+    	//_true_ref_len = _ref_len;
 	
 
 
@@ -521,316 +894,6 @@ bool MPCCROS::modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req, uvatraj_msg
 	return true;
 }
 
-void generateTrajectory(const Eigen::Vector2d& start, double resolution, PathPlanning::GaussianPotentialField GPR, 	Eigen::RowVectorXd& xs, Eigen::RowVectorXd& ys, Eigen::RowVectorXd& ss){
-
-	Eigen::Vector2d current_pt = start;
-
-	int N = 1000;
-	int ctr = 0;
-	
-	ys.resize(N);
-	xs.resize(N);
-	ss.resize(N);	
-
-	xs(0) = start(0);
-	ys(0) = start(1);
-	ss(0) = 0.00;
-	ROS_WARN("Goal position %.2f, %.2f", GPR.getGoal()(0), GPR.getGoal()(1));
-	ROS_WARN("Start position %.2f, %.2f", start(0), start(1));
-	std::deque<Eigen::Vector2d> temp;
-	
-	for (int i=1; i < N; ++i){
-		ROS_WARN("IN LOOP");
-		ctr++;
-		double dist_to_goal = (GPR.getGoal() - current_pt).squaredNorm();
-		if (i%2==0){ 
-			temp.push_back(current_pt);
-		} else{
-			temp.push_front(current_pt);
-		}
-		if (dist_to_goal < 0.3) {
-			break;
-			ROS_WARN("REACHED GOAL");
-		}
-
-		Eigen::Vector2d front = temp.front();
-		Eigen::Vector2d back = temp.back();
-
-		Eigen::Vector2d grad = GPR.getTotalGradient(current_pt);
-
-		double grad_norm = grad.norm();
-
-		if (grad_norm < 1e-6) break;
-		
-		grad /= grad_norm;
-		current_pt += resolution * grad;
-
-		if (front.isApprox(current_pt, 1e-2) || back.isApprox(current_pt, 1e-2)) {
-			ROS_WARN("Oscillating");
-			break;
-		}
-		if (temp.size() > 2) temp.pop_back(); 
-
-		xs(i) = current_pt(0);	
-		ys(i) = current_pt(1);
-
-		double dx = (xs)(i) - (xs)(i-1);
-		double dy = (ys)(i) - (ys)(i-1);
-		(ss)(i) = (ss)(i-1) + std::hypot(dx,dy);
-
-
-		ROS_WARN("[step %3d] s=%.3f  pos=(%.3f, %.3f)  "
-                 "grad=(%.3f, %.3f) |∇U|=%.3f  dist_goal=%.3f",
-                 i,
-                 ss(i-1),          // arc-length up to previous point
-                 current_pt.x(),
-                 current_pt.y(),
-                 grad.x(),
-                 grad.y(),
-                 grad_norm,
-                 dist_to_goal);
-	}
-	ROS_WARN("i value %d", ctr);
-	const int n_pts = ctr;  
-	xs.conservativeResize(n_pts);
-	ys.conservativeResize(n_pts);	
-	ss.conservativeResize(n_pts);
-}
-
-std::vector<Eigen::Vector2d> sampleEvenly(
-        const std::vector<Eigen::Vector2d>& pts, std::size_t n = 5)
-{
-    if (pts.size() < n) {
-        throw std::invalid_argument("Not enough points to sample");
-    }
-
-    std::vector<Eigen::Vector2d> out;
-    out.reserve(n);
-
-    // Always include the first point
-    out.push_back(pts.front());
-
-    // Step between indices, as a double to avoid rounding drift
-    double step = static_cast<double>(pts.size() - 1) / (n - 1);
-
-    for (std::size_t i = 1; i < n - 1; ++i) {
-        std::size_t idx = static_cast<std::size_t>(std::round(i * step));
-        out.push_back(pts[idx]);
-    }
-
-    // Always include the last point
-    out.push_back(pts.back());
-    return out;
-}
-
-double compute_arclen(double t0, double tf, Spline1D& splineX, Spline1D& splineY){
-
-
-	double s=0.0;
-	double dt = (tf-t0) / 100;
-
-	double prev_dx = splineX.derivatives(t0,1).coeff(1);
-	double prev_dy = splineY.derivatives(t0,1).coeff(1);
-
-	double dx, dy;
-
-
-	for (double t = t0; t<tf; t+=dt){
-
-		dx = splineX.derivatives(t,1).coeff(1);
-		dy = splineY.derivatives(t,1).coeff(1);
-		s += 0.5 * (std::sqrt(dx*dx + dy*dy) + std::sqrt(prev_dx*prev_dx + prev_dy * prev_dy)) * dt;
-
-		prev_dx = dx;
-		prev_dy = dy;
-	}
-
-	return s; 
-}
-
-
-double binary_search(double dl, double start, double end, double tolerance, Spline1D& splineX, Spline1D& splineY)
-{
-    double t_left  = start;
-    double t_right = end;
-
-    double prev_s = 0;
-    double s      = -1000;
-
-    while (fabs(prev_s - s) > tolerance)
-    {
-        prev_s = s;
-
-        double t_mid = (t_left + t_right) / 2;
-
-        // always interested in total arc length up to t_mid
-        s = compute_arclen(0, t_mid, splineX, splineY);
-
-        // std::cout << "\ts at " << t_mid << " is " << s << std::endl;
-
-        if (s < dl)
-            t_left = t_mid;
-        else
-            t_right = t_mid;
-    }
-
-    return (t_left + t_right) / 2;
-}
-
-
-double resampleByArcLength(
-        Spline1D& splineX, Spline1D& splineY, double start, double end)
-{
-
-	double traj_duration = end;
-	double total_length = compute_arclen(start, end, splineX, splineY);
-
-
-	const int M = 20;
-	double ds = total_length / M;
-
-	double previous_ti = 0;
-		
-        Eigen::RowVectorXd ss(M+1);
-        Eigen::RowVectorXd xs(M+1);
-        Eigen::RowVectorXd ys(M+1);
-
-
-
-	for (int i = 0; i <= M; ++i){
-
-		double s = i * ds;
-		double ti = binary_search(s, previous_ti, traj_duration, 1e-3, splineX, splineY);
-		previous_ti = ti;
-		
-		ss(i) = s;
-		xs(i) = splineX(ti).coeff(0);
-		ys(i) = splineY(ti).coeff(0);
-		ROS_WARN("Creating spline xs: %.2f ts: %.2f ss: %.2f", xs(i), ys(i), ss(i));
-	}
-	ROS_WARN("AT END OF SPLINE xs: %.2f ts: %.2f ss: %.2f", xs(20), ys(20), ss(20));
-
-	splineX = utils::Interp(xs, 3, ss);
-	splineY = utils::Interp(ys,3,ss);
-	return static_cast<double>(ss(20));
-
-}
-
-bool MPCCROS::generateTrajSrv(uvatraj_msgs::RequestTraj::Request &req, uvatraj_msgs::RequestTraj::Response &res){
-	
-
-	//lambda for repetitive code
-	auto response = [&](const std::string_view& msg, const bool& success) -> void{
-		res.success = success;
-		res.status_message = msg;
-		if (!success)
-			ROS_ERROR_STREAM(msg);
-	};
-
-
-	//Errors
-	if (!_is_init){
-		response("NO POSITIONAL DATA", false);
-		return true;
-	}
-	/* ---------- sanity checks ---------- */
-    	ROS_DEBUG("[generateTrajSrv] Goal msg of (%.2f, %.2f)", -req.goal.z, req.goal.y);
-	
-	//SS (cumulative arclength up to point i) 
-	//XS (X value at point i)
-	//YS (Y value at point i)
-	//To be RowVectorsXd
-	Eigen::RowVectorXd ss;
-	Eigen::RowVectorXd xs;
-	Eigen::RowVectorXd ys;
-
-	//Generate the trajectory
-	PathPlanning::Goal goal {Eigen::Vector2d(-req.goal.z,req.goal.y), 0.5};
-	PathPlanning::GaussianPotentialField GPR(_obstacles, goal); 
-	generateTrajectory(Eigen::Vector2d(_odom(0), _odom(1)), resolution, GPR, xs, ys, ss);
-
-	ROS_DEBUG("[generateTrajSrv] xs.size(): %.2f ys.size(): %.2f ss.size(): %.2f",xs.size(), ys.size(), ss.size());
-
-	if (xs.size()==0 || ys.size()==0){
-		response("Trajectory generator produced 0 points", false);
-		return true;
-		};
-
-	//Convert to a msg for Unity
-	uvatraj_msgs::ControlPoint holder;
-	for (int i=0; i<ss.size(); ++i){
-
-		holder.x = xs(i);
-		holder.y = ys(i);
-		holder.z = 0.0;
-		holder.metadata = "";
-		//Only visualize every 5th control pt
-		if (i%5==0){
-			res.boundary_ctrl_pts.push_back(holder);
-			res.all_ctrl_pts.push_back(holder);	
-			ROS_DEBUG("pt.x: %.2f, pt.y: %.2f, pt.z: %d", xs(i), ys(i), 0);
-		}	
-	}
-
-	ROS_DEBUG("[generateTrajSrv] Published trajectory to Unity with %.2f boundary pts ", res.boundary_ctrl_pts.size());
-
-	//Generate the debug meta data
-	response("SUCCESSFULLY GENERATED PATH", true);
-		
-	//MPCC required args
-	_prev_ref     = _ref;
-	_prev_ref_len = _true_ref_len;
-
-	// Fit the splines
-	const auto fitX = utils::Interp(xs, 3, ss);
-	Spline1D splineX(fitX);
-
-	const auto fitY = utils::Interp(ys, 3, ss);
-	Spline1D splineY(fitY);
-
-	 ROS_WARN("SUCCESFULLY GENERATED");
-
-	//_ref_len = resampleByArcLength(splineX,splineY, (ss)(0), (ss)(ss.size()-1));
-
-	_ref_len = ss(ss.size() - 1);
-
-	ROS_DEBUG("[generateTrajSrv] ref_len= %.2f, mpcc_ref_len_sz=%.2f", _ref_len, _mpc_ref_len_sz);
-
-
-	//Get the total length 
-	_true_ref_len = _ref_len;
-
-	// if reference length is less than required mpc size, extend trajectory
-	if (_ref_len < _mpc_ref_len_sz){
-	ROS_WARN("reference length (%.2f) is smaller than %.2fm, extending", _ref_len,
-		 _mpc_ref_len_sz);	
-	}
-
-	_ref[0] = splineX;
-	_ref[1] = splineY;
-
-
-
-	ROS_INFO_STREAM("Total calculated _ref_len (before extension): " << _ref_len);
-	ROS_INFO_STREAM("---------------------------------------------------"); 
-
-
-	ROS_INFO("**********************************************************");
-	ROS_INFO("MPC generateTrajSrv: Trajectory set! Original Length (_true_ref_len): %.2f, Effective MPC Length (_ref_len): %.2f", _true_ref_len, _ref_len);
-	ROS_INFO("**********************************************************");
-
-	_mpc_core->set_trajectory(_ref, _ref_len);
-	publishReference();
-	visualizeTraj();
-
-	ROS_INFO("**********************************************************");
-	ROS_INFO("MPC received trajectory! Length: %.2f", _ref_len);
-	ROS_INFO("**********************************************************");
-
-	return true;
-
-	
-}
 
 
 //definitely correct
