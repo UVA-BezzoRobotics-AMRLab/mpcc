@@ -14,7 +14,7 @@ w_angvel_d: .7
 
 w_lag_e: 100
 w_contour_e: .8
-w_speed: 1.5
+w_speed: 1.0
 
 # CLF Params
 w_lyap_lag_e: 1
@@ -28,7 +28,7 @@ cbf_alpha_blw: 100
 cbf_colinear: .05
 cbf_padding: .05
 
-prop_gain: 3 #1.5
+prop_gain: 1.5
 prop_gain_thresh: .5
 # prop_gain_thresh: .349
 

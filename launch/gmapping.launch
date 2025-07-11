@@ -41,10 +41,12 @@
     <param name="stt" value="0.02"/>
 
     <!-- Process a scan each time the robot translates this far  -->
+    <!-- <param name="linearUpdate" value="0.1"/> -->
     <param name="linearUpdate" value="0.1"/>
 
     <!-- Process a scan each time the robot rotates this far  -->
-    <param name="angularUpdate" value="0.05"/>
+    <!-- <param name="angularUpdate" value="0.05"/> -->
+    <param name="angularUpdate" value="0.1"/>
 
     <param name="temporalUpdate" value="-1.0"/>
     <param name="resampleThreshold" value="0.5"/>
