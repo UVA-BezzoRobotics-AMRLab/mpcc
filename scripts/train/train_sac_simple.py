@@ -103,7 +103,10 @@ def run_sim(args):
         % (world_name)
     )
 
-    launch_file = join(sim_path, "launch", "simulator.launch")
+    launch_fname = "simulator.launch"
+    if args.double_integrator:
+        launch_fname = "double_integrator.launch"
+    launch_file = join(sim_path, "launch", launch_fname)
     world_name = join(world_path, "worlds", world_name)
 
     gazebo_process = subprocess.Popen(
@@ -308,6 +311,7 @@ if __name__ == "__main__":
     parser.add_argument("--train", action="store_true")
     parser.add_argument("--eval", action="store_true")
     parser.add_argument("--test_suite", action="store_true")
+    parser.add_argument("--double_integrator", action="store_true")
     args = parser.parse_args()
 
     if args.train and args.eval:

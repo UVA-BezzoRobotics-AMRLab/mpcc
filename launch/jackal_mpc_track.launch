@@ -30,10 +30,11 @@
 		<remap from="/cmd_vel" to="$(arg cmdTopic)" />
 	</node>
 
-	<rosparam file="$(find mpcc)/params/local_costmap_params.yaml" command="load" ns="local_costmap/local_costmap/" />
-	<node name="local_costmap" pkg="mpcc" type="local_costmap" output="screen" />
+	<!--<rosparam file="$(find mpcc)/params/local_costmap_params.yaml" command="load" ns="local_costmap/local_costmap/" />-->
+	<!--<node name="local_costmap" pkg="mpcc" type="local_costmap" output="screen" />-->
 
-   	<!-- <include file="$(find mpcc)/launch/gmapping.launch" /> -->
+  <include file="$(find mpcc)/launch/gmapping.launch" />
+  <!--<include file="$(find mpcc)/launch/online_async.launch" />-->
 
   <node name="publish_pf_pose" pkg="mpcc" type="publish_pf_pose" output="screen" />
 

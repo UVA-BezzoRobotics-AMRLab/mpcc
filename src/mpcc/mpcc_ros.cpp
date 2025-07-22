@@ -17,6 +17,7 @@
 
 #include <Eigen/Core>
 #include <algorithm>
+#include <boost/tuple/detail/tuple_basic.hpp>
 
 #include "mpcc/utils.h"
 
@@ -50,6 +51,7 @@ MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~")
     _nh.param("vel_pub_freq", _vel_pub_freq, 20.0);
     _nh.param("controller_frequency", freq, 10.0);
     _nh.param("mpc_steps", _mpc_steps, 10.0);
+    _nh.param("cmd_acc", _cmd_acc, false);
 
     // Cost function params
     _nh.param("w_vel", _w_vel, 1.0);
@@ -116,10 +118,13 @@ MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~")
     // tube width technically from traj to tube boundary
     _max_tube_width /= 2;
 
-    _dt = 1.0 / freq;
+    _dt  = 1.0 / freq;
+    _cmd = Command(_cmd_acc);
 
-    _mpc_params["DT"]        = _dt;
-    _mpc_params["STEPS"]     = _mpc_steps;
+    _mpc_params["DT"]      = _dt;
+    _mpc_params["STEPS"]   = _mpc_steps;
+    _mpc_params["CMD_ACC"] = _cmd_acc;
+
     _mpc_params["W_V"]       = _w_linvel;
     _mpc_params["W_ANGVEL"]  = _w_angvel;
     _mpc_params["W_DA"]      = _w_linvel_d;
@@ -393,7 +398,8 @@ void MPCCROS::publishVel()
 
     while (ros::ok())
     {
-        if (_trajectory.points.size() > 0) _velPub.publish(_vel_msg);
+        /*if (_trajectory.points.size() > 0) _velPub.publish(_vel_msg);*/
+        if (_trajectory.points.size() > 0) _velPub.publish(_cmd.get_cmd());
 
         // _velPub.publish(_vel_msg);
 
@@ -478,8 +484,21 @@ void MPCCROS::trajectorycb(const trajectory_msgs::JointTrajectory::ConstPtr& msg
     if (msg->points.size() == 0)
     {
         ROS_WARN("Trajectory is empty, stopping!");
-        _vel_msg.linear.x  = 0;
-        _vel_msg.angular.z = 0;
+        /*_vel_msg.linear.x  = std::max(_vel_msg.linear.x - _max_linacc * _dt, 0.0);*/
+        /*_vel_msg.angular.z = 0;*/
+
+        if (_cmd_acc)
+        {
+            double old_vel = _cmd.vel.linear.x;
+            _cmd.vel.linear.x = std::max(_cmd.vel.linear.x - _max_linacc * _dt, 0.0);
+            _cmd.acc.linear.x = (_cmd.vel.linear.x - old_vel) / _dt;
+        }
+        else
+        {
+            _cmd.vel.linear.x = std::max(_vel_msg.linear.x - _max_linacc * _dt, 0.0);
+            _cmd.acc.linear.x = 0;
+        }
+
         return;
     }
 
@@ -558,7 +577,7 @@ void MPCCROS::trajectorycb(const trajectory_msgs::JointTrajectory::ConstPtr& msg
     _ref[0] = splineX;
     _ref[1] = splineY;
 
-    _mpc_core->set_trajectory(_ref, _ref_len);
+    _mpc_core->set_trajectory(_ref, _ref_len, _true_ref_len);
 
     visualizeTraj();
 
@@ -621,21 +640,28 @@ void MPCCROS::mpcc_ctrl_loop(const ros::TimerEvent& event)
 
     _prev_s = get_s_from_state(_ref, _true_ref_len);
 
-    ROS_INFO("S DOT IS: %.2f", _s_dot);
-    ROS_INFO("corrected len is: %.2f / %.2f", corrected_len, _true_ref_len);
-    ROS_INFO("prev_s is: %.2f", _prev_s);
-    ROS_INFO("corrected len - prev_s / dt is %.2f", (corrected_len - _prev_s) / _dt);
-
-    if (len_start > _true_ref_len - 3e-1)
-    {
-        ROS_INFO("Reached end of traj %.2f / %.2f", len_start, _true_ref_len);
-        _vel_msg.linear.x  = 0;
-        _vel_msg.angular.z = 0;
-
-        _trajectory.points.clear();
-
-        return;
-    }
+    /*if (len_start > _true_ref_len - 3e-1)*/
+    /*{*/
+    /*    ROS_INFO("Reached end of traj %.2f / %.2f", len_start, _true_ref_len);*/
+    /*    // apply maximum deceleration until robot stops*/
+    /*    if (_cmd_acc)*/
+    /*    {*/
+    /*        double old_vel = _cmd.vel.linear.x;*/
+    /*        _cmd.vel.linear.x = std::max(_cmd.vel.linear.x - _max_linacc * _dt, 0.0);*/
+    /*        _cmd.acc.linear.x = (_cmd.vel.linear.x - old_vel) / _dt;*/
+    /**/
+    /*        if (fabs(_cmd.vel.linear.x) < 1e-2)*/
+    /*          _trajectory.points.clear();*/
+    /*    }*/
+    /*    else*/
+    /*    {*/
+    /*        _cmd.vel.linear.x = std::max(_vel_msg.linear.x - _max_linacc * _dt, 0.0);*/
+    /*        _cmd.acc.linear.x = 0;*/
+    /*        _trajectory.points.clear();*/
+    /*    }*/
+    /**/
+    /*    return;*/
+    /*}*/
 
     double horizon = _mpc_ref_len_sz;
 
@@ -687,14 +713,24 @@ void MPCCROS::mpcc_ctrl_loop(const ros::TimerEvent& event)
     }
 
     Eigen::VectorXd state(6);
-    double vel = _vel_msg.linear.x;
+    double vel = _cmd.vel.linear.x;
     if (_reverse_mode) vel *= -1;
     state << _odom(0), _odom(1), _odom(2), vel, 0, _s_dot;
 
     std::array<double, 2> mpc_results = _mpc_core->solve(state, _reverse_mode);
 
-    _vel_msg.linear.x  = mpc_results[0];
-    _vel_msg.angular.z = mpc_results[1];
+    _cmd.vel.angular.z = mpc_results[1];
+    _cmd.acc.angular.z = mpc_results[1];
+    if (!_cmd_acc)
+        _cmd.vel.linear.x = mpc_results[0];
+    else
+    {
+        _cmd.vel.linear.x = _mpc_core->get_vel();
+        _cmd.acc.linear.x = mpc_results[0];
+
+        ROS_INFO("CMD ACC IS %.2f", _cmd.acc.linear.x);
+        ROS_INFO("CMD OMEGA IS %.2f", _cmd.acc.angular.z);
+    }
 
     // log data back to db if logging enabled
     if (_is_logging || _is_eval) _logger->log_transition(*_mpc_core, len_start, _true_ref_len);
@@ -806,11 +842,11 @@ void MPCCROS::publishMPCTrajectory()
             double vel_x = linvel * cos(theta);
             double vel_y = linvel * sin(theta);
 
-	    // ROS_INFO("vel_x and vel_y: %.2f, %.2f", vel_x, vel_y);
+            // ROS_INFO("vel_x and vel_y: %.2f, %.2f", vel_x, vel_y);
 
             double acc_x = linacc * cos(theta);
             double acc_y = linacc * sin(theta);
-	    // ROS_INFO("acc_x and acc_y: %.2f, %.2f", acc_x, acc_y);
+            // ROS_INFO("acc_x and acc_y: %.2f, %.2f", acc_x, acc_y);
 
             // manually compute jerk in x and y directions from acceleration
             double jerk_x = 0;

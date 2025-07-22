@@ -60,11 +60,12 @@ class MPCCore
     void set_state(const Eigen::Vector3d &state);
     void set_odom(const Eigen::Vector3d &odom);
     void set_goal(const Eigen::Vector2d &goal);
-    void set_trajectory(const std::array<Spline1D, 2> &ref, double arclen);
+    void set_trajectory(const std::array<Spline1D, 2> &ref, double arclen, double true_arclen);
     void set_tubes(const std::array<Eigen::VectorXd, 2> &tubes);
     void set_dyna_obs(const Eigen::MatrixXd &dyna_obs);
 
     double get_s_from_odom() const;
+    double get_vel() const { return _curr_vel; }
     const bool get_solver_status() const;
     const Eigen::VectorXd &get_state() const;
     std::vector<Eigen::VectorXd> get_horizon() const;
@@ -96,6 +97,7 @@ class MPCCore
     double _max_vel;
     double _max_angvel;
     double _ref_length;
+    double _true_ref_length;
 
     double _prop_gain;
     double _prop_angle_thresh;
@@ -103,6 +105,7 @@ class MPCCore
     bool _is_set;
     bool _use_cbf;
     bool _traj_reset;
+    bool _cmd_acc;
 
     std::array<double, 2> _mpc_results;
     std::vector<traj_point_t> _trajectory;

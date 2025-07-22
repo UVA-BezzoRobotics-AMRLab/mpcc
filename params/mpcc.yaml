@@ -3,6 +3,7 @@ frame_id: "map"
 use_vicon: false
 mpc_steps: 10
 controller_frequency: 10
+cmd_acc: true
 
 # cost function weights
 w_cte: 1.0
@@ -15,6 +16,7 @@ w_angvel_d: .7
 w_lag_e: 100
 w_contour_e: .8
 w_speed: 1.0
+#w_speed: 5.0
 
 # CLF Params
 w_lyap_lag_e: 1
@@ -22,13 +24,13 @@ w_lyap_contour_e: 1
 clf_gamma: .5
 
 # CBF params
-use_cbf: false
-cbf_alpha_abv: 100
-cbf_alpha_blw: 100
-cbf_colinear: .05
-cbf_padding: .05
+use_cbf: true
+cbf_alpha_abv: 0.5
+cbf_alpha_blw: 0.5
+cbf_colinear: 0.05
+cbf_padding: 0.05
 
-prop_gain: 1.5
+prop_gain: 3.0 #1.5
 prop_gain_thresh: .5
 # prop_gain_thresh: .349
 

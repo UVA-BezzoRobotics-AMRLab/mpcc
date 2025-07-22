@@ -12,10 +12,13 @@ MPCCore::MPCCore()
     _curr_vel    = 0;
     _curr_angvel = 0;
 
+    _cmd_acc = false;
+
     _traj_reset = false;
     _is_set     = false;
 
-    _ref_length = 0;
+    _ref_length      = 0;
+    _true_ref_length = 0;
 }
 
 MPCCore::~MPCCore() {}
@@ -32,6 +35,8 @@ void MPCCore::load_params(const std::map<std::string, double> &params)
     _prop_gain         = params.at("ANGLE_GAIN");
     _prop_angle_thresh = params.at("ANGLE_THRESH");
 
+    _cmd_acc = params.at("CMD_ACC");
+
     _params = params;
 
     _mpc->load_params(params);
@@ -45,12 +50,14 @@ void MPCCore::set_odom(const Eigen::Vector3d &odom)
     _mpc->set_odom(odom);
 }
 
-void MPCCore::set_trajectory(const std::array<Spline1D, 2> &ref, double ref_len)
+void MPCCore::set_trajectory(const std::array<Spline1D, 2> &ref, double ref_len,
+                             double true_ref_len)
 {
-    _ref        = ref;
-    _ref_length = ref_len;
-    _is_set     = true;
-    _traj_reset = true;
+    _ref             = ref;
+    _ref_length      = ref_len;
+    _true_ref_length = true_ref_len;
+    _is_set          = true;
+    _traj_reset      = true;
     _mpc->set_reference(ref, ref_len);
 }
 
@@ -94,9 +101,11 @@ bool MPCCore::orient_robot()
     if (fabs(e) > _prop_angle_thresh)
     {
         _mpc->reset_horizon();
-        _curr_vel    = 0;
+        if (!_cmd_acc)
+        {
+            _curr_vel = 0;
+        }
         _curr_angvel = std::max(-_max_angvel, std::min(_max_angvel, _prop_gain * e));
-
         return true;
     }
 
@@ -133,9 +142,43 @@ std::array<double, 2> MPCCore::solve(const Eigen::VectorXd &state, bool is_rever
         return {0, 0};
     }
 
+    // stop robot if we have reached trajectory end
+    double len_start = get_s_from_odom();
+    if (len_start > _true_ref_length - 3e-1)
+    {
+        std::cout << "reached trajectory end" << std::endl;
+        if (_cmd_acc)
+        {
+            double old_vel = _curr_vel;
+            _curr_vel      = limit(_curr_vel, 0, _max_linacc);
+            std::cout << "vel is: " << _curr_vel << std::endl;
+            return {(_curr_vel - old_vel) / _dt, 0.};
+        }
+        else
+        {
+            double old_vel = _curr_vel;
+            _curr_vel      = limit(_curr_vel, 0, _max_linacc);
+            return {_curr_vel, 0.};
+        }
+    }
+
     if (_ref_length > .1 && _traj_reset)
     {
-        if (orient_robot()) return {_curr_vel, _curr_angvel};
+        /*if (orient_robot()) return {_curr_vel, _curr_angvel};*/
+        if (orient_robot())
+        {
+            if (_cmd_acc)
+            {
+                // decelerate to stop
+                double old_vel = _curr_vel;
+                _curr_vel      = limit(_curr_vel, 0, _max_linacc);
+                std::cout << "[MPC Core] decelerating to stop, old vel: " << old_vel
+                          << ", new vel: " << _curr_vel << std::endl;
+                return {(_curr_vel - old_vel) / _dt, _curr_angvel};
+            }
+            else
+                return {_curr_vel, _curr_angvel};
+        }
     }
 
     _traj_reset = false;
@@ -161,7 +204,8 @@ std::array<double, 2> MPCCore::solve(const Eigen::VectorXd &state, bool is_rever
         _mpc_results[1] = 0;
     }
 
-    new_vel = _curr_vel + _mpc_results[1] * _dt;
+    double prev_vel = _curr_vel;
+    new_vel         = _curr_vel + _mpc_results[1] * _dt;
 
     // std::cerr << "mpc_results: " << _mpc_results[0] << ", " <<
     // _mpc_results[1]
@@ -178,7 +222,11 @@ std::array<double, 2> MPCCore::solve(const Eigen::VectorXd &state, bool is_rever
     std::cerr << "[MPC Core] curr vel: " << _curr_vel << ", curr ang vel: " << _curr_angvel
               << std::endl;
 
-    return {_curr_vel, _curr_angvel};
+    std::array<double, 2> ret = {_curr_vel, _curr_angvel};
+    if (_cmd_acc) ret[0] = (_curr_vel - prev_vel) / _dt;
+
+    /*return {_curr_vel, _curr_angvel};*/
+    return ret;
 }
 
 Eigen::VectorXd MPCCore::get_cbf_data(const Eigen::VectorXd &state,

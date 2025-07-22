@@ -46,6 +46,10 @@ inline bool raycast_grid(const Eigen::Vector2d& start, const Eigen::Vector2d& di
         // purturb by degrees each time
         double theta        = theta_dir + i * M_PI / 180;
         Eigen::Vector2d end = start + max_dist * Eigen::Vector2d(cos(theta), sin(theta));
+        // bring end into the grid map
+        /*double r = grid_map.getResolution();*/
+        /*end(0)   = std::max(std::min(end(0), grid_map.getLength().x() - r) + r / 2, r / 2);*/
+        /*end(1)   = std::max(std::min(end(1), grid_map.getLength().y() - r) + r / 2, r / 2);*/
 
         grid_map::Index end_ind;
         if (!grid_map.getIndex(end, end_ind)) return false;

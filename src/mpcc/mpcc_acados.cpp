@@ -390,7 +390,7 @@ bool MPCC::set_solver_parameters(const std::array<Spline1D, 2>& adjusted_ref)
     auto ctrls_x = adjusted_ref[0].ctrls();
     auto ctrls_y = adjusted_ref[1].ctrls();
 
-    int num_params = ctrls_x.size() + ctrls_y.size() + _tubes[0].size() + _tubes[1].size() + 10;
+    int num_params = ctrls_x.size() + ctrls_y.size() + _tubes[0].size() + _tubes[1].size() + 8;
     if (num_params != NP)
     {
         std::cout << "[MPCC] reference size " << num_params
@@ -398,16 +398,16 @@ bool MPCC::set_solver_parameters(const std::array<Spline1D, 2>& adjusted_ref)
         return false;
     }
 
-    params[NP - 10] = _w_qc;
-    params[NP - 9]  = _w_ql;
-    params[NP - 8]  = _w_q_speed;
-    params[NP - 7]  = _alpha_abv;
-    params[NP - 6]  = _alpha_blw;
-    params[NP - 5]  = _w_qc_lyap;
-    params[NP - 4]  = _w_ql_lyap;
-    params[NP - 3]  = _gamma;
-    params[NP - 2]  = 1e3;
-    params[NP - 1]  = 1e3;
+    params[NP - 8] = _w_qc;
+    params[NP - 7]  = _w_ql;
+    params[NP - 6]  = _w_q_speed;
+    params[NP - 5]  = _alpha_abv;
+    params[NP - 4]  = _alpha_blw;
+    params[NP - 3]  = _w_qc_lyap;
+    params[NP - 2]  = _w_ql_lyap;
+    params[NP - 1]  = _gamma;
+    /*params[NP - 2]  = 1e3;*/
+    /*params[NP - 1]  = 1e3;*/
 
     for (int i = 0; i < ctrls_x.size(); ++i)
     {

@@ -225,7 +225,7 @@ def export_mpcc_ode_model_spline_tube_cbf(params) -> AcadosModel:
     Q_l = MX.sym("Q_l")  # 100
     Q_s = MX.sym("Q_s")  # 0.5
     Q_a = 1
-    Q_w = 1
+    Q_w = 2
     Q_sdd = 1
 
     cost_expr = (

@@ -19,7 +19,26 @@
 #include <string>
 #include <thread>
 
+#include "Eigen/src/Core/Matrix.h"
 #include "mpcc/mpcc_core.h"
+
+struct Command
+{
+    Command() : cmd_acc(false) {}
+    Command(bool cmd_acc_) : cmd_acc(cmd_acc_) {}
+
+    geometry_msgs::Twist vel;
+    geometry_msgs::Twist acc;
+
+    bool cmd_acc = false;
+
+    geometry_msgs::Twist get_cmd() const
+    {
+        if (cmd_acc) return acc;
+
+        return vel;
+    }
+};
 
 class MPCCROS
 {
@@ -211,6 +230,7 @@ class MPCCROS
 
     bool _is_logging;
     bool _is_eval;
+    bool _cmd_acc;
 
     int _tube_degree;
     int _tube_samples;
@@ -220,6 +240,7 @@ class MPCCROS
 
     Eigen::MatrixX4d _poly;
     geometry_msgs::Twist _vel_msg;
+    Command _cmd;
 
     Eigen::VectorXd _prev_rl_state;
     Eigen::VectorXd _curr_rl_state;
