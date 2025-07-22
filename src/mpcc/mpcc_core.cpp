@@ -8,11 +8,11 @@
 MPCCore::MPCCore() {
   _mpc = std::make_unique<MPCC>();
 
-  _curr_vel = 0;
+  _curr_vel    = 0;
   _curr_angvel = 0;
 
-  _is_set = false;
-  _has_run = false;
+  _is_set     = false;
+  _has_run    = false;
   _traj_reset = false;
 
   _ref_length = 0;
@@ -20,15 +20,15 @@ MPCCore::MPCCore() {
 
 MPCCore::~MPCCore() {}
 
-void MPCCore::load_params(const std::map<std::string, double> &params) {
-  _dt = params.at("DT");
-  _max_anga = params.at("MAX_ANGA");
+void MPCCore::load_params(const std::map<std::string, double>& params) {
+  _dt         = params.at("DT");
+  _max_anga   = params.at("MAX_ANGA");
   _max_linacc = params.at("MAX_LINACC");
 
-  _max_vel = params.at("LINVEL");
+  _max_vel    = params.at("LINVEL");
   _max_angvel = params.at("ANGVEL");
 
-  _prop_gain = params.at("ANGLE_GAIN");
+  _prop_gain         = params.at("ANGLE_GAIN");
   _prop_angle_thresh = params.at("ANGLE_THRESH");
 
   _params = params;
@@ -36,26 +36,26 @@ void MPCCore::load_params(const std::map<std::string, double> &params) {
   _mpc->load_params(params);
 }
 
-void MPCCore::set_dyna_obs(const Eigen::MatrixXd &dyna_obs) {
+void MPCCore::set_dyna_obs(const Eigen::MatrixXd& dyna_obs) {
   _mpc->set_dyna_obs(dyna_obs);
 }
 
-void MPCCore::set_odom(const Eigen::Vector3d &odom) {
+void MPCCore::set_odom(const Eigen::Vector3d& odom) {
   _odom = odom;
   _mpc->set_odom(odom);
 }
 
-void MPCCore::set_trajectory(const std::array<Spline1D, 2> &ref,
+void MPCCore::set_trajectory(const std::array<Spline1D, 2>& ref,
                              double ref_len) {
-  _ref = ref;
+  _ref        = ref;
   _ref_length = ref_len;
-  _is_set = true;
+  _is_set     = true;
   _traj_reset = true;
   _mpc->set_reference(ref, ref_len);
 }
 
 // void MPCCore::set_tubes(const std::vector<Spline1D>& tubes)
-void MPCCore::set_tubes(const std::array<Eigen::VectorXd, 2> &tubes) {
+void MPCCore::set_tubes(const std::array<Eigen::VectorXd, 2>& tubes) {
   _mpc->set_tubes(tubes);
 }
 
@@ -107,8 +107,8 @@ bool MPCCore::orient_robot() {
 
 double MPCCore::get_s_from_odom() const {
   // find the s which minimizes dist to robot
-  double s = 0;
-  double min_dist = 1e6;
+  double s            = 0;
+  double min_dist     = 1e6;
   Eigen::Vector2d pos = _odom.head(2);
   for (double i = 0.0; i < _ref_length; i += .01) {
     Eigen::Vector2d p =
@@ -117,18 +117,19 @@ double MPCCore::get_s_from_odom() const {
     double d = (pos - p).squaredNorm();
     if (d < min_dist) {
       min_dist = d;
-      s = i;
+      s        = i;
     }
   }
 
   return s;
 }
 
-Command &MPCCore::solve(const Eigen::VectorXd &state, bool is_reverse) {
+std::array<double, 2> MPCCore::solve(const Eigen::VectorXd& state,
+                                     bool is_reverse) {
   if (!_is_set) {
     std::cout << termcolor::yellow << "[MPC Core] trajectory not set!"
               << termcolor::reset << std::endl;
-    return UnicycleCommand(CommandOrder::kVel, 0, 0);
+    return {0, 0};
   }
 
   if (_ref_length > .1 && _traj_reset) {
@@ -150,7 +151,7 @@ Command &MPCCore::solve(const Eigen::VectorXd &state, bool is_reverse) {
   auto start = std::chrono::high_resolution_clock::now();
   // Eigen::VectorXd state(4);
   // state << _odom(0), _odom(1), _odom(2), _curr_vel;
-  Command &mpc_command = _mpc->solve(state, is_reverse);
+  std::array<double, 2> mpc_command = _mpc->solve(state, is_reverse);
 
   // _mpc_command = _mpc->Solve(_state, _reference);
   auto end = std::chrono::high_resolution_clock::now();
@@ -180,7 +181,9 @@ Command &MPCCore::solve(const Eigen::VectorXd &state, bool is_reverse) {
   //   _mpc_command.setCommand(input[0], input[1]);
   // }
 
-  _has_run = true;
+  _has_run     = true;
+  _curr_vel    = mpc_command[0];
+  _curr_angvel = mpc_command[1];
 
   return mpc_command;
 
@@ -199,8 +202,8 @@ Command &MPCCore::solve(const Eigen::VectorXd &state, bool is_reverse) {
   // return {_curr_vel, _curr_angvel};
 }
 
-Eigen::VectorXd MPCCore::get_cbf_data(const Eigen::VectorXd &state,
-                                      const Eigen::VectorXd &control,
+Eigen::VectorXd MPCCore::get_cbf_data(const Eigen::VectorXd& state,
+                                      const Eigen::VectorXd& control,
                                       bool is_abv) const {
   return _mpc->get_cbf_data(state, control, is_abv);
 }
@@ -209,7 +212,9 @@ const bool MPCCore::get_solver_status() const {
   return _mpc->get_solver_status();
 }
 
-const Eigen::VectorXd &MPCCore::get_state() const { return _mpc->get_state(); }
+const Eigen::VectorXd& MPCCore::get_state() const {
+  return _mpc->get_state();
+}
 
 std::vector<Eigen::VectorXd> MPCCore::get_horizon() const {
   std::vector<Eigen::VectorXd> ret;
@@ -229,10 +234,10 @@ std::vector<Eigen::VectorXd> MPCCore::get_horizon() const {
   return ret;
 }
 
-const std::map<std::string, double> &MPCCore::get_params() const {
+const std::map<std::string, double>& MPCCore::get_params() const {
   return _params;
 }
 
-const std::array<double, 2> &MPCCore::get_mpc_command() const {
-  return _mpc->get_command().getCommand();
+const std::array<double, 2>& MPCCore::get_mpc_command() const {
+  return _mpc->get_command();
 }

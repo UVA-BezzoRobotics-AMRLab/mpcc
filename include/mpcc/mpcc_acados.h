@@ -2,6 +2,7 @@
 
 #include <mpcc/mpcc_base.h>
 #include <mpcc/types.h>
+#include <cstdlib>
 
 #include <Eigen/Dense>
 #include <map>
@@ -13,7 +14,7 @@
 #include "acados_solver_unicycle_model_mpcc.h"
 
 class UnicycleCommand : public Command {
-public:
+ public:
   UnicycleCommand() = default;
 
   UnicycleCommand(CommandOrder order, double cmd1, double cmd2)
@@ -23,39 +24,39 @@ public:
 
   virtual void setCommand(double cmd1, double cmd2) override {
     switch (_order) {
-    case CommandOrder::kPos:
-      throw std::invalid_argument(
-          "[Command] pos cmd not implemented for unicycle.");
-    case CommandOrder::kVel:
-      _v = cmd1;
-      _w = cmd2;
-    case CommandOrder::kAccel:
-      _a = cmd1;
-      _w = cmd2;
-      break;
-    default:
-      throw std::invalid_argument(
-          "[Command] invalid order for unicycle command.");
+      case CommandOrder::kPos:
+        throw std::invalid_argument(
+            "[Command] pos cmd not implemented for unicycle.");
+      case CommandOrder::kVel:
+        _v = cmd1;
+        _w = cmd2;
+      case CommandOrder::kAccel:
+        _a = cmd1;
+        _w = cmd2;
+        break;
+      default:
+        throw std::invalid_argument(
+            "[Command] invalid order for unicycle command.");
     }
   }
 
   virtual std::array<double, 2> getCommand() const {
 
     switch (_order) {
-    case CommandOrder::kPos:
-      throw std::invalid_argument(
-          "[Command] pos cmd not implemented for unicycle.");
-    case CommandOrder::kVel:
-      return {_v, _w};
-    case CommandOrder::kAccel:
-      return {_a, _w};
-    default:
-      throw std::invalid_argument(
-          "[Command] invalid order for unicycle command.");
+      case CommandOrder::kPos:
+        throw std::invalid_argument(
+            "[Command] pos cmd not implemented for unicycle.");
+      case CommandOrder::kVel:
+        return {_v, _w};
+      case CommandOrder::kAccel:
+        return {_a, _w};
+      default:
+        throw std::invalid_argument(
+            "[Command] invalid order for unicycle command.");
     }
   }
 
-private:
+ private:
   double _v = 0;
   double _a = 0;
   double _w = 0;
@@ -64,15 +65,15 @@ private:
 };
 
 class MPCC : public MPCBase {
-public:
+ public:
   MPCC();
   virtual ~MPCC() override;
 
-  virtual Command &solve(const Eigen::VectorXd &state,
-                         bool is_reverse = false) override;
+  virtual std::array<double, 2> solve(const Eigen::VectorXd& state,
+                                      bool is_reverse = false) override;
 
-  virtual void
-  load_params(const std::map<std::string, double> &params) override;
+  virtual void load_params(
+      const std::map<std::string, double>& params) override;
   /**********************************************************************
    * Function: MPCC::load_params()
    * Description: Loads parameters for the MPC controller
@@ -90,19 +91,19 @@ public:
    * Setters and Getters
    ***********************/
   void reset_horizon();
-  virtual void set_odom(const Eigen::VectorXd &odom) override;
-  void set_tubes(const std::array<Eigen::VectorXd, 2> &tubes);
-  void set_reference(const std::array<Spline1D, 2> &reference, double arclen);
-  void set_dyna_obs(const Eigen::MatrixXd &dyna_obs);
+  virtual void set_odom(const Eigen::VectorXd& odom) override;
+  void set_tubes(const std::array<Eigen::VectorXd, 2>& tubes);
+  void set_reference(const std::array<Spline1D, 2>& reference, double arclen);
+  void set_dyna_obs(const Eigen::MatrixXd& dyna_obs);
 
-  virtual Command &get_command() const override;
-  const Eigen::VectorXd &get_state() const;
+  virtual std::array<double, 2> get_command() const override;
+  const Eigen::VectorXd& get_state() const;
   const bool get_solver_status() const;
-  Eigen::VectorXd get_cbf_data(const Eigen::VectorXd &state,
-                               const Eigen::VectorXd &control,
+  Eigen::VectorXd get_cbf_data(const Eigen::VectorXd& state,
+                               const Eigen::VectorXd& control,
                                bool is_abv) const;
 
-public:
+ public:
   // TOOD: make getter for these
   // Use one vector which stores a state struct...
   std::vector<double> mpc_x;
@@ -120,11 +121,11 @@ public:
 #ifdef UNICYCLE_MODEL_MPCC_NS
   static constexpr uint16_t kNS = UNICYCLE_MODEL_MPCC_NS;
 #endif
-  static constexpr uint16_t kNP = UNICYCLE_MODEL_MPCC_NP;
-  static constexpr uint16_t kNU = UNICYCLE_MODEL_MPCC_NU;
+  static constexpr uint16_t kNP   = UNICYCLE_MODEL_MPCC_NP;
+  static constexpr uint16_t kNU   = UNICYCLE_MODEL_MPCC_NU;
   static constexpr uint16_t kNBX0 = UNICYCLE_MODEL_MPCC_NBX0;
 
-private:
+ private:
   std::array<Spline1D, 2> compute_adjusted_ref(double s) const;
   /**********************************************************************
    * Function: MPCC::get_ref_from_s()
@@ -138,7 +139,7 @@ private:
    * last point is repeated for spline generation.
    **********************************************************************/
 
-  double get_s_from_state(const Eigen::VectorXd &state);
+  double get_s_from_state(const Eigen::VectorXd& state);
   /**********************************************************************
    * Function: MPCC::get_s_from_state()
    * Description: Get the arc length of closest point on reference trajectory
@@ -148,8 +149,8 @@ private:
    * arc length value of closest point to state
    **********************************************************************/
 
-  Eigen::VectorXd next_state(const Eigen::VectorXd &current_state,
-                             const Eigen::VectorXd &control);
+  Eigen::VectorXd next_state(const Eigen::VectorXd& current_state,
+                             const Eigen::VectorXd& control);
   /**********************************************************************
    * Function: MPCC::next_state()
    * Description: Calculates the next state of the robot given current
@@ -161,7 +162,7 @@ private:
    * Next state of the robot
    **********************************************************************/
 
-  void warm_start_no_u(double *x_init);
+  void warm_start_no_u(double* x_init);
   /**********************************************************************
    * Function: MPCC::warm_start_no_u()
    * Description: Warm starts the MPC solver with no control inputs
@@ -174,7 +175,7 @@ private:
    * a 0 control input
    **********************************************************************/
 
-  void warm_start_shifted_u(bool correct_perturb, const Eigen::VectorXd &state);
+  void warm_start_shifted_u(bool correct_perturb, const Eigen::VectorXd& state);
   /**********************************************************************
    * Function: MPCC::warm_start_shifted_u()
    * Description: Warm starts the MPC solver with shifted control inputs
@@ -200,7 +201,7 @@ private:
    * N/A
    **********************************************************************/
 
-  bool set_solver_parameters(const std::array<Spline1D, 2> &adjusted_ref);
+  bool set_solver_parameters(const std::array<Spline1D, 2>& adjusted_ref);
   /**********************************************************************
    * Function: MPCC::set_solver_parameters()
    * Description: Sets the parameters for the MPC solver
@@ -210,9 +211,9 @@ private:
    * bool - true if successful, false otherwise
    **********************************************************************/
 
-  void apply_affine_transform(Eigen::VectorXd &state,
-                              const Eigen::Vector2d &rot_point,
-                              const Eigen::MatrixXd &m_affine);
+  void apply_affine_transform(Eigen::VectorXd& state,
+                              const Eigen::Vector2d& rot_point,
+                              const Eigen::MatrixXd& m_affine);
   /**********************************************************************
    * Function: MPCC::apply_affine_transform()
    * Description: Applies an affine transformation to state in place
@@ -227,21 +228,21 @@ private:
    * rotation occurs about rot_point
    ***********************************************************************/
 
-private:
-  static constexpr uint8_t kIndX = 0;
-  static constexpr uint8_t kIndY = 1;
-  static constexpr uint8_t kIndTheta = 2;
-  static constexpr uint8_t kIndV = 3;
-  static constexpr uint8_t kIndS = 4;
-  static constexpr uint8_t kIndSDot = 5;
+ private:
+  static constexpr uint8_t kIndX        = 0;
+  static constexpr uint8_t kIndY        = 1;
+  static constexpr uint8_t kIndTheta    = 2;
+  static constexpr uint8_t kIndV        = 3;
+  static constexpr uint8_t kIndS        = 4;
+  static constexpr uint8_t kIndSDot     = 5;
   static constexpr uint8_t kIndStateInc = 6;
 
-  static constexpr uint8_t kIndAngVel = 0;
-  static constexpr uint8_t kIndLinAcc = 1;
-  static constexpr uint8_t kIndSDDot = 2;
+  static constexpr uint8_t kIndAngVel   = 0;
+  static constexpr uint8_t kIndLinAcc   = 1;
+  static constexpr uint8_t kIndSDDot    = 2;
   static constexpr uint8_t kIndInputInc = 3;
 
-  UnicycleCommand _cmd;
+  std::array<double, 2> _cmd;
 
   std::map<std::string, double> _params;
 
@@ -261,6 +262,7 @@ private:
   double _max_linvel;
   double _max_angvel;
   double _max_linacc;
+  double _max_anga;
 
   double _alpha_abv;
   double _alpha_blw;
@@ -292,8 +294,8 @@ private:
   bool _use_dyna_obs;
   bool _has_run;
 
-  double *_new_time_steps;
+  double* _new_time_steps;
 
-  unicycle_model_mpcc_sim_solver_capsule *_acados_sim_capsule;
-  unicycle_model_mpcc_solver_capsule *_acados_ocp_capsule;
+  unicycle_model_mpcc_sim_solver_capsule* _acados_sim_capsule;
+  unicycle_model_mpcc_solver_capsule* _acados_ocp_capsule;
 };

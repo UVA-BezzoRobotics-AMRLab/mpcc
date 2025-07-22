@@ -11,35 +11,36 @@
 
 MPCC::MPCC() {
   // Set default value
-  _dt = .05;
-  _mpc_steps = 20;
-  _max_angvel = 3.0;    // Maximal angvel radian (~30 deg)
-  _max_linvel = 2.0;    // Maximal linvel accel
-  _max_linacc = 4.0;    // Maximal linacc accel
-  _bound_value = 1.0e3; // Bound value for other variables
+  _dt          = .05;
+  _mpc_steps   = 20;
+  _max_angvel  = 3.0;  // Maximal angvel radian (~30 deg)
+  _max_linvel  = 2.0;  // Maximal linvel accel
+  _max_linacc  = 4.0;  // Maximal linacc accel
+  _max_anga    = 2 * M_PI;
+  _bound_value = 1.0e3;  // Bound value for other variables
 
-  _w_ql = 50.0;
-  _w_qc = .1;
+  _w_ql      = 50.0;
+  _w_qc      = .1;
   _w_q_speed = .3;
   _w_ql_lyap = 1;
   _w_qc_lyap = 1;
 
-  _gamma = .5;
-  _use_cbf = false;
+  _gamma     = .5;
+  _use_cbf   = false;
   _alpha_abv = 1.0;
   _alpha_blw = 1.0;
-  _colinear = 0.01;
-  _padding = .05;
+  _colinear  = 0.01;
+  _padding   = .05;
 
-  _use_eigen = false;
+  _use_eigen   = false;
   _ref_samples = 10;
-  _ref_len_sz = 4.0;
-  _ref_length = 0;
+  _ref_len_sz  = 4.0;
+  _ref_length  = 0;
 
   _has_run = true;
 
   _acados_ocp_capsule = nullptr;
-  _new_time_steps = nullptr;
+  _new_time_steps     = nullptr;
 
   _s_dot = 0;
 
@@ -61,7 +62,7 @@ MPCC::MPCC() {
   mpc_linaccs.resize(_mpc_steps - 1);
   mpc_s_ddots.resize(_mpc_steps - 1);
 
-  _use_dyna_obs = false;
+  _use_dyna_obs  = false;
   _is_shift_warm = false;
   _solve_success = false;
 
@@ -79,11 +80,11 @@ MPCC::~MPCC() {
 }
 
 // void MPCC::set_tubes(const std::vector<Spline1D> &tubes)
-void MPCC::set_tubes(const std::array<Eigen::VectorXd, 2> &tubes) {
+void MPCC::set_tubes(const std::array<Eigen::VectorXd, 2>& tubes) {
   _tubes = tubes;
 }
 
-void MPCC::load_params(const std::map<std::string, double> &params) {
+void MPCC::load_params(const std::map<std::string, double>& params) {
   _params = params;
 
   // Init parameters for MPC object
@@ -97,11 +98,14 @@ void MPCC::load_params(const std::map<std::string, double> &params) {
   _max_linacc = _params.find("MAX_LINACC") != _params.end()
                     ? _params.at("MAX_LINACC")
                     : _max_linacc;
+  _max_anga = _params.find("MAX_ANGA") != _params.end() ? _params.at("MAX_ANGA")
+                                                        : _max_anga;
+
   _bound_value = _params.find("BOUND") != _params.end() ? _params.at("BOUND")
                                                         : _bound_value;
 
-  _w_angvel = params.find("W_ANGVEL") != params.end() ? params.at("W_ANGVEL")
-                                                      : _w_angvel;
+  _w_angvel   = params.find("W_ANGVEL") != params.end() ? params.at("W_ANGVEL")
+                                                        : _w_angvel;
   _w_angvel_d = params.find("W_DANGVEL") != params.end()
                     ? params.at("W_DANGVEL")
                     : _w_angvel_d;
@@ -114,15 +118,15 @@ void MPCC::load_params(const std::map<std::string, double> &params) {
   _w_q_speed = params.find("W_SPEED") != params.end() ? params.at("W_SPEED")
                                                       : _w_q_speed;
 
-  _ref_len_sz = params.find("REF_LENGTH") != params.end()
-                    ? params.at("REF_LENGTH")
-                    : _ref_len_sz;
+  _ref_len_sz  = params.find("REF_LENGTH") != params.end()
+                     ? params.at("REF_LENGTH")
+                     : _ref_len_sz;
   _ref_samples = params.find("REF_SAMPLES") != params.end()
                      ? params.at("REF_SAMPLES")
                      : _ref_samples;
 
-  _gamma = params.find("CLF_GAMMA") != params.end() ? params.at("CLF_GAMMA")
-                                                    : _gamma;
+  _gamma     = params.find("CLF_GAMMA") != params.end() ? params.at("CLF_GAMMA")
+                                                        : _gamma;
   _w_ql_lyap = params.find("CLF_W_LAG") != params.end() ? params.at("CLF_W_LAG")
                                                         : _w_ql_lyap;
   _w_qc_lyap = params.find("CLF_W_CONTOUR") != params.end()
@@ -137,12 +141,12 @@ void MPCC::load_params(const std::map<std::string, double> &params) {
   _alpha_blw = params.find("CBF_ALPHA_BLW") != params.end()
                    ? params.at("CBF_ALPHA_BLW")
                    : _alpha_blw;
-  _colinear = params.find("CBF_COLINEAR") != params.end()
-                  ? params.at("CBF_COLINEAR")
-                  : _colinear;
-  _padding = params.find("CBF_PADDING") != params.end()
-                 ? params.at("CBF_PADDING")
-                 : _padding;
+  _colinear  = params.find("CBF_COLINEAR") != params.end()
+                   ? params.at("CBF_COLINEAR")
+                   : _colinear;
+  _padding   = params.find("CBF_PADDING") != params.end()
+                   ? params.at("CBF_PADDING")
+                   : _padding;
 
   _acados_ocp_capsule = unicycle_model_mpcc_acados_create_capsule();
 
@@ -153,29 +157,30 @@ void MPCC::load_params(const std::map<std::string, double> &params) {
   int status = unicycle_model_mpcc_acados_sim_create(_acados_sim_capsule);
 
   if (status) {
-    printf("acados_create() returned status %d. Exiting.\n", status);
-    exit(1);
+    throw std::runtime_error("acados_create() returned status " +
+                             std::to_string(status) + ". Exiting.");
   }
 
   // acados sim
-  _sim_in = unicycle_model_mpcc_acados_get_sim_in(_acados_sim_capsule);
-  _sim_out = unicycle_model_mpcc_acados_get_sim_out(_acados_sim_capsule);
-  _sim_dims = unicycle_model_mpcc_acados_get_sim_dims(_acados_sim_capsule);
+  _sim_in     = unicycle_model_mpcc_acados_get_sim_in(_acados_sim_capsule);
+  _sim_out    = unicycle_model_mpcc_acados_get_sim_out(_acados_sim_capsule);
+  _sim_dims   = unicycle_model_mpcc_acados_get_sim_dims(_acados_sim_capsule);
   _sim_config = unicycle_model_mpcc_acados_get_sim_config(_acados_sim_capsule);
 
   status = unicycle_model_mpcc_acados_create_with_discretization(
       _acados_ocp_capsule, _mpc_steps, _new_time_steps);
+
   if (status) {
-    std::cout << "unicycle_model_mpcc_acados_create() returned status "
-              << status << ". Exiting." << std::endl;
-    exit(1);
+    throw std::runtime_error(
+        "unicycle_model_mpcc_acados_create() returned status " +
+        std::to_string(status) + ". Exiting.");
   }
 
   // acados solver
-  _nlp_in = unicycle_model_mpcc_acados_get_nlp_in(_acados_ocp_capsule);
-  _nlp_out = unicycle_model_mpcc_acados_get_nlp_out(_acados_ocp_capsule);
-  _nlp_opts = unicycle_model_mpcc_acados_get_nlp_opts(_acados_ocp_capsule);
-  _nlp_dims = unicycle_model_mpcc_acados_get_nlp_dims(_acados_ocp_capsule);
+  _nlp_in     = unicycle_model_mpcc_acados_get_nlp_in(_acados_ocp_capsule);
+  _nlp_out    = unicycle_model_mpcc_acados_get_nlp_out(_acados_ocp_capsule);
+  _nlp_opts   = unicycle_model_mpcc_acados_get_nlp_opts(_acados_ocp_capsule);
+  _nlp_dims   = unicycle_model_mpcc_acados_get_nlp_dims(_acados_ocp_capsule);
   _nlp_solver = unicycle_model_mpcc_acados_get_nlp_solver(_acados_ocp_capsule);
   _nlp_config = unicycle_model_mpcc_acados_get_nlp_config(_acados_ocp_capsule);
 
@@ -197,16 +202,16 @@ void MPCC::load_params(const std::map<std::string, double> &params) {
   std::cout << "!! ACADOS model instantiated !! " << std::endl;
 }
 
-void MPCC::set_reference(const std::array<Spline1D, 2> &reference,
+void MPCC::set_reference(const std::array<Spline1D, 2>& reference,
                          double arclen) {
-  _reference = reference;
+  _reference  = reference;
   _ref_length = arclen;
   return;
 }
 
-double MPCC::get_s_from_state(const Eigen::VectorXd &state) {
+double MPCC::get_s_from_state(const Eigen::VectorXd& state) {
   // find the s which minimizes dist to robot
-  double s = 0;
+  double s        = 0;
   double min_dist = 1e6;
   Eigen::Vector2d pos(state(0), state(1));
   for (double i = 0.0; i < _ref_length; i += .05) {
@@ -216,41 +221,49 @@ double MPCC::get_s_from_state(const Eigen::VectorXd &state) {
     double d = (pos - p).squaredNorm();
     if (d < min_dist) {
       min_dist = d;
-      s = i;
+      s        = i;
     }
   }
 
   return s;
 }
 
-void MPCC::set_dyna_obs(const Eigen::MatrixXd &dyna_obs) {
+void MPCC::set_dyna_obs(const Eigen::MatrixXd& dyna_obs) {
   _use_dyna_obs = true;
-  _dyna_obs = dyna_obs;
+  _dyna_obs     = dyna_obs;
 }
 
-void MPCC::set_odom(const Eigen::VectorXd &odom) { _odom = odom; }
+void MPCC::set_odom(const Eigen::VectorXd& odom) {
+  _odom = odom;
+}
 
-Command &MPCC::get_command() const { return _cmd; }
+std::array<double, 2> MPCC::get_command() const {
+  return _cmd;
+}
 
-const Eigen::VectorXd &MPCC::get_state() const { return _state; }
+const Eigen::VectorXd& MPCC::get_state() const {
+  return _state;
+}
 
-const bool MPCC::get_solver_status() const { return _solve_success; }
+const bool MPCC::get_solver_status() const {
+  return _solve_success;
+}
 
-Eigen::VectorXd MPCC::next_state(const Eigen::VectorXd &current_state,
-                                 const Eigen::VectorXd &control) {
+Eigen::VectorXd MPCC::next_state(const Eigen::VectorXd& current_state,
+                                 const Eigen::VectorXd& control) {
   Eigen::VectorXd ret(kNX);
 
   // Extracting current state values
-  double x1 = current_state(0);
-  double y1 = current_state(1);
+  double x1     = current_state(0);
+  double y1     = current_state(1);
   double theta1 = current_state(2);
-  double v1 = current_state(3);
-  double s1 = current_state(4);
-  double sdot1 = current_state(5);
+  double v1     = current_state(3);
+  double s1     = current_state(4);
+  double sdot1  = current_state(5);
 
   // Extracting control inputs
-  double a = control(0);
-  double w = control(1);
+  double a     = control(0);
+  double w     = control(1);
   double sddot = control(2);
 
   // Dynamics equations
@@ -267,7 +280,7 @@ Eigen::VectorXd MPCC::next_state(const Eigen::VectorXd &current_state,
 std::array<Spline1D, 2> MPCC::compute_adjusted_ref(double s) const {
   // get reference for next _ref_len_sz meters, indexing from s=0 onwards
   // need to also down sample the tubes
-  Eigen::RowVectorXd ss, xs, ys; //, abvs, blws;
+  Eigen::RowVectorXd ss, xs, ys;  //, abvs, blws;
   ss.resize(_ref_samples);
   xs.resize(_ref_samples);
   ys.resize(_ref_samples);
@@ -300,7 +313,7 @@ std::array<Spline1D, 2> MPCC::compute_adjusted_ref(double s) const {
   return {splineX, splineY};
 }
 
-void MPCC::warm_start_no_u(double *x_init) {
+void MPCC::warm_start_no_u(double* x_init) {
   double u_init[kNU];
   u_init[0] = 0.0;
   u_init[1] = 0.0;
@@ -319,7 +332,7 @@ void MPCC::warm_start_no_u(double *x_init) {
 // From linear to nonlinear MPC: bridging the gap via the real-time iteration,
 // Gros et. al.
 void MPCC::warm_start_shifted_u(bool correct_perturb,
-                                const Eigen::VectorXd &state) {
+                                const Eigen::VectorXd& state) {
   double starting_s = _prev_x0[1 * kNX + 4];
   if (correct_perturb) {
     std::cout << termcolor::red << "[MPCC] Guess pos. too far, correcting"
@@ -368,13 +381,13 @@ void MPCC::warm_start_shifted_u(bool correct_perturb,
                     &_prev_u0[(_mpc_steps - 1) * kNU]);
 
     Eigen::VectorXd uN_prev = _prev_u0.tail(kNU);
-    Eigen::VectorXd xN = next_state(xN_prev, uN_prev);
+    Eigen::VectorXd xN      = next_state(xN_prev, uN_prev);
 
     ocp_nlp_out_set(_nlp_config, _nlp_dims, _nlp_out, _mpc_steps, "x", &xN[0]);
   }
 }
 
-bool MPCC::set_solver_parameters(const std::array<Spline1D, 2> &adjusted_ref) {
+bool MPCC::set_solver_parameters(const std::array<Spline1D, 2>& adjusted_ref) {
   double params[kNP];
   auto ctrls_x = adjusted_ref[0].ctrls();
   auto ctrls_y = adjusted_ref[1].ctrls();
@@ -388,23 +401,23 @@ bool MPCC::set_solver_parameters(const std::array<Spline1D, 2> &adjusted_ref) {
   }
 
   params[kNP - 10] = _w_qc;
-  params[kNP - 9] = _w_ql;
-  params[kNP - 8] = _w_q_speed;
-  params[kNP - 7] = _alpha_abv;
-  params[kNP - 6] = _alpha_blw;
-  params[kNP - 5] = _w_qc_lyap;
-  params[kNP - 4] = _w_ql_lyap;
-  params[kNP - 3] = _gamma;
-  params[kNP - 2] = 1e3;
-  params[kNP - 1] = 1e3;
+  params[kNP - 9]  = _w_ql;
+  params[kNP - 8]  = _w_q_speed;
+  params[kNP - 7]  = _alpha_abv;
+  params[kNP - 6]  = _alpha_blw;
+  params[kNP - 5]  = _w_qc_lyap;
+  params[kNP - 4]  = _w_ql_lyap;
+  params[kNP - 3]  = _gamma;
+  params[kNP - 2]  = 1e3;
+  params[kNP - 1]  = 1e3;
 
   for (int i = 0; i < ctrls_x.size(); ++i) {
-    params[i] = ctrls_x[i];
+    params[i]                  = ctrls_x[i];
     params[i + ctrls_x.size()] = ctrls_y[i];
   }
 
   for (int i = 0; i < _tubes[0].size(); ++i) {
-    params[i + 2 * ctrls_x.size()] = _tubes[0](i);
+    params[i + 2 * ctrls_x.size()]                    = _tubes[0](i);
     params[i + 2 * ctrls_x.size() + _tubes[0].size()] = _tubes[1](i);
   }
 
@@ -454,12 +467,12 @@ void MPCC::process_solver_output(double s) {
   _prev_u0 = utraj;
 
   for (int i = 0; i <= _mpc_steps; ++i) {
-    mpc_x[i] = xtraj[kIndX + i * kIndStateInc];
-    mpc_y[i] = xtraj[kIndY + i * kIndStateInc];
-    mpc_theta[i] = xtraj[kIndTheta + i * kIndStateInc];
+    mpc_x[i]       = xtraj[kIndX + i * kIndStateInc];
+    mpc_y[i]       = xtraj[kIndY + i * kIndStateInc];
+    mpc_theta[i]   = xtraj[kIndTheta + i * kIndStateInc];
     mpc_linvels[i] = xtraj[kIndV + i * kIndStateInc];
-    mpc_s[i] = xtraj[kIndS + i * kIndStateInc] + s;
-    mpc_s_dot[i] = xtraj[kIndSDot + i * kIndStateInc];
+    mpc_s[i]       = xtraj[kIndS + i * kIndStateInc] + s;
+    mpc_s_dot[i]   = xtraj[kIndSDot + i * kIndStateInc];
   }
 
   for (int i = 0; i < _mpc_steps; ++i) {
@@ -471,12 +484,12 @@ void MPCC::process_solver_output(double s) {
 
 void MPCC::reset_horizon() {
   for (int i = 0; i < _mpc_steps; ++i) {
-    mpc_x[i] = _odom(0);
-    mpc_y[i] = _odom(1);
-    mpc_theta[i] = 0;
+    mpc_x[i]       = _odom(0);
+    mpc_y[i]       = _odom(1);
+    mpc_theta[i]   = 0;
     mpc_linvels[i] = 0;
-    mpc_s[i] = 0;
-    mpc_s_dot[i] = 0;
+    mpc_s[i]       = 0;
+    mpc_s_dot[i]   = 0;
   }
 
   for (int i = 0; i < _mpc_steps - 1; ++i) {
@@ -486,12 +499,13 @@ void MPCC::reset_horizon() {
   }
 }
 
-Command &MPCC::solve(const Eigen::VectorXd &state, bool is_reverse) {
+std::array<double, 2> MPCC::solve(const Eigen::VectorXd& state,
+                                  bool is_reverse) {
   _solve_success = false;
 
   if (_tubes.size() == 0) {
     std::cout << "[MPCC] tubes are not set yet, mpc cannot run" << std::endl;
-    return UnicycleCommand(CommandOrder::kVel, state[kIndV], 0);
+    return {0, 0};
   }
 
   /*************************************
@@ -503,7 +517,7 @@ Command &MPCC::solve(const Eigen::VectorXd &state, bool is_reverse) {
     std::cout << termcolor::yellow << "[MPCC] state sized passed has size "
               << state.size() << " but should be " << kNBX0 << termcolor::reset
               << std::endl;
-    return UnicycleCommand(CommandOrder::kVel, state[kIndV], 0);
+    return {0, 0};
   }
 
   double lbx0[kNBX0];
@@ -514,7 +528,7 @@ Command &MPCC::solve(const Eigen::VectorXd &state, bool is_reverse) {
   Eigen::VectorXd x0 = state;
   if (_has_run) {
     Eigen::VectorXd prev_x0 = _prev_x0.head(kNX);
-    double etheta = x0(2) - prev_x0(2);
+    double etheta           = x0(2) - prev_x0(2);
     if (etheta > M_PI)
       x0(2) -= 2 * M_PI;
     if (etheta < -M_PI)
@@ -540,10 +554,10 @@ Command &MPCC::solve(const Eigen::VectorXd &state, bool is_reverse) {
   double u_init[kNU];
   u_init[kIndAngVel] = 0.0;
   u_init[kIndLinAcc] = 0.0;
-  u_init[kIndSDDot] = 0.0;
+  u_init[kIndSDDot]  = 0.0;
 
   // generate params from reference trajectory starting at current s
-  double s = get_s_from_state(state);
+  double s                             = get_s_from_state(state);
   std::array<Spline1D, 2> adjusted_ref = compute_adjusted_ref(s);
 
   std::cout << "[MPCC] starting s is " << s << std::endl;
@@ -576,7 +590,7 @@ Command &MPCC::solve(const Eigen::VectorXd &state, bool is_reverse) {
   **************************************/
 
   if (!set_solver_parameters(adjusted_ref))
-    return UnicycleCommand(CommandOrder::kVel, x_init[kIndV], 0);
+    return {0, 0};
 
   /*************************************
   ************* RUN SOLVER *************
@@ -590,7 +604,7 @@ Command &MPCC::solve(const Eigen::VectorXd &state, bool is_reverse) {
     // timer for acados using chrono
     auto start = std::chrono::high_resolution_clock::now();
     int status = unicycle_model_mpcc_acados_solve(_acados_ocp_capsule);
-    auto end = std::chrono::high_resolution_clock::now();
+    auto end   = std::chrono::high_resolution_clock::now();
     // for some reason this causes problems in docker container, commenting
     // out for now
     // ocp_nlp_get(_nlp_config, _nlp_solver, "time_tot", &timer);
@@ -628,15 +642,15 @@ Command &MPCC::solve(const Eigen::VectorXd &state, bool is_reverse) {
 
   // unicycle_model_mpcc_acados_print_stats(_acados_ocp_capsule);
   for (int i = 0; i < mpc_x.size(); ++i) {
-    double si = mpc_s[i];
-    double x = mpc_x[i];
-    double y = mpc_y[i];
-    double xr = adjusted_ref[0](si).coeff(0);
-    double yr = adjusted_ref[1](si).coeff(0);
+    double si     = mpc_s[i];
+    double x      = mpc_x[i];
+    double y      = mpc_y[i];
+    double xr     = adjusted_ref[0](si).coeff(0);
+    double yr     = adjusted_ref[1](si).coeff(0);
     double xr_dot = adjusted_ref[0].derivatives(si, 1).coeff(1);
     double yr_dot = adjusted_ref[1].derivatives(si, 1).coeff(1);
 
-    double den = xr_dot * xr_dot + yr_dot * yr_dot;
+    double den      = xr_dot * xr_dot + yr_dot * yr_dot;
     double obs_dirx = -yr_dot / den;
     double obs_diry = xr_dot / den;
 
@@ -651,22 +665,22 @@ Command &MPCC::solve(const Eigen::VectorXd &state, bool is_reverse) {
   // std::array<double, 2> input = _cmd.getCommand();
 
   double curr_angvel = limit(prev_angvel, _prev_u0[kIndAngVel], _max_anga);
-  new_vel = limit(_state[kIndV], _state[kIndV] + _prev_u0[kIndLinAcc] * _dt,
-                  _max_linacc);
+  double new_vel     = limit(
+          _state[kIndV], _state[kIndV] + _prev_u0[kIndLinAcc] * _dt, _max_linacc);
 
-  _cmd = UnicycleCommand(CommandOrder::kVel, new_vel, curr_angvel);
+  _cmd = {new_vel, curr_angvel};
 
   std::cout << "[MPCC] commanded input is: " << _prev_u0[kIndAngVel] << " "
             << _prev_u0[kIndLinAcc] << std::endl;
 
-  return cmd;
+  return _cmd;
 }
 
-Eigen::VectorXd MPCC::get_cbf_data(const Eigen::VectorXd &state,
-                                   const Eigen::VectorXd &control,
+Eigen::VectorXd MPCC::get_cbf_data(const Eigen::VectorXd& state,
+                                   const Eigen::VectorXd& control,
                                    bool is_abv) const {
   Eigen::VectorXd ret_data(3);
-  double s = 0; // state(4);
+  double s = 0;  // state(4);
 
   Eigen::VectorXd coeffs;
   if (is_abv)
@@ -675,7 +689,7 @@ Eigen::VectorXd MPCC::get_cbf_data(const Eigen::VectorXd &state,
     coeffs = _tubes[1];
 
   double tube_dist = 0;
-  double x_pow = 1;
+  double x_pow     = 1;
 
   for (int i = 0; i < coeffs.size(); ++i) {
     tube_dist += coeffs[i] * x_pow;
@@ -683,13 +697,13 @@ Eigen::VectorXd MPCC::get_cbf_data(const Eigen::VectorXd &state,
   }
 
   std::array<Spline1D, 2> adjusted_ref = compute_adjusted_ref(s);
-  double xr = adjusted_ref[0](s).coeff(0);
-  double yr = adjusted_ref[1](s).coeff(0);
+  double xr                            = adjusted_ref[0](s).coeff(0);
+  double yr                            = adjusted_ref[1](s).coeff(0);
 
   double xr_dot = adjusted_ref[0].derivatives(s, 1).coeff(1);
   double yr_dot = adjusted_ref[1].derivatives(s, 1).coeff(1);
 
-  double den = sqrt(xr_dot * xr_dot + yr_dot * yr_dot);
+  double den      = sqrt(xr_dot * xr_dot + yr_dot * yr_dot);
   double obs_dirx = -yr_dot / den;
   double obs_diry = xr_dot / den;
 
@@ -718,9 +732,9 @@ Eigen::VectorXd MPCC::get_cbf_data(const Eigen::VectorXd &state,
 }
 
 // utility
-void MPCC::apply_affine_transform(Eigen::VectorXd &state,
-                                  const Eigen::Vector2d &rot_point,
-                                  const Eigen::MatrixXd &m_affine) {
+void MPCC::apply_affine_transform(Eigen::VectorXd& state,
+                                  const Eigen::Vector2d& rot_point,
+                                  const Eigen::MatrixXd& m_affine) {
   Eigen::Vector3d state_ext(0, 0, 1);
   state_ext.head(2) = state.head(2);
 

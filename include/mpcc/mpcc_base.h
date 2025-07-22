@@ -13,7 +13,7 @@
 enum class CommandOrder { kPos = 0, kVel, kAccel };
 
 class Command {
-public:
+ public:
   virtual ~Command() = default;
 
   Command(CommandOrder order) : _order(order) {}
@@ -24,23 +24,23 @@ public:
 
   CommandOrder getOrder() const { return _order; }
 
-protected:
+ protected:
   CommandOrder _order = CommandOrder::kVel;
 };
 
 // Interface assumes the use of acados
 class MPCBase {
 
-public:
+ public:
   virtual ~MPCBase() = default;
-  virtual void load_params(const std::map<std::string, double> &params) = 0;
+  virtual void load_params(const std::map<std::string, double>& params) = 0;
 
-  virtual Command &solve(const Eigen::VectorXd &state,
-                         bool is_reverse = false) = 0;
+  virtual std::array<double, 2> solve(const Eigen::VectorXd& state,
+                                      bool is_reverse = false) = 0;
 
-  virtual void set_odom(const Eigen::VectorXd &odom) = 0;
+  virtual void set_odom(const Eigen::VectorXd& odom) = 0;
 
-  virtual Command &get_command() const = 0;
+  virtual std::array<double, 2> get_command() const = 0;
 
   double limit(double prev_val, double input, double max_rate) const {
     double ret = input;
@@ -54,18 +54,18 @@ public:
     return ret;
   }
 
-protected:
-  sim_config *_sim_config;
-  sim_in *_sim_in;
-  sim_out *_sim_out;
-  void *_sim_dims;
+ protected:
+  sim_config* _sim_config;
+  sim_in* _sim_in;
+  sim_out* _sim_out;
+  void* _sim_dims;
 
-  ocp_nlp_in *_nlp_in;
-  ocp_nlp_out *_nlp_out;
-  ocp_nlp_dims *_nlp_dims;
-  ocp_nlp_config *_nlp_config;
-  ocp_nlp_solver *_nlp_solver;
-  void *_nlp_opts;
+  ocp_nlp_in* _nlp_in;
+  ocp_nlp_out* _nlp_out;
+  ocp_nlp_dims* _nlp_dims;
+  ocp_nlp_config* _nlp_config;
+  ocp_nlp_solver* _nlp_solver;
+  void* _nlp_opts;
 
   Eigen::VectorXd _state;
   Eigen::VectorXd _odom;

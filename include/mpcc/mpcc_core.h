@@ -7,12 +7,12 @@
 #include <memory>
 
 class MPCCore {
-public:
+ public:
   MPCCore();
 
   ~MPCCore();
 
-  void load_params(const std::map<std::string, double> &params);
+  void load_params(const std::map<std::string, double>& params);
   /**********************************************************************
    * Function: MPCCore::load_params()
    * Description: Loads parameters for the MPC controller
@@ -39,7 +39,8 @@ public:
    * reference trajectory if the error is larger than the threshold
    **********************************************************************/
 
-  Command &solve(const Eigen::VectorXd &state, bool is_reverse = false);
+  std::array<double, 2> solve(const Eigen::VectorXd& state,
+                              bool is_reverse = false);
   /**********************************************************************
    * Function: MPCCore::solve()
    * Description: Solves the MPC problem for the current timestep
@@ -56,24 +57,24 @@ public:
   /***********************
    * Setters and Getters
    ***********************/
-  void set_state(const Eigen::Vector3d &state);
-  void set_odom(const Eigen::Vector3d &odom);
-  void set_goal(const Eigen::Vector2d &goal);
-  void set_trajectory(const std::array<Spline1D, 2> &ref, double arclen);
-  void set_tubes(const std::array<Eigen::VectorXd, 2> &tubes);
-  void set_dyna_obs(const Eigen::MatrixXd &dyna_obs);
+  void set_state(const Eigen::Vector3d& state);
+  void set_odom(const Eigen::Vector3d& odom);
+  void set_goal(const Eigen::Vector2d& goal);
+  void set_trajectory(const std::array<Spline1D, 2>& ref, double arclen);
+  void set_tubes(const std::array<Eigen::VectorXd, 2>& tubes);
+  void set_dyna_obs(const Eigen::MatrixXd& dyna_obs);
 
   double get_s_from_odom() const;
   const bool get_solver_status() const;
-  const Eigen::VectorXd &get_state() const;
+  const Eigen::VectorXd& get_state() const;
   std::vector<Eigen::VectorXd> get_horizon() const;
-  const std::array<double, 2> &get_mpc_command() const;
-  const std::map<std::string, double> &get_params() const;
-  Eigen::VectorXd get_cbf_data(const Eigen::VectorXd &state,
-                               const Eigen::VectorXd &control,
+  const std::array<double, 2>& get_mpc_command() const;
+  const std::map<std::string, double>& get_params() const;
+  Eigen::VectorXd get_cbf_data(const Eigen::VectorXd& state,
+                               const Eigen::VectorXd& control,
                                bool is_abv) const;
 
-private:
+ private:
   double _dt;
   double _max_anga;
   double _max_linacc;
