@@ -376,12 +376,12 @@ void MPCCROS::visualizeTraj()
         geometry_msgs::Point& pt_a = traj.points.emplace_back();
         pt_a.x                     = px;
         pt_a.y                     = py;
-        pt_a.z                     = 1.0;
+        pt_a.z                     = 0.5;
 
         std_msgs::ColorRGBA color_msg;
-        color_msg.r = 0;
-        color_msg.g = 0.0;
-        color_msg.b = 192. / 255.;
+        color_msg.r = 1.0;
+        color_msg.g = 140. / 255.;
+        color_msg.b = 0.0;
         color_msg.a = 1.0;
 
         traj.colors.push_back(color_msg);
@@ -489,7 +489,7 @@ void MPCCROS::trajectorycb(const trajectory_msgs::JointTrajectory::ConstPtr& msg
 
         if (_cmd_acc)
         {
-            double old_vel = _cmd.vel.linear.x;
+            double old_vel    = _cmd.vel.linear.x;
             _cmd.vel.linear.x = std::max(_cmd.vel.linear.x - _max_linacc * _dt, 0.0);
             _cmd.acc.linear.x = (_cmd.vel.linear.x - old_vel) / _dt;
         }
@@ -811,7 +811,7 @@ void MPCCROS::publishMPCTrajectory()
         tmp.header             = pathMsg.header;
         tmp.pose.position.x    = state(1);
         tmp.pose.position.y    = state(2);
-        tmp.pose.position.z    = .1;
+        tmp.pose.position.z    = 1.0;
         tmp.pose.orientation.w = 1;
         pathMsg.poses.push_back(tmp);
     }
