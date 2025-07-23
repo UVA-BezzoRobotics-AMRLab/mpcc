@@ -42,13 +42,13 @@ class MPCBase {
 
   virtual std::array<double, 2> get_command() const = 0;
 
-  double limit(double prev_val, double input, double max_rate) const {
+  double limit(double prev_val, double input, double max_rate, double dt) const {
     double ret = input;
-    if (fabs(prev_val - input) / _dt > max_rate) {
+    if (fabs(prev_val - input) / dt > max_rate) {
       if (input > prev_val)
-        ret = prev_val + max_rate * _dt;
+        ret = prev_val + max_rate * dt;
       else
-        ret = prev_val - max_rate * _dt;
+        ret = prev_val - max_rate * dt;
     }
 
     return ret;

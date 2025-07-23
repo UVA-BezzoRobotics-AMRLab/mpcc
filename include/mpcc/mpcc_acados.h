@@ -237,8 +237,8 @@ class MPCC : public MPCBase {
   static constexpr uint8_t kIndSDot     = 5;
   static constexpr uint8_t kIndStateInc = 6;
 
-  static constexpr uint8_t kIndAngVel   = 0;
-  static constexpr uint8_t kIndLinAcc   = 1;
+  static constexpr uint8_t kIndLinAcc   = 0;
+  static constexpr uint8_t kIndAngVel   = 1;
   static constexpr uint8_t kIndSDDot    = 2;
   static constexpr uint8_t kIndInputInc = 3;
 

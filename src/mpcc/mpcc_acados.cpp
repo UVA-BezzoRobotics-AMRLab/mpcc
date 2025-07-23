@@ -7,8 +7,6 @@
 #include <mpcc/termcolor.hpp>
 #include <stdexcept>
 
-#include "Eigen/src/Core/Matrix.h"
-
 MPCC::MPCC() {
   // Set default value
   _dt          = .05;
@@ -48,8 +46,8 @@ MPCC::MPCC() {
   for (int i = 0; i < kNX; ++i)
     _state(i) = 0;
 
-  _prev_x0.resize((_mpc_steps + 1) * kNX);
-  _prev_u0.resize(_mpc_steps * kNU);
+  _prev_x0 = Eigen::VectorXd::Zero((_mpc_steps + 1) * kNX);
+  _prev_u0 = Eigen::VectorXd::Zero(_mpc_steps * kNU);
 
   mpc_x.resize(_mpc_steps);
   mpc_y.resize(_mpc_steps);
@@ -195,8 +193,8 @@ void MPCC::load_params(const std::map<std::string, double>& params) {
   mpc_linaccs.resize(_mpc_steps - 1);
   mpc_s_ddots.resize(_mpc_steps - 1);
 
-  _prev_x0.resize((_mpc_steps + 1) * kNX);
-  _prev_u0.resize(_mpc_steps * kNU);
+  _prev_x0 = Eigen::VectorXd::Zero((_mpc_steps + 1) * kNX);
+  _prev_u0 = Eigen::VectorXd::Zero(_mpc_steps * kNU);
 
   std::cout << "!! MPC Obj parameters updated !! " << std::endl;
   std::cout << "!! ACADOS model instantiated !! " << std::endl;
@@ -664,14 +662,17 @@ std::array<double, 2> MPCC::solve(const Eigen::VectorXd& state,
 
   // std::array<double, 2> input = _cmd.getCommand();
 
-  double curr_angvel = limit(prev_angvel, _prev_u0[kIndAngVel], _max_anga);
-  double new_vel     = limit(
-          _state[kIndV], _state[kIndV] + _prev_u0[kIndLinAcc] * _dt, _max_linacc);
+  double curr_angvel = limit(prev_angvel, _prev_u0[kIndAngVel], _max_anga, _dt);
+  double new_vel =
+      limit(state[kIndV], state[kIndV] + _prev_u0[kIndLinAcc] * _dt,
+            _max_linacc, _dt);
 
   _cmd = {new_vel, curr_angvel};
 
-  std::cout << "[MPCC] commanded input is: " << _prev_u0[kIndAngVel] << " "
-            << _prev_u0[kIndLinAcc] << std::endl;
+  std::cout << "[MPCC] commanded input is: " << curr_angvel << " " << new_vel
+            << std::endl;
+
+  std::cout << "[MPCC] commanded accel is: " << _prev_u0[kIndLinAcc] << "\n";
 
   return _cmd;
 }
