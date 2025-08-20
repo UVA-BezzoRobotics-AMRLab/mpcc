@@ -33,6 +33,10 @@ class MPCCROS
     ~MPCCROS();
 
    private:
+
+    void trajectoryCallback(const nav_msgs::Path::ConstPtr& msg);
+
+
     void publishMPCTrajectory();
     /**********************************************************************
      * Function: MPCCROS::publishMPCTrajectory()
@@ -46,25 +50,13 @@ class MPCCROS
      * trajectory generators can determine initial pos, vel, acc, etc.
      * for initial seeding.
      **********************************************************************/
-    std::vector<PathPlanning::Obstacle> _obstacles;
-    void obstacle1cb(const geometry_msgs::TransformStamped::ConstPtr& msg);
-    void obstacle2cb(const geometry_msgs::TransformStamped::ConstPtr& msg);
 	
-     void blendTrajectories(double blend_factor);    
     // Trajectory management
      Eigen::RowVectorXd _requested_ss, _requested_xs, _requested_ys;
      double _blend_new_s = 0.0;
      double _blend_traj_curr_s = 0.0;
      double _true_len = 0.0;
     //
-    // // Blending control
-     bool _in_transition = false;
-     double _transition_start_time = 0.0;
-     double _transition_duration = 0.0;
-    std::vector<Eigen::Vector2d> _traj_executed;
-    // // ROS
-    ros::Subscriber _viconSub;
-    ros::Subscriber _sub1, _sub2; 
     void publishReference();
     /**********************************************************************
      * Function: MPCCROS::publishReference()
@@ -143,11 +135,6 @@ class MPCCROS
      * Returns:
      * N/A
      **********************************************************************/
-    void viconcb(const geometry_msgs::TransformStamped::ConstPtr& data);
-    bool generateTrajSrv(uvatraj_msgs::RequestTraj::Request &req, uvatraj_msgs::RequestTraj::Response &res);
-    bool modifyTrajSrv(uvatraj_msgs::ExecuteTraj::Request &req, uvatraj_msgs::ExecuteTraj::Response &res);
-    bool executeTrajSrv(std_srvs::Empty::Request &req, std_srvs::Empty::Response &res);
-    bool pauseExecutionSrv(std_srvs::SetBool::Request &req, std_srvs::SetBool::Response &res);
     bool toggleBackup(std_srvs::Empty::Request &req, std_srvs::Empty::Response &res);
 
     /************************
@@ -193,14 +180,6 @@ class MPCCROS
     ros::ServiceServer _mode_srv;
     ros::ServiceServer _backup_srv;
 
-    ros::ServiceServer _generate_traj_srv;
-    ros::ServiceServer _modify_traj_srv;
-    ros::ServiceServer _exec_traj_Srv;
-    ros::ServiceServer _pause_execution_Srv;
-
-
-    ros::ServiceClient _traj_sender;
-    ros::ServiceClient _traj_suggest_Srv;
     ros::ServiceClient _sac_srv;
 
     ros::NodeHandle _nh;
