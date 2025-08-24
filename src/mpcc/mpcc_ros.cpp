@@ -18,15 +18,8 @@
 #include <unsupported/Eigen/Splines>
 #include <Eigen/Core>
 #include <algorithm>
-
-
-
-constexpr double resolution = 0.03;
-
+#include <nav_msgs/Path.h>
 #include "mpcc/utils.h"
-//#include <PathPlanning/gaussian_potential_field.hpp>
-
-
 
 MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~")
 {
@@ -48,25 +41,7 @@ MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~")
 
     _ref = {};
     
-    //AR
-    _requested_ss = Eigen::RowVectorXd();
-    _requested_xs = Eigen::RowVectorXd();
-    _requested_ys = Eigen::RowVectorXd();
-    _requested_ref = {};
-    _old_ref = {}; 
-
-    _blend_new_s = 0.0;
-   
-    _is_executing = false;
-    //_in_transition = false;
-    //_transition_start_time = 0.0;
-    //_transition_duration = 0.0;
-    _requested_len = 0.0;
-    _true_len = 0.0;
-    _x_goal_euclid = 0.0;
-    _y_goal_euclid = 0.0;
-    _old_ref_len = 0.0;
-    
+  
     _vel_msg.linear.x  = 0;
     _vel_msg.angular.z = 0;
 
@@ -107,7 +82,7 @@ MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~")
 
     // Teleop params
     _nh.param("teleop", _teleop, false);
-    _nh.param<std::string>("frame_id", _frame_id, "vicon/world");
+    _nh.param<std::string>("frame_id", _frame_id, "map");
 
     // clf params
     _nh.param("w_lyap_lag_e", _w_ql_lyap, 1.0);
@@ -194,9 +169,9 @@ MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~")
     ROS_INFO("done loading params!");
 
     _mapSub  = nh.subscribe("/map", 1, &MPCCROS::mapcb, this);
-    //_odomSub = nh.subscribe("/odometry/filtered", 1, &MPCCROS::odomcb, this);
-    _viconSub = nh.subscribe("/vicon/Rosbot_AR_2/Rosbot_AR_2", 1, &MPCCROS::viconcb, this);
-    _trajSub = nh.subscribe("/reference_trajectory", 1, &MPCCROS::trajectorycb, this);
+    _odomSub = nh.subscribe("/odom", 1, &MPCCROS::odomcb, this);
+    //_viconSub = nh.subscribe("/vicon/rosbotAR/rosbotAR", 1, &MPCCROS::viconcb, this);
+    _trajSub = nh.subscribe("/TransferTrajectory", 1, &MPCCROS::trajectorycb, this);
     _obsSub  = nh.subscribe("/obs_odom", 1, &MPCCROS::dynaobscb, this);
 
     _timer = nh.createTimer(ros::Duration(_dt), &MPCCROS::mpcc_ctrl_loop, this);
@@ -218,6 +193,12 @@ MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~")
 
     timer_thread = std::thread(&MPCCROS::publishVel, this);
 
+
+    //AR
+    //
+    _execute_traj_srv = nh.advertiseService("/execute_trajectory", &MPCCROS::executeTrajSrv, this);
+
+
     _backup_srv = nh.advertiseService("/mpc_backup", &MPCCROS::toggleBackup, this);
 
     if (_is_logging)
@@ -236,35 +217,44 @@ MPCCROS::~MPCCROS()
     if (timer_thread.joinable()) timer_thread.join();
 }
 
-//definitely correct
+
+bool MPCCROS::executeTrajSrv(std_srvs::Empty::Request &req, std_srvs::Empty::Response &res){
+
+	ROS_INFO("Execute trajectory service called.");
+
+	if (!_is_init) {
+	        ROS_WARN("Cannot execute trajectory: tracker not initialized (no odom?).");
+	        return false;
+	    }
+
+	    if (_is_executing) {
+	        ROS_WARN("Already executing a trajectory. No changes made.");
+	        return false;
+	    }
+
+	if (!_is_executing){
+		_traj_reset = true;
+		_is_executing = true;
+		_mpc_core->set_trajectory(_ref, _ref_len);
+		ROS_INFO("Executing the requested trajectory now. Robot will start moving.");
+		return true;
+
+	}
+	else {
+		ROS_WARN("Already executing a trajectory. No changes made.");
+		return true;
+	}
+
+
+	return true;
+
+
+}
+
+
 void MPCCROS::viconcb(const geometry_msgs::TransformStamped::ConstPtr& data){
-
-
-	/*ROS_ERROR("Received VICON transform: [x=%.3f, y=%.3f, z=%.3f] [qw=%.3f, qx=%.3f, qy=%.3f, qz=%.3f]",
-              data->transform.translation.x,
-              data->transform.translation.y,
-              data->transform.translation.z,
-              data->transform.rotation.w,
-              data->transform.rotation.x,
-              data->transform.rotation.y,
-              data->transform.rotation.z);
-*/
-
-
-//	tf::Quaternion q(data->transform.translation.x, data->transform.translation.y, data->transform.translation.z, data->transform.rotation.w);
-
-	//tf::Quaternion q_tf;
-
-	//tf::quaternionMsgToTF(data->transform.rotation, q_tf);
-
 	
 	
-	//tf::Matrix3x3 m(q_tf);
-
-	//double roll, pitch, yaw;
-
-	//m.getRPY(roll,pitch,yaw);
-
 	tf::Quaternion q(
         data->transform.rotation.x,
         data->transform.rotation.y,
@@ -631,6 +621,7 @@ void recalculateArcLength(const Eigen::RowVectorXd& xs,
         double dx = xs(i) - xs(i - 1);
         double dy = ys(i) - ys(i - 1);
         ss(i) = ss(i - 1) + std::hypot(dx, dy);
+        ROS_INFO("Added pt ss(%.2f): xs(%.2f) ys(%.2f) ",ss(i),xs(i),ys(i));
     }
 }
 
@@ -646,12 +637,12 @@ void recalculateArcLength(const Eigen::RowVectorXd& xs,
  * Since the ACADOS MPC requires a hard coded trajectory size, the
  * trajectory is extended if it is less than the required size
  **********************************************************************/
-void MPCCROS::trajectorycb(const trajectory_msgs::JointTrajectory::ConstPtr& msg)
+void MPCCROS::trajectorycb(const nav_msgs::Path::ConstPtr& msg)
 {
     ROS_INFO("Trajectory received!");
-    _trajectory = *msg;
+    //_trajectory = *msg;
 
-    if (msg->points.size() == 0)
+    if (msg->poses.size() == 0)
     {
         ROS_WARN("Trajectory is empty, stopping!");
         _vel_msg.linear.x  = 0;
@@ -664,7 +655,7 @@ void MPCCROS::trajectorycb(const trajectory_msgs::JointTrajectory::ConstPtr& msg
 
     _traj_reset = true;
 
-    int N = msg->points.size();
+    int N = msg->poses.size();
 
     Eigen::RowVectorXd ss, xs, ys;
     ss.resize(N);
@@ -673,12 +664,11 @@ void MPCCROS::trajectorycb(const trajectory_msgs::JointTrajectory::ConstPtr& msg
 
     for (int i = 0; i < N; ++i)
     {
-        xs(i) = msg->points[i].positions[0];
-        ys(i) = msg->points[i].positions[1];
-        ss(i) = msg->points[i].time_from_start.toSec();
-
-        /*ROS_INFO("%.2f:\t(%.2f, %.2f)", ss(i), xs(i), ys(i));*/
+        xs(i) = msg->poses[i].pose.position.x;
+        ys(i) = msg->poses[i].pose.position.y;
     }
+
+    recalculateArcLength(xs,ys,ss);
 
     _ref_len      = ss(ss.size() - 1);
     _true_ref_len = _ref_len;
@@ -689,7 +679,8 @@ void MPCCROS::trajectorycb(const trajectory_msgs::JointTrajectory::ConstPtr& msg
     const auto fitY = utils::Interp(ys, 3, ss);
     Spline1D splineY(fitY);
 
-    // if reference length is less than required mpc size, extend trajectory
+    /*
+     * // if reference length is less than required mpc size, extend trajectory
     if (_ref_len < _mpc_ref_len_sz)
     {
         ROS_WARN("reference length (%.2f) is smaller than %.2fm, extending", _ref_len,
@@ -701,7 +692,7 @@ void MPCCROS::trajectorycb(const trajectory_msgs::JointTrajectory::ConstPtr& msg
         double dx  = splineX.derivatives(end, 1).coeff(1);
         double dy  = splineY.derivatives(end, 1).coeff(1);
 
-        /*ROS_WARN("(%.2f, %.2f)\t(%.2f, %.2f)", px, py, dx, dy);*/
+        ROS_WARN("(%.2f, %.2f)\t(%.2f, %.2f)", px, py, dx, dy)i;
 
         double ds = _mpc_ref_len_sz / (N - 1);
 
@@ -729,7 +720,7 @@ void MPCCROS::trajectorycb(const trajectory_msgs::JointTrajectory::ConstPtr& msg
         splineY         = Spline1D(fitY);
 
         _ref_len = _mpc_ref_len_sz;
-    }
+    }*/
 
     _ref[0] = splineX;
     _ref[1] = splineY;
@@ -763,33 +754,8 @@ double MPCCROS::get_s_from_state(const std::array<Spline1D, 2>& ref, double ref_
 
     return s;
 }
-/*
-void MPCCROS::blendTrajectories(double blend_factor)
-{
-    // Use normalized coordinates from 0 to 1
-    double num_points = 10;
-    for (double t = 0; t <= 1.0; t += 1.0/num_points)
-    {
-        // Scale s coordinate for each trajectory
-        double s_old = t * _old_ref_len;
-        double s_new = t * _ref_len;
-        
-        // Get points from both trajectories
-        double old_x = _old_ref[0](s_old).coeff(0);
-        double old_y = _old_ref[1](s_old).coeff(0);
-        double new_x = _ref[0](s_new).coeff(0);
-        double new_y = _ref[1](s_new).coeff(0);
-        
-        // Linear interpolation between trajectories
-        double blended_x = old_x * (1 - blend_factor) + new_x * blend_factor;
-        double blended_y = old_y * (1 - blend_factor) + new_y * blend_factor;
-        
-        // Scale s coordinate for the blended trajectory
-        double s_blended = t * std::min(_old_ref_len, _ref_len);
-        _mpc_core->updateReferencePoint(s_blended, blended_x, blended_y);
-    }
-}
-*/
+
+
 void MPCCROS::mpcc_ctrl_loop(const ros::TimerEvent& event)
 {
     if (!_is_init || _estop){
