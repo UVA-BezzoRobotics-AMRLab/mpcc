@@ -1,0 +1,43 @@
+# IPOPT Horizon MPC parameters
+frame_id: "vicon/world"
+use_vicon: false
+mpc_steps: 10
+controller_frequency: 10
+
+# cost function weights
+w_cte: 1.0
+w_pos: 1.3
+w_linvel: .8
+w_etheta: 1.0
+w_angvel: 0.15
+w_angvel_d: .7
+
+w_lag_e: 100
+w_contour_e: 0.8
+w_speed: 2.0
+
+# CLF Params
+w_lyap_lag_e: 1
+w_lyap_contour_e: 1
+clf_gamma: .5
+
+# CBF params
+use_cbf: false
+cbf_alpha_abv: 100
+cbf_alpha_blw: 100
+cbf_colinear: .05
+cbf_padding: .05
+
+prop_gain: 3 #1.5
+prop_gain_thresh: .5
+# prop_gain_thresh: .349
+
+max_tube_width: .75
+
+# recompile after changing all params from here on
+ref_length_size: 4
+mpc_ref_samples: 11
+
+# there will be d+1 variables in the LP formulation
+tube_poly_degree: 6
+tube_num_samples: 100

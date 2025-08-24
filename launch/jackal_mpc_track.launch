@@ -1,0 +1,41 @@
+<?xml version="1.0"?>
+
+<launch>
+	<arg name="odomTopic" default="/gmapping/odometry" />
+	<arg name="cmdTopic" default="/cmd_vel" />
+  <arg name="mpc_type" value="mpcc" />
+  <arg name="use_rl" default="false" />
+  <arg name="db_filename" default="$(env HOME)/dbs/rl_learning.db" />
+
+  <rosparam file="$(find mpcc)/params/$(arg mpc_type).yaml" command="load" ns="mpcc/" />
+  <rosparam file="$(find mpcc)/params/robo_params.yaml" command="load" ns="mpcc/" />
+
+  <!-- For logging data when learning CBF adaptation -->
+	<group if="$(arg use_rl)">
+		<node pkg="amrl_logging" type="sqlite_node" name="logging_node" output="screen">
+			<param name="db_filename" value="$(arg db_filename)"/>
+		</node>
+    <node name="model_server" pkg="mpcc" type="model_server.py" output="screen" />
+	</group>
+
+	<node name="mpcc" pkg="mpcc" type="mpcc_ros" output="screen">
+	<!-- <node name="jackal_mpc_track" pkg="cbf_tracking" type="jackal_mpc_tracking" 
+		launch-prefix="lldb" output="screen"> -->
+	<!-- <node name="jackal_mpc_track" pkg="cbf_tracking" type="jackal_mpc_tracking" 
+		launch-prefix="valgrind -s" output="screen"> -->
+		
+		<param name="mpc_type" value="$(arg mpc_type)" />
+
+		<remap from="/odometry/filtered" to="$(arg odomTopic)" />
+		<remap from="/cmd_vel" to="$(arg cmdTopic)" />
+	</node>
+
+	<rosparam file="$(find mpcc)/params/local_costmap_params.yaml" command="load" ns="local_costmap/local_costmap/" />
+	<node name="local_costmap" pkg="mpcc" type="local_costmap" output="screen" />
+
+  <include file="$(find mpcc)/launch/gmapping.launch" />
+
+  <node name="publish_pf_pose" pkg="mpcc" type="publish_pf_pose" output="screen" />
+
+
+</launch>

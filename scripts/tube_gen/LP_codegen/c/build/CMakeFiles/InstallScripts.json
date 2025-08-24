@@ -1,0 +1,8 @@
+{
+	"InstallScripts" : 
+	[
+		"/home/catkin_ws/src/mpcc/scripts/tube_gen/LP_codegen/c/build/cmake_install.cmake",
+		"/home/catkin_ws/src/mpcc/scripts/tube_gen/LP_codegen/c/build/solver_code/cmake_install.cmake"
+	],
+	"Parallel" : false
+}
