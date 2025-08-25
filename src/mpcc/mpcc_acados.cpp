@@ -505,9 +505,10 @@ std::cout << utraj[i] << std::endl;
     for (int i = 0; i < _mpc_steps - 1; ++i)
     {
       ROS_WARN("In second loop at step %i", i);
-        mpc_angvels[i] = utraj[i * 3 + 0];
-    mpc_linaccs[i] = utraj[i * 3 + 1];
-    mpc_s_ddots[i] = utraj[i * 3 + 2];
+       mpc_angvels[i] = utraj[_angvel_start + i * _ind_input_inc];
+        mpc_linaccs[i] = utraj[_linacc_start + i * _ind_input_inc];
+        mpc_s_ddots[i] = utraj[_s_ddot_start + i * _ind_input_inc];
+    
     }
 
     ROS_WARN("After second loop");

@@ -75,7 +75,7 @@ RUN apt-get update && \
     pip install importlib_resources && \
     pip install -r src/mpcc/requirements.txt && \
     pip install -e $ACADOS_SOURCE_DIR/interfaces/acados_template && \
-    mv ./src/mpcc/amrl_logging ./src
+COPY ./amrl_logging ./src
 
 WORKDIR /home/catkin_ws/src/mpcc/scripts/tube_gen
 
