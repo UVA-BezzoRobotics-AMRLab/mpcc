@@ -18,7 +18,7 @@
 #include <grid_map_ros/grid_map_ros.hpp>
 #include <string>
 #include <thread>
-
+#include <nav_msgs/Path.h>
 #include "Eigen/src/Core/Matrix.h"
 #include "mpcc/mpcc_core.h"
 
@@ -102,7 +102,12 @@ class MPCCROS
     void dynaobscb(const nav_msgs::Odometry::ConstPtr &msg);
     void mapcb(const nav_msgs::OccupancyGrid::ConstPtr &msg);
     void goalcb(const geometry_msgs::PoseStamped::ConstPtr &msg);
-    void trajectorycb(const trajectory_msgs::JointTrajectory::ConstPtr &msg);
+    void trajectorycb(const nav_msgs::Path::ConstPtr &msg);
+
+
+     ros::ServiceServer _execute_traj_srv;
+    bool _is_executing;
+    bool executeTrajSrv(std_srvs::Empty::Request &req, std_srvs::Empty::Response &res);
 
     void publishVel();
     /**********************************************************************

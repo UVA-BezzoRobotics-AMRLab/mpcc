@@ -1,5 +1,5 @@
 #include "mpcc/mpcc_ros.h"
-
+#include <nav_msgs/Path.h>
 #include <geometry_msgs/Point32.h>
 #include <geometry_msgs/PointStamped.h>
 #include <geometry_msgs/PolygonStamped.h>
@@ -80,7 +80,7 @@ MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~")
 
     // Teleop params
     _nh.param("teleop", _teleop, false);
-    _nh.param<std::string>("frame_id", _frame_id, "odom");
+    _nh.param<std::string>("frame_id", _frame_id, "map");
 
     // clf params
     _nh.param("w_lyap_lag_e", _w_ql_lyap, 1.0);
@@ -170,8 +170,8 @@ MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~")
     ROS_INFO("done loading params!");
 
     _mapSub  = nh.subscribe("/map", 1, &MPCCROS::mapcb, this);
-    _odomSub = nh.subscribe("/odometry/filtered", 1, &MPCCROS::odomcb, this);
-    _trajSub = nh.subscribe("/reference_trajectory", 1, &MPCCROS::trajectorycb, this);
+    _odomSub = nh.subscribe("/odom", 1, &MPCCROS::odomcb, this);
+    _trajSub = nh.subscribe("/TransferTrajectory", 1, &MPCCROS::trajectorycb, this);
     _obsSub  = nh.subscribe("/obs_odom", 1, &MPCCROS::dynaobscb, this);
 
     _timer = nh.createTimer(ros::Duration(_dt), &MPCCROS::mpcc_ctrl_loop, this);
@@ -193,6 +193,11 @@ MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~")
     timer_thread = std::thread(&MPCCROS::publishVel, this);
 
     _backup_srv = nh.advertiseService("/mpc_backup", &MPCCROS::toggleBackup, this);
+    _execute_traj_srv = nh.advertiseService("/execute_trajectory", &MPCCROS::executeTrajSrv, this);
+
+
+    _is_executing = false;
+
 
     if (_is_logging)
     {
@@ -209,6 +214,44 @@ MPCCROS::~MPCCROS()
 {
     if (timer_thread.joinable()) timer_thread.join();
 }
+
+
+
+bool MPCCROS::executeTrajSrv(std_srvs::Empty::Request &req, std_srvs::Empty::Response &res){
+
+	ROS_INFO("Execute trajectory service called.");
+
+	//if (!_is_init) {
+	        //ROS_WARN("Cannot execute trajectory: tracker not initialized (no odom?).");
+	      //  return false;
+	    //}
+
+	    //if (_is_executing) {
+	       // ROS_WARN("Already executing a trajectory. No changes made.");
+	       // return false;
+	    ///}
+
+	//if (!_is_executing){
+		_traj_reset = true;
+		_is_executing = true;
+		_mpc_core->set_trajectory(_ref, _ref_len, _true_ref_len);
+		ROS_INFO("Executing the requested trajectory now. Robot will start moving.");
+		return true;
+
+
+
+	//}
+	//else {
+		//ROS_WARN("Already executing a trajectory. No changes made.");
+		//return true;
+	//}
+
+
+	return true;
+
+
+} 
+
 
 bool MPCCROS::toggleBackup(std_srvs::Empty::Request& req, std_srvs::Empty::Response& res)
 {
@@ -464,6 +507,27 @@ void MPCCROS::dynaobscb(const nav_msgs::Odometry::ConstPtr& msg)
 
     _mpc_core->set_dyna_obs(dyna_obs);
 }
+
+void recalculateArcLength(const Eigen::RowVectorXd& xs,
+                          const Eigen::RowVectorXd& ys,
+                          Eigen::RowVectorXd& ss)
+{
+    const int n_pts = xs.size();
+    ss.resize(n_pts);
+    if (n_pts == 0) {
+        return;
+    }
+
+    ss(0) = 0.0;
+    for (int i = 1; i < n_pts; ++i) {
+        double dx = xs(i) - xs(i - 1);
+        double dy = ys(i) - ys(i - 1);
+        ss(i) = ss(i - 1) + std::hypot(dx, dy);
+    }
+}
+
+
+
 /**********************************************************************
  * Function: MPCCROS::trajectorycb(const trajectory_msgs::JointTrajectory::ConstPtr& msg)
  * Description: Callback for trajectory message
@@ -476,12 +540,12 @@ void MPCCROS::dynaobscb(const nav_msgs::Odometry::ConstPtr& msg)
  * Since the ACADOS MPC requires a hard coded trajectory size, the
  * trajectory is extended if it is less than the required size
  **********************************************************************/
-void MPCCROS::trajectorycb(const trajectory_msgs::JointTrajectory::ConstPtr& msg)
+void MPCCROS::trajectorycb(const nav_msgs::Path::ConstPtr& msg)
 {
     ROS_INFO("Trajectory received!");
-    _trajectory = *msg;
+    //_trajectory = *msg;
 
-    if (msg->points.size() == 0)
+    if (msg->poses.size() == 0)
     {
         ROS_WARN("Trajectory is empty, stopping!");
         /*_vel_msg.linear.x  = std::max(_vel_msg.linear.x - _max_linacc * _dt, 0.0);*/
@@ -507,7 +571,7 @@ void MPCCROS::trajectorycb(const trajectory_msgs::JointTrajectory::ConstPtr& msg
 
     _traj_reset = true;
 
-    int N = msg->points.size();
+    int N = msg->poses.size();
 
     Eigen::RowVectorXd ss, xs, ys;
     ss.resize(N);
@@ -516,12 +580,14 @@ void MPCCROS::trajectorycb(const trajectory_msgs::JointTrajectory::ConstPtr& msg
 
     for (int i = 0; i < N; ++i)
     {
-        xs(i) = msg->points[i].positions[0];
-        ys(i) = msg->points[i].positions[1];
-        ss(i) = msg->points[i].time_from_start.toSec();
+        xs(i) = msg->poses[i].pose.position.x;
+        ys(i) = msg->poses[i].pose.position.y;
+        //ss(i) = msg->points[i].time_from_start.toSec();
 
-        /*ROS_INFO("%.2f:\t(%.2f, %.2f)", ss(i), xs(i), ys(i));*/
+        ROS_INFO("added pt (%.2f, %.2f)", xs(i), ys(i));
     }
+
+    recalculateArcLength(xs,ys,ss);
 
     _ref_len      = ss(ss.size() - 1);
     _true_ref_len = _ref_len;
@@ -611,7 +677,10 @@ void MPCCROS::mpcc_ctrl_loop(const ros::TimerEvent& event)
 {
     if (!_is_init || _estop) return;
 
-    if (_trajectory.points.size() == 0) return;
+    //if (_trajectory.points.size() == 0) return;
+    
+    if (!_is_executing) return;
+
 
     double len_start     = get_s_from_state(_ref, _true_ref_len);
     double corrected_len = len_start;
@@ -696,8 +765,8 @@ void MPCCROS::mpcc_ctrl_loop(const ros::TimerEvent& event)
     if (!status)
         ROS_WARN("could not generate tubes, mpc not running");
     else
-        visualizeTubes();
-
+        //visualizeTubes();
+    ROS_WARN("set tubes");
     _mpc_core->set_tubes(_tubes);
 
     // get alpha value if logging is enabled
@@ -717,8 +786,10 @@ void MPCCROS::mpcc_ctrl_loop(const ros::TimerEvent& event)
     if (_reverse_mode) vel *= -1;
     state << _odom(0), _odom(1), _odom(2), vel, 0, _s_dot;
 
-    std::array<double, 2> mpc_results = _mpc_core->solve(state, _reverse_mode);
 
+    ROS_WARN("mpc_results");
+    std::array<double, 2> mpc_results = _mpc_core->solve(state, _reverse_mode);
+    ROS_WARN("after mpc_results");
     _cmd.vel.angular.z = mpc_results[1];
     _cmd.acc.angular.z = mpc_results[1];
     if (!_cmd_acc)

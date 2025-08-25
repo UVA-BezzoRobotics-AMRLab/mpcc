@@ -142,6 +142,17 @@ std::array<double, 2> MPCCore::solve(const Eigen::VectorXd &state, bool is_rever
         return {0, 0};
     }
 
+    ROS_WARN("State vector size: %ld", state.size());
+    ROS_WARN("State values: %.2f, %.2f, %.2f, %.2f, %.2f, %.2f",
+             state(0), state(1), state(2), state(3), state(4), state(5));
+
+    if(state.size() < 4){
+        
+    std::cout << termcolor::red << "[MPC Core] State vector too small! Size: " 
+                    << state.size() << termcolor::reset << std::endl;
+          return {0, 0};
+    }
+
     // stop robot if we have reached trajectory end
     double len_start = get_s_from_odom();
     if (len_start > _true_ref_length - 3e-1)
@@ -190,8 +201,15 @@ std::array<double, 2> MPCCore::solve(const Eigen::VectorXd &state, bool is_rever
     auto start = std::chrono::high_resolution_clock::now();
     // Eigen::VectorXd state(4);
     // state << _odom(0), _odom(1), _odom(2), _curr_vel;
+    
+
+    
     if (is_reverse) _curr_vel = -1 * state(3);
+    
+    ROS_WARN("in solver");
+
     _mpc_results = _mpc->solve(state, is_reverse);
+    
     if (is_reverse) _mpc_results[1] *= -1;
 
     // _mpc_results = _mpc->Solve(_state, _reference);
