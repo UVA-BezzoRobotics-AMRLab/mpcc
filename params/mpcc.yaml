@@ -8,7 +8,7 @@ cmd_acc: true
 # cost function weights
 w_cte: 1.0
 w_pos: 1.3
-w_linvel: .8
+w_linvel: .1
 w_etheta: 1.0
 w_angvel: 0.15
 w_angvel_d: .7

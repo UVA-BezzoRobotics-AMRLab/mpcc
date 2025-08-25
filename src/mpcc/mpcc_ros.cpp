@@ -442,7 +442,7 @@ void MPCCROS::publishVel()
     while (ros::ok())
     {
         /*if (_trajectory.points.size() > 0) _velPub.publish(_vel_msg);*/
-        if (_trajectory.points.size() > 0) _velPub.publish(_cmd.get_cmd());
+        if (_is_executing) _velPub.publish(_cmd.get_cmd());
 
         // _velPub.publish(_vel_msg);
 
