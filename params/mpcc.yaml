@@ -24,7 +24,7 @@ w_lyap_contour_e: 1
 clf_gamma: .5
 
 # CBF params
-use_cbf: false
+use_cbf: false  
 cbf_alpha_abv: 0.5
 cbf_alpha_blw: 0.5
 cbf_colinear: 0.05

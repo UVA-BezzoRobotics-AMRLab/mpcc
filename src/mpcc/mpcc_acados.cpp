@@ -492,19 +492,22 @@ std::cout << "[MPCC] First control: a=" << utraj[0]
           << " s_ddot=" << utraj[2] << std::endl;
 
 
+//print out utraj
 
+for(int i = 0; i<utraj.size(); i++){
+
+std::cout << utraj[i] << std::endl;
+
+}
+
+
+    ROS_WARN("size of utraj %i", utraj.size());
     for (int i = 0; i < _mpc_steps - 1; ++i)
     {
       ROS_WARN("In second loop at step %i", i);
-        //mpc_angvels[i] = utraj[_angvel_start + i * _ind_input_inc];
-        //mpc_linaccs[i] = utraj[_linacc_start + i * _ind_input_inc];
-        //mpc_s_ddots[i] = utraj[_s_ddot_start + i * _ind_input_inc];
-
-
-
-    mpc_linaccs[i] = utraj[i * NU + 0];  // Linear acceleration (first element)
-    mpc_angvels[i] = utraj[i * NU + 1];  // Angular velocity (second element)
-    mpc_s_ddots[i] = utraj[i * NU + 2];  // s double dot (third element)
+        mpc_angvels[i] = utraj[i * 3 + 0];
+    mpc_linaccs[i] = utraj[i * 3 + 1];
+    mpc_s_ddots[i] = utraj[i * 3 + 2];
     }
 
     ROS_WARN("After second loop");
