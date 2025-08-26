@@ -6,6 +6,7 @@ project(mpcc C CXX)
 
 # add cmake module path
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
+include(AcadosUtils)
 
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
@@ -39,6 +40,7 @@ message("ACADOS_INCLUDE_DIRS: ${ACADOS_INCLUDE_DIRS}")
 add_service_files(
   FILES
   QuerySAC.srv
+  QuerySACDI.srv
 )
 
 generate_messages(
@@ -70,59 +72,48 @@ include_directories(
 )
 
 
-set(ACADOS_OUTPUT_DIR ${CMAKE_SOURCE_DIR}/scripts/unicycle_mpcc/c_generated_code)
-
-set(ACADOS_OUTPUT_SRC
-  ${ACADOS_OUTPUT_DIR}/acados_solver_unicycle_model_mpcc.c
-  ${ACADOS_OUTPUT_DIR}/acados_sim_solver_unicycle_model_mpcc.c
-  ${ACADOS_OUTPUT_DIR}/unicycle_model_mpcc_model/unicycle_model_mpcc_expl_ode_fun.c
-  ${ACADOS_OUTPUT_DIR}/unicycle_model_mpcc_model/unicycle_model_mpcc_expl_vde_adj.c
-  ${ACADOS_OUTPUT_DIR}/unicycle_model_mpcc_model/unicycle_model_mpcc_expl_vde_forw.c
-  ${ACADOS_OUTPUT_DIR}/unicycle_model_mpcc_model/unicycle_model_mpcc_expl_ode_hess.c
-  ${ACADOS_OUTPUT_DIR}/unicycle_model_mpcc_cost/unicycle_model_mpcc_cost_ext_cost_fun.c
-  ${ACADOS_OUTPUT_DIR}/unicycle_model_mpcc_cost/unicycle_model_mpcc_cost_ext_cost_0_fun.c
-  ${ACADOS_OUTPUT_DIR}/unicycle_model_mpcc_cost/unicycle_model_mpcc_cost_ext_cost_e_fun.c
-  ${ACADOS_OUTPUT_DIR}/unicycle_model_mpcc_cost/unicycle_model_mpcc_cost_ext_cost_fun_jac.c
-  ${ACADOS_OUTPUT_DIR}/unicycle_model_mpcc_cost/unicycle_model_mpcc_cost_ext_cost_0_fun_jac.c
-  ${ACADOS_OUTPUT_DIR}/unicycle_model_mpcc_cost/unicycle_model_mpcc_cost_ext_cost_e_fun_jac.c
-  ${ACADOS_OUTPUT_DIR}/unicycle_model_mpcc_cost/unicycle_model_mpcc_cost_ext_cost_fun_jac_hess.c
-  ${ACADOS_OUTPUT_DIR}/unicycle_model_mpcc_cost/unicycle_model_mpcc_cost_ext_cost_0_fun_jac_hess.c
-  ${ACADOS_OUTPUT_DIR}/unicycle_model_mpcc_cost/unicycle_model_mpcc_cost_ext_cost_e_fun_jac_hess.c
+set(ACADOS_MODELS
+  unicycle_model_mpcc
+  double_integrator_mpcc
 )
 
-set(ACADOS_OUTPUT_HEADERS
-  ${ACADOS_OUTPUT_DIR}/acados_solver_unicycle_model_mpcc.h
-  ${ACADOS_OUTPUT_DIR}/acados_sim_solver_unicycle_model_mpcc.h
-  ${ACADOS_OUTPUT_DIR}/unicycle_model_mpcc_cost/unicycle_model_mpcc_cost.h
-  ${ACADOS_OUTPUT_DIR}/unicycle_model_mpcc_model/unicycle_model_mpcc_model.h
-)
+set(ACADOS_OUTPUT_DIRS "")
+set(ACADOS_OUTPUT_SRC "")
+set(ACADOS_OUTPUT_HEADERS "")
+set(ACADOS_OUTPUT_LIBS "")
+set(ACADOS_TARGETS "")
+foreach(model ${ACADOS_MODELS})
+  set(${model}_SCRIPTS 
+    ${CMAKE_SOURCE_DIR}/scripts/${model}/mpcc_model.py
+    ${CMAKE_SOURCE_DIR}/scripts/${model}/mpcc_ocp.py
+  )
+  list(APPEND ACADOS_OUTPUT_DIRS ${CMAKE_SOURCE_DIR}/scripts/${model}/c_generated_code)
 
-set(ACADOS_OUTPUT_LIB
-  ${ACADOS_OUTPUT_DIR}/libacados_ocp_solver_unicycle_model_mpcc.so
-  ${ACADOS_OUTPUT_DIR}/libacados_sim_solver_unicycle_model_mpcc.so
-)
+  collect_acados_generated_code(${model})
+  list(APPEND ACADOS_OUTPUT_SRC ${${model}_SRC})
+  list(APPEND ACADOS_OUTPUT_HEADERS ${${model}_HEADERS})
+  list(APPEND ACADOS_OUTPUT_LIBS ${${model}_LIBS})
 
-set(ACADOS_OUTPUT_FILES ${ACADOS_OUTPUT_SRC} ${ACADOS_OUTPUT_HEADERS} ${ACADOS_OUTPUT_LIB})
+  # add model specific output to a variable called ${model}_output_files
 
-set(ACADOS_SCRIPTS 
-  ${CMAKE_SOURCE_DIR}/scripts/unicycle_mpcc/mpcc_model.py
-  ${CMAKE_SOURCE_DIR}/scripts/unicycle_mpcc/mpcc_ocp_horizon.py
-)
+  add_custom_command(
+    OUTPUT ${${model}_OUTPUT_FILES}
+    COMMAND echo "y" | ${Python_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/${model}/mpcc_ocp.py --yaml ${CMAKE_SOURCE_DIR}/params/${model}.yaml
+    DEPENDS ${ACADOS_SCRIPTS} ${CMAKE_SOURCE_DIR}/params/${model}.yaml
+    COMMENT "Building MPC code with Acados"
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/scripts/${model}
+    VERBATIM
+  )
 
-add_custom_command(
-  OUTPUT ${ACADOS_OUTPUT_FILES}
-  COMMAND echo "y" | ${Python_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/unicycle_mpcc/mpcc_ocp_horizon.py --yaml ${CMAKE_SOURCE_DIR}/params/mpcc.yaml
-  DEPENDS ${ACADOS_SCRIPTS} ${CMAKE_SOURCE_DIR}/params/mpcc.yaml
-  COMMENT "Building MPC code with Acados"
-  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/scripts/unicycle_mpcc
-  VERBATIM
-)
+  message("scripts: ${${model}_SCRIPTS}")
+  message("outfiles: ${${model}_LIBS}")
 
-add_custom_target(
-  GenerateAcadosCode
-  DEPENDS ${ACADOS_OUTPUT_FILES} ${ACADOS_SCRIPTS} ${CMAKE_SOURCE_DIR}/params/mpcc.yaml
-)
-
+  add_custom_target(
+    GenerateAcadosCode_${model}
+    DEPENDS ${${model}_OUTPUT_FILES} ${${model}_SCRIPTS} ${CMAKE_SOURCE_DIR}/params/${model}.yaml
+  )
+  list(APPEND ACADOS_TARGETS GenerateAcadosCode_${model})
+endforeach()
 
 add_library(cvxpy_lib STATIC ${cpg_src})
 target_compile_options(cvxpy_lib PRIVATE -O3 -w)
@@ -134,6 +125,7 @@ add_executable(mpcc_ros
   src/mpcc/mpcc_ros.cpp
   src/mpcc/mpcc_core.cpp
   src/mpcc/mpcc_acados.cpp
+  src/mpcc/mpcc_di_acados.cpp
 )
 target_link_libraries(mpcc_ros
   ${HPIPM_LIBRARIES}
@@ -141,14 +133,14 @@ target_link_libraries(mpcc_ros
   ${ACADOS_LIBRARIES}
   ${catkin_LIBRARIES}
   ${EIGEN3_LIBRARIES}
-  ${ACADOS_OUTPUT_LIB}
+  ${ACADOS_OUTPUT_LIBS}
   ${BLASFEO_LIBRARIES}
   cvxpy_lib
 )
 target_compile_options(mpcc_ros PRIVATE -std=c++17 -O3)
-add_dependencies(mpcc_ros GenerateAcadosCode)
+add_dependencies(mpcc_ros ${ACADOS_TARGETS})
 add_dependencies(mpcc_ros cvxpy_lib)
-target_include_directories(mpcc_ros PRIVATE ${ACADOS_OUTPUT_DIR} ${cpg_include})
+target_include_directories(mpcc_ros PRIVATE ${ACADOS_OUTPUT_DIRS} ${cpg_include})
 
 add_executable(publish_pf_pose src/utils/publish_pf_pose.cpp)
 target_link_libraries(publish_pf_pose

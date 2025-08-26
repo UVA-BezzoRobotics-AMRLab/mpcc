@@ -1,6 +1,7 @@
 #pragma once
 
 #include <mpcc/mpcc_acados.h>
+#include <mpcc/mpcc_di_acados.h>
 #include <mpcc/types.h>
 
 #include <map>
@@ -9,6 +10,8 @@
 class MPCCore {
  public:
   MPCCore();
+
+  MPCCore(const std::string& mpc_input_type);
 
   ~MPCCore();
 
@@ -68,7 +71,7 @@ class MPCCore {
   const bool get_solver_status() const;
   const Eigen::VectorXd& get_state() const;
   std::vector<Eigen::VectorXd> get_horizon() const;
-  const std::array<double, 2>& get_mpc_command() const;
+  const std::array<double, 2> get_mpc_command() const;
   const std::map<std::string, double>& get_params() const;
   Eigen::VectorXd get_cbf_data(const Eigen::VectorXd& state,
                                const Eigen::VectorXd& control,
@@ -106,5 +109,7 @@ class MPCCore {
 
   std::map<std::string, double> _params;
 
-  std::unique_ptr<MPCC> _mpc;
+  std::unique_ptr<MPCBase> _mpc;
+
+  std::string _mpc_input_type;
 };

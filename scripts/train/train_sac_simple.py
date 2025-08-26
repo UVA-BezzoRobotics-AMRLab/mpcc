@@ -14,6 +14,7 @@ from tqdm import tqdm
 from os.path import join
 from simple_simulation import SimpleSimulation
 from train_realworld import TrainManager, CustomEnv
+from train_realworld_di import TrainManagerDI, CustomEnvDI
 
 INIT_POSITION = [-2.25, -2, 1.57]  # in world frame
 # INIT_POSITION = [-2.25, 8, -1.57]  # in world frame
@@ -167,6 +168,9 @@ def run_sim(args):
     time.sleep(5)
 
     nav_stack_launch_file = join(base_path, "launch/jackal_mpc_track.launch")
+    if args.double_integrator:
+        nav_stack_launch_file = join(base_path, "launch/jackal_di_track.launch")
+
     params = ""
     if args.train or args.eval:
         params = (
@@ -308,6 +312,7 @@ if __name__ == "__main__":
     parser.add_argument("--train", action="store_true")
     parser.add_argument("--eval", action="store_true")
     parser.add_argument("--test_suite", action="store_true")
+    parser.add_argument("--double_integrator", action="store_true")
     args = parser.parse_args()
 
     if args.train and args.eval:
@@ -333,6 +338,8 @@ if __name__ == "__main__":
 
     if args.train or args.eval:
         yaml_file = "train.yaml"
+        if args.double_integrator:
+            yaml_file = "train_di.yaml"
 
         with open(os.path.join(base_path, "params", yaml_file), "r") as f:
             params = yaml.load(f, Loader=yaml.FullLoader)
@@ -347,60 +354,120 @@ if __name__ == "__main__":
         log_dir = rospy.get_param("/train/log_dir", "./logs")
 
         state_dim = rospy.get_param("/train/state_dim", 7)
-        theta_min = rospy.get_param("/train/theta_min", -np.pi)
-        theta_max = rospy.get_param("/train/theta_max", np.pi)
-        velocity_min = rospy.get_param("/train/velocity_min", -2.0)
-        velocity_max = rospy.get_param("/train/velocity_max", 2.0)
-        acc_min = rospy.get_param("/train/acc_min", -5.0)
-        acc_max = rospy.get_param("/train/acc_max", 5.0)
-        angvel_min = rospy.get_param("/train/angvel_min", -3.141)
-        angvel_max = rospy.get_param("/train/angvel_max", 3.141)
-        dist_to_obs_min = float(rospy.get_param("/train/dist_to_obs_min", -0.2))
-        dist_to_obs_max = float(rospy.get_param("/train/dist_to_obs_max", 100.0))
-        head_to_obs_min = rospy.get_param("/train/head_to_obs_min", -np.pi)
-        head_to_obs_max = rospy.get_param("/train/head_to_obs_max", np.pi)
-        progress_min = rospy.get_param("/train/progress_min", 0.0)
-        progress_max = rospy.get_param("/train/progress_max", 1.0)
-        h_value_min = rospy.get_param("/train/h_value_min", -100.0)
-        h_value_max = rospy.get_param("/train/h_value_max", 100.0)
-        alpha_min = rospy.get_param("/train/min_alpha", 0.1)
-        alpha_max = rospy.get_param("/train/max_alpha", 10)
-        alpha_dot_min = rospy.get_param("/train/min_alpha_dot", -1)
-        alpha_dot_max = rospy.get_param("/train/max_alpha_dot", 1)
 
-        rospy.loginfo("Initializing training manager")
-        env = CustomEnv()
-        env.state_dim = int(state_dim)
-        env.theta_min = float(theta_min)
-        env.theta_max = float(theta_max)
-        env.velocity_min = float(velocity_min)
-        env.velocity_max = float(velocity_max)
-        env.acc_min = float(acc_min)
-        env.acc_max = float(acc_max)
-        env.angvel_min = float(angvel_min)
-        env.angvel_max = float(angvel_max)
-        env.distance_to_obstacle_min = float(dist_to_obs_min)
-        env.distance_to_obstacle_max = float(dist_to_obs_max)
-        env.heading_to_obstacle_min = float(head_to_obs_min)
-        env.heading_to_obstacle_max = float(head_to_obs_max)
-        env.progress_min = float(progress_min)
-        env.progress_max = float(progress_max)
-        env.h_value_min = float(h_value_min)
-        env.h_value_max = float(h_value_max)
-        env.alpha_min = float(alpha_min)
-        env.alpha_max = float(alpha_max)
+        if not args.double_integrator:
+            theta_min = rospy.get_param("/train/theta_min", -np.pi)
+            theta_max = rospy.get_param("/train/theta_max", np.pi)
+            velocity_min = rospy.get_param("/train/velocity_min", -2.0)
+            velocity_max = rospy.get_param("/train/velocity_max", 2.0)
+            acc_min = rospy.get_param("/train/acc_min", -5.0)
+            acc_max = rospy.get_param("/train/acc_max", 5.0)
+            angvel_min = rospy.get_param("/train/angvel_min", -3.141)
+            angvel_max = rospy.get_param("/train/angvel_max", 3.141)
 
-        env.alpha_dot_min = float(alpha_dot_min)
-        env.alpha_dot_max = float(alpha_dot_max)
+            dist_to_obs_min = float(rospy.get_param("/train/dist_to_obs_min", -0.2))
+            dist_to_obs_max = float(rospy.get_param("/train/dist_to_obs_max", 100.0))
+            head_to_obs_min = rospy.get_param("/train/head_to_obs_min", -np.pi)
+            head_to_obs_max = rospy.get_param("/train/head_to_obs_max", np.pi)
+            progress_min = rospy.get_param("/train/progress_min", 0.0)
+            progress_max = rospy.get_param("/train/progress_max", 1.0)
+            h_value_min = rospy.get_param("/train/h_value_min", -100.0)
+            h_value_max = rospy.get_param("/train/h_value_max", 100.0)
+            alpha_min = rospy.get_param("/train/min_alpha", 0.1)
+            alpha_max = rospy.get_param("/train/max_alpha", 10)
+            alpha_dot_min = rospy.get_param("/train/min_alpha_dot", -1)
+            alpha_dot_max = rospy.get_param("/train/max_alpha_dot", 1)
 
-        rospy.loginfo("Setting observation and action space")
-        env.set_obs_space()
-        rospy.loginfo("Setting action space")
-        env.set_action_space()
+            rospy.loginfo("Initializing training manager")
+            env = CustomEnv()
+            env.state_dim = int(state_dim)
+            env.theta_min = float(theta_min)
+            env.theta_max = float(theta_max)
+            env.velocity_min = float(velocity_min)
+            env.velocity_max = float(velocity_max)
+            env.acc_min = float(acc_min)
+            env.acc_max = float(acc_max)
+            env.angvel_min = float(angvel_min)
+            env.angvel_max = float(angvel_max)
+            env.distance_to_obstacle_min = float(dist_to_obs_min)
+            env.distance_to_obstacle_max = float(dist_to_obs_max)
+            env.heading_to_obstacle_min = float(head_to_obs_min)
+            env.heading_to_obstacle_max = float(head_to_obs_max)
+            env.progress_min = float(progress_min)
+            env.progress_max = float(progress_max)
+            env.h_value_min = float(h_value_min)
+            env.h_value_max = float(h_value_max)
+            env.alpha_min = float(alpha_min)
+            env.alpha_max = float(alpha_max)
 
-        rospy.loginfo("making manager")
-        trainer = TrainManager(db_filename, log_dir, batch_size, env)
-        rospy.loginfo("done making manager")
+            env.alpha_dot_min = float(alpha_dot_min)
+            env.alpha_dot_max = float(alpha_dot_max)
+
+            rospy.loginfo("Setting observation and action space")
+            env.set_obs_space()
+            rospy.loginfo("Setting action space")
+            env.set_action_space()
+
+            rospy.loginfo("making manager")
+            trainer = TrainManager(db_filename, log_dir, batch_size, env)
+            rospy.loginfo("done making manager")
+        else:
+            vx_min = rospy.get_param("/train/vx_min", -2.0)
+            vx_max = rospy.get_param("/train/vx_max", 2.0)
+            vy_min = rospy.get_param("/train/vy_min", -2.0)
+            vy_max = rospy.get_param("/train/vy_max", 2.0)
+            ax_min = rospy.get_param("/train/ax_min", -5.0)
+            ax_max = rospy.get_param("/train/ax_max", 5.0)
+            ay_min = rospy.get_param("/train/ay_min", -3.141)
+            ay_max = rospy.get_param("/train/ay_max", 3.141)
+
+            dist_to_obs_min = float(rospy.get_param("/train/dist_to_obs_min", -0.2))
+            dist_to_obs_max = float(rospy.get_param("/train/dist_to_obs_max", 100.0))
+            head_to_obs_min = rospy.get_param("/train/head_to_obs_min", -np.pi)
+            head_to_obs_max = rospy.get_param("/train/head_to_obs_max", np.pi)
+            progress_min = rospy.get_param("/train/progress_min", 0.0)
+            progress_max = rospy.get_param("/train/progress_max", 1.0)
+            h_value_min = rospy.get_param("/train/h_value_min", -100.0)
+            h_value_max = rospy.get_param("/train/h_value_max", 100.0)
+            alpha_min = rospy.get_param("/train/min_alpha", 0.1)
+            alpha_max = rospy.get_param("/train/max_alpha", 10)
+            alpha_dot_min = rospy.get_param("/train/min_alpha_dot", -1)
+            alpha_dot_max = rospy.get_param("/train/max_alpha_dot", 1)
+
+            rospy.loginfo("Initializing training manager")
+            env = CustomEnvDI()
+            env.state_dim = int(state_dim)
+            env.vx_min = float(vx_min)
+            env.vx_max = float(vx_max)
+            env.vy_min = float(vy_min)
+            env.vy_max = float(vy_max)
+            env.ax_min = float(ax_min)
+            env.ax_max = float(ax_max)
+            env.ay_min = float(ay_min)
+            env.ay_max = float(ay_max)
+
+            env.distance_to_obstacle_min = float(dist_to_obs_min)
+            env.distance_to_obstacle_max = float(dist_to_obs_max)
+            env.heading_to_obstacle_min = float(head_to_obs_min)
+            env.heading_to_obstacle_max = float(head_to_obs_max)
+            env.progress_min = float(progress_min)
+            env.progress_max = float(progress_max)
+            env.h_value_min = float(h_value_min)
+            env.h_value_max = float(h_value_max)
+            env.alpha_min = float(alpha_min)
+            env.alpha_max = float(alpha_max)
+
+            env.alpha_dot_min = float(alpha_dot_min)
+            env.alpha_dot_max = float(alpha_dot_max)
+
+            rospy.loginfo("Setting observation and action space")
+            env.set_obs_space()
+            rospy.loginfo("Setting action space")
+            env.set_action_space()
+
+            rospy.loginfo("making manager")
+            trainer = TrainManagerDI(db_filename, log_dir, batch_size, env)
+            rospy.loginfo("done making manager")
 
     # eval_worlds = np.array([294, 265,  78,  58, 181, 105, 295,  67, 132,  46,  53, 129,  24,
     #                         111, 140,  20, 187, 297, 133, 150, 241,  80, 281,   9,  21,  88,
@@ -474,7 +541,7 @@ if __name__ == "__main__":
     if args.test_suite:
         # sample 50 worlds out of 300 excluding 200-229
         eval_worlds = np.sort(eval_worlds)
-        eval_worlds = [6 * i for i in range(50)]
+        # eval_worlds = [6 * i for i in range(50)]
         for world in eval_worlds:
 
             for i in range(5):

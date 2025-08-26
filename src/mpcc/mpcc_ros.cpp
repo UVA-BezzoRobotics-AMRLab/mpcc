@@ -49,6 +49,7 @@ MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~") {
   _nh.param("vel_pub_freq", _vel_pub_freq, 20.0);
   _nh.param("controller_frequency", freq, 10.0);
   _nh.param("mpc_steps", _mpc_steps, 10.0);
+  _nh.param<std::string>("mpc_input_type", _mpc_input_type, "unicycle");
 
   // Cost function params
   _nh.param("w_vel", _w_vel, 1.0);
@@ -158,7 +159,7 @@ MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~") {
 
   _mpc_params["DEBUG"] = true;
 
-  _mpc_core = std::make_unique<MPCCore>();
+  _mpc_core = std::make_unique<MPCCore>(_mpc_input_type);
   ROS_INFO("loading mpc params");
   _mpc_core->load_params(_mpc_params);
   ROS_INFO("done loading params!");
@@ -200,7 +201,7 @@ MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~") {
 
   if (_is_logging || _is_eval)
     _logger = std::make_unique<logger::RLLogger>(nh, _min_alpha, _max_alpha,
-                                                 _is_logging);
+                                                 _is_logging, _mpc_input_type);
 }
 
 MPCCROS::~MPCCROS() {
@@ -217,7 +218,7 @@ bool MPCCROS::toggleBackup(std_srvs::Empty::Request& req,
 void MPCCROS::visualizeTubes() {
   const Eigen::VectorXd& state = _mpc_core->get_state();
   double len_start             = state(4);
-  double horizon               = _max_linvel * _dt * _mpc_steps;
+  double horizon = _mpc_ref_len_sz;  //2 * _max_linvel * _dt * _mpc_steps;
 
   if (len_start > _true_ref_len)
     return;
@@ -270,6 +271,7 @@ void MPCCROS::visualizeTubes() {
   tubemsg_b.colors.reserve(2 * (horizon / .05));
   normals_msg.points.reserve(2 * (horizon / .05));
   normals_below_msg.points.reserve(2 * (horizon / .05));
+  ROS_WARN("LEN START _ HORIZON IS: %.2f", len_start + horizon);
   for (double s = len_start; s < len_start + horizon; s += .05) {
     double px = _ref[0](s).coeff(0);
     double py = _ref[1](s).coeff(0);
@@ -616,10 +618,15 @@ void MPCCROS::mpcc_ctrl_loop(const ros::TimerEvent& event) {
   ROS_INFO("corrected len - prev_s / dt is %.2f",
            (corrected_len - _prev_s) / _dt);
 
-  if (len_start > _true_ref_len - 3e-1) {
+  if (len_start > _true_ref_len - 5e-1) {
     ROS_INFO("Reached end of traj %.2f / %.2f", len_start, _true_ref_len);
-    _vel_msg.linear.x  = 0;
     _vel_msg.angular.z = 0;
+    if (_mpc_input_type == "unicycle")
+      _vel_msg.linear.x = 0;
+    else if (_mpc_input_type == "double_integrator") {
+      _vel_msg.linear.x = 0;
+      _vel_msg.linear.y = 0;
+    }
 
     _trajectory.points.clear();
 
@@ -673,15 +680,30 @@ void MPCCROS::mpcc_ctrl_loop(const ros::TimerEvent& event) {
   }
 
   Eigen::VectorXd state(6);
-  double vel = _vel_msg.linear.x;
-  // if (_reverse_mode)
-  //   vel *= -1;
-  state << _odom(0), _odom(1), _odom(2), vel, 0, _s_dot;
+  if (_mpc_input_type == "unicycle")
+    state << _odom(0), _odom(1), _odom(2), _vel_msg.linear.x, 0, _s_dot;
+  else if (_mpc_input_type == "double_integrator")
+    state << _odom(0), _odom(1), _vel_msg.linear.x, _vel_msg.linear.y, 0,
+        _s_dot;
+  else {
+    ROS_ERROR("Unknown MPC input type: %s", _mpc_input_type.c_str());
+    return;
+  }
 
   std::array<double, 2> input = _mpc_core->solve(state);
 
-  _vel_msg.linear.x  = input[0];
-  _vel_msg.angular.z = input[1];
+  if (_mpc_input_type == "unicycle") {
+    _vel_msg.linear.x  = input[0];
+    _vel_msg.angular.z = input[1];
+  } else if (_mpc_input_type == "double_integrator") {
+    _vel_msg.linear.x = input[0];
+    _vel_msg.linear.y = input[1];
+    ROS_INFO("Setting linear vels to (%.2f, %.2f)", _vel_msg.linear.x,
+             _vel_msg.linear.y);
+  } else {
+    ROS_ERROR("Unknown MPC input type: %s", _mpc_input_type.c_str());
+    return;
+  }
 
   // log data back to db if logging enabled
   if (_is_logging || _is_eval)
@@ -768,7 +790,7 @@ void MPCCROS::publishMPCTrajectory() {
 
   _trajPub.publish(pathMsg);
 
-  if (horizon.size() > 1) {
+  if (horizon.size() > 1 && _mpc_input_type == "unicycle") {
     // convert to JointTrajectory
     trajectory_msgs::JointTrajectory traj;
     traj.header.stamp    = ros::Time::now();
@@ -821,6 +843,50 @@ void MPCCROS::publishMPCTrajectory() {
       pt.positions       = {x, y, 0};
       pt.velocities      = {vel_x, vel_y, 0};
       pt.accelerations   = {acc_x, acc_y, 0};
+      pt.effort          = {jerk_x, jerk_y, 0};
+
+      traj.points.push_back(pt);
+    }
+
+    _horizonPub.publish(traj);
+  } else if (horizon.size() > 1 && _mpc_input_type == "double_integrator") {
+    // convert to JointTrajectory
+    trajectory_msgs::JointTrajectory traj;
+    traj.header.stamp    = ros::Time::now();
+    traj.header.frame_id = _frame_id;
+
+    double dt = horizon[1](0) - horizon[0](0);
+
+    for (int i = 0; i < horizon.size(); ++i) {
+      Eigen::VectorXd state = horizon[i];
+
+      double t  = state(0);
+      double x  = state(1);
+      double y  = state(2);
+      double vx = state(3);
+      double vy = state(4);
+      double ax = state(5);
+      double ay = state(6);
+
+      // manually compute jerk in x and y directions from acceleration
+      double jerk_x = 0;
+      double jerk_y = 0;
+      if (i < horizon.size() - 1) {
+        double next_ax = horizon[i + 1](5);
+        double next_ay = horizon[i + 1](6);
+        jerk_x         = (next_ax - ax) / dt;
+        jerk_y         = (next_ay - ay) / dt;
+
+      } else {
+        jerk_x = 0;
+        jerk_y = 0;
+      }
+
+      trajectory_msgs::JointTrajectoryPoint pt;
+      pt.time_from_start = ros::Duration(t);
+      pt.positions       = {x, y, 0};
+      pt.velocities      = {vx, vy, 0};
+      pt.accelerations   = {ax, ay, 0};
       pt.effort          = {jerk_x, jerk_y, 0};
 
       traj.points.push_back(pt);

@@ -3,10 +3,31 @@
 #include <cmath>
 
 #include "mpcc/termcolor.hpp"
-#include "mpcc/utils.h"
 
 MPCCore::MPCCore() {
-  _mpc = std::make_unique<MPCC>();
+  _mpc            = std::make_unique<MPCC>();
+  _mpc_input_type = "unicycle";
+
+  _curr_vel    = 0;
+  _curr_angvel = 0;
+
+  _is_set     = false;
+  _has_run    = false;
+  _traj_reset = false;
+
+  _ref_length = 0;
+}
+
+MPCCore::MPCCore(const std::string& mpc_input_type) {
+  _mpc_input_type = mpc_input_type;
+
+  if (_mpc_input_type == "unicycle") {
+    _mpc = std::make_unique<MPCC>();
+  } else if (_mpc_input_type == "double_integrator") {
+    _mpc = std::make_unique<DIMPCC>();
+  } else {
+    throw std::runtime_error("Invalid MPC input type: " + _mpc_input_type);
+  }
 
   _curr_vel    = 0;
   _curr_angvel = 0;
@@ -37,7 +58,7 @@ void MPCCore::load_params(const std::map<std::string, double>& params) {
 }
 
 void MPCCore::set_dyna_obs(const Eigen::MatrixXd& dyna_obs) {
-  _mpc->set_dyna_obs(dyna_obs);
+  /*_mpc->set_dyna_obs(dyna_obs);*/
 }
 
 void MPCCore::set_odom(const Eigen::Vector3d& odom) {
@@ -133,7 +154,7 @@ std::array<double, 2> MPCCore::solve(const Eigen::VectorXd& state,
   }
 
   if (_ref_length > .1 && _traj_reset) {
-    if (orient_robot())
+    if (_mpc_input_type == "unicycle" && orient_robot())
       return {_curr_vel, _curr_angvel};
   }
 
@@ -218,17 +239,34 @@ const Eigen::VectorXd& MPCCore::get_state() const {
 
 std::vector<Eigen::VectorXd> MPCCore::get_horizon() const {
   std::vector<Eigen::VectorXd> ret;
-  ret.reserve(_mpc->mpc_x.size());
+  if (_mpc_input_type == "unicycle") {
+    MPCC* _mpc_unicycle = dynamic_cast<MPCC*>(_mpc.get());
+    ret.reserve(_mpc_unicycle->mpc_x.size());
+    if (_mpc_unicycle->mpc_x.size() == 0)
+      return ret;
 
-  if (_mpc->mpc_x.size() == 0)
-    return ret;
-
-  double t = 0;
-  for (int i = 0; i < _mpc->mpc_x.size() - 1; ++i) {
-    ret.emplace_back(7);
-    ret.back() << t, _mpc->mpc_x[i], _mpc->mpc_y[i], _mpc->mpc_theta[i],
-        _mpc->mpc_linvels[i], _mpc->mpc_linaccs[i], _mpc->mpc_s[i];
-    t += _dt;
+    double t = 0;
+    for (int i = 0; i < _mpc_unicycle->mpc_x.size() - 1; ++i) {
+      ret.emplace_back(7);
+      ret.back() << t, _mpc_unicycle->mpc_x[i], _mpc_unicycle->mpc_y[i],
+          _mpc_unicycle->mpc_theta[i], _mpc_unicycle->mpc_linvels[i],
+          _mpc_unicycle->mpc_linaccs[i], _mpc_unicycle->mpc_s[i];
+      t += _dt;
+    }
+  } else if (_mpc_input_type == "double_integrator") {
+    DIMPCC* _mpc_double_integrator = dynamic_cast<DIMPCC*>(_mpc.get());
+    ret.reserve(_mpc_double_integrator->mpc_x.size());
+    if (_mpc_double_integrator->mpc_x.size() == 0)
+      return ret;
+    double t = 0;
+    for (int i = 0; i < _mpc_double_integrator->mpc_x.size() - 1; ++i) {
+      ret.emplace_back(7);
+      ret.back() << t, _mpc_double_integrator->mpc_x[i],
+          _mpc_double_integrator->mpc_y[i], _mpc_double_integrator->mpc_vx[i],
+          _mpc_double_integrator->mpc_vy[i], _mpc_double_integrator->mpc_ax[i],
+          _mpc_double_integrator->mpc_ay[i];
+      t += _dt;
+    }
   }
 
   return ret;
@@ -238,6 +276,6 @@ const std::map<std::string, double>& MPCCore::get_params() const {
   return _params;
 }
 
-const std::array<double, 2>& MPCCore::get_mpc_command() const {
+const std::array<double, 2> MPCCore::get_mpc_command() const {
   return _mpc->get_command();
 }

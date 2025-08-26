@@ -10,10 +10,11 @@ import casadi as ca
 import matplotlib.pyplot as plt
 
 from scipy import interpolate
-from mpcc_model import create_mpcc_ode_model
+from mpcc_model import mpcc_ode_model
 from acados_template import AcadosOcp, AcadosOcpSolver, AcadosSimSolver
 
-max_s = 4
+max_s = 6
+
 
 def create_ocp(yaml_file):
     ocp = AcadosOcp()
@@ -35,7 +36,8 @@ def create_ocp(yaml_file):
 
     # set model
     # model = export_mpcc_ode_model(list(ss), list(xs), list(ys))
-    model = create_mpcc_ode_model()
+    mpcc_model = mpcc_ode_model()
+    model = mpcc_model.create_model(params)
     ocp.model = model
 
     Tf = 1.0
@@ -51,26 +53,50 @@ def create_ocp(yaml_file):
     ocp.dims.N = N
     ocp.parameter_values = np.zeros((nparams,))
 
-    # ocp.model.cost_expr_ext_cost_0 = model.cost_expr_ext_cost
-    # ocp.model.cost_expr_ext_cost = model.cost_expr_ext_cost
-    # ocp.model.cost_expr_ext_cost_e = model.cost_expr_ext_cost_e
+    ocp.model.cost_expr_ext_cost_0 = model.cost_expr_ext_cost
+    ocp.model.cost_expr_ext_cost = model.cost_expr_ext_cost
+    ocp.model.cost_expr_ext_cost_e = model.cost_expr_ext_cost_e
 
-    # grad_cost = 100
-    # hess_cost = 1
-    #
-    # ocp.cost.Zl_0 = hess_cost * np.ones((1,))
-    # ocp.cost.Zu_0 = hess_cost * np.ones((1,))
-    # ocp.cost.zl_0 = grad_cost * np.ones((1,))
-    # ocp.cost.zu_0 = grad_cost * np.ones((1,))
-    #
-    # ocp.cost.Zl = hess_cost * np.ones((1,))
-    # ocp.cost.Zu = hess_cost * np.ones((1,))
-    # ocp.cost.zl = grad_cost * np.ones((1,))
-    # ocp.cost.zu = grad_cost * np.ones((1,))
+    con_upper_bounds = np.array([0, 1e6, 1e6])
+    con_lower_bounds = np.array([-1e6, 0, 0])
+
+    # constraint bounds
+    ocp.constraints.uh_0 = con_upper_bounds
+    ocp.constraints.lh_0 = con_lower_bounds
+    ocp.constraints.uh = con_upper_bounds
+    ocp.constraints.lh = con_lower_bounds
+
+    # set clf soft constraint
+    ocp.constraints.lsh_0 = np.zeros((1,))
+    ocp.constraints.ush_0 = np.zeros((1,))
+    ocp.constraints.idxsh_0 = np.array([0])
+
+    ocp.constraints.lsh = np.zeros((1,))
+    ocp.constraints.ush = np.zeros((1,))
+    ocp.constraints.idxsh = np.array([0])
+
+    grad_cost = 100
+    hess_cost = 1
+
+    ocp.cost.Zl_0 = hess_cost * np.ones((1,))
+    ocp.cost.Zu_0 = hess_cost * np.ones((1,))
+    ocp.cost.zl_0 = grad_cost * np.ones((1,))
+    ocp.cost.zu_0 = grad_cost * np.ones((1,))
+
+    ocp.cost.Zl = hess_cost * np.ones((1,))
+    ocp.cost.Zu = hess_cost * np.ones((1,))
+    ocp.cost.zl = grad_cost * np.ones((1,))
+    ocp.cost.zu = grad_cost * np.ones((1,))
+
+    ocp.constraints.lbu = np.array([-1.5, -1.5, -1.5])
+    ocp.constraints.ubu = np.array([1.5, 1.5, 1.5])
+    ocp.constraints.idxbu = np.array([0, 1, 2])
 
     # theta can be whatever
-    ocp.constraints.lbx = np.array([-1e6, -1e6, -4, -4, 0, 0])
-    ocp.constraints.ubx = np.array([1e6, 1e6, 4, 4, max_s, 4])
+    max_vel = 2.0
+    max_sdot = np.sqrt(2 * max_vel**2)
+    ocp.constraints.lbx = np.array([-1e6, -1e6, -max_vel, -max_vel, 0, 0])
+    ocp.constraints.ubx = np.array([1e6, 1e6, max_vel, max_vel, max_s, max_sdot])
     ocp.constraints.idxbx = np.array(range(nx))  # Covers all state indices
 
     ocp.constraints.x0 = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
@@ -114,6 +140,7 @@ def create_ocp(yaml_file):
 
     return ocp
 
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Double integrator mpcc")
     parser.add_argument("--yaml", type=str, default="")
@@ -124,4 +151,3 @@ if __name__ == "__main__":
     ocp = create_ocp(args.yaml)
     acados_ocp_solver = AcadosOcpSolver(ocp)
     acados_integrator = AcadosSimSolver(ocp)
-

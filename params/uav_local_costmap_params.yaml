@@ -1,0 +1,42 @@
+map_type: costmap
+origin_x: -3.5
+origin_y: -3.5
+height: 7
+width: 7
+resolution: .05
+origin_z: 0.0
+z_resolution: 1
+z_voxels: 2
+
+static_map: false
+rolling_window: true
+global_frame: "uav1/world_origin"
+robot_base_frame: "uav1/fcu"
+
+obstacle_range: 5.0
+raytrace_range: 4.0
+
+observation_persistence: 0.0
+publish_voxel_map: false
+transform_tolerance: 0.5
+meter_scoring: true
+
+footprint: [[-0.25, -0.21], [-0.25, 0.21], [0.25, 0.21], [0.25, -0.21]]
+footprint_padding: 0.05
+
+update_frequency: 15
+publish_frequency: 10
+
+plugins:
+- {name: static_layer, type: "costmap_2d::StaticLayer"}
+- {name: inflater_layer, type: "costmap_2d::InflationLayer"}
+
+inflater_layer:
+ inflation_radius: 0.25
+ cost_scaling_factor: 0.3
+
+static_layer:
+  map_topic: /map
+  subscribe_to_updates: true
+  lethal_cost_threshold: 60
+  resolution: .05

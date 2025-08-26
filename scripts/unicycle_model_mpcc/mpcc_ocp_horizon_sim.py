@@ -11,7 +11,7 @@ from mpcc_ocp_horizon import create_ocp
 from mpcc_model import export_mpcc_ode_model, export_mpcc_ode_model_spline_param
 from acados_template import AcadosOcp, AcadosOcpSolver, AcadosSimSolver
 
-max_s = 4
+max_s = 8
 
 
 # T_horizon = 2.0  # Define the prediction horizon

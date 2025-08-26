@@ -1,4 +1,5 @@
 # IPOPT Horizon MPC parameters
+mpc_input_type: "unicycle"
 frame_id: "map"
 use_vicon: false
 mpc_steps: 10

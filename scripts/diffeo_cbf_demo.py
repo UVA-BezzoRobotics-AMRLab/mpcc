@@ -92,6 +92,7 @@ class DiffeoCBF:
 
     def laser_cb(self, msg):
 
+        self.laser_msg = msg
         self.ranges = np.array(msg.ranges)
         self.ranges[self.ranges > msg.range_max] = msg.range_max
 

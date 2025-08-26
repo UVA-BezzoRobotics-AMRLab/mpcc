@@ -1,7 +1,6 @@
 #pragma once
 
 #include <mpcc/mpcc_base.h>
-#include <mpcc/types.h>
 #include <cstdlib>
 
 #include <Eigen/Dense>
@@ -9,7 +8,6 @@
 #include <vector>
 
 // acados
-#include "acados_c/ocp_nlp_interface.h"
 #include "acados_sim_solver_unicycle_model_mpcc.h"
 #include "acados_solver_unicycle_model_mpcc.h"
 
@@ -90,18 +88,13 @@ class MPCC : public MPCBase {
   /***********************
    * Setters and Getters
    ***********************/
-  void reset_horizon();
+  void reset_horizon() override;
   virtual void set_odom(const Eigen::VectorXd& odom) override;
-  void set_tubes(const std::array<Eigen::VectorXd, 2>& tubes);
-  void set_reference(const std::array<Spline1D, 2>& reference, double arclen);
   void set_dyna_obs(const Eigen::MatrixXd& dyna_obs);
 
-  virtual std::array<double, 2> get_command() const override;
-  const Eigen::VectorXd& get_state() const;
-  const bool get_solver_status() const;
   Eigen::VectorXd get_cbf_data(const Eigen::VectorXd& state,
                                const Eigen::VectorXd& control,
-                               bool is_abv) const;
+                               bool is_abv) const override;
 
  public:
   // TOOD: make getter for these
@@ -126,7 +119,7 @@ class MPCC : public MPCBase {
   static constexpr uint16_t kNBX0 = UNICYCLE_MODEL_MPCC_NBX0;
 
  private:
-  std::array<Spline1D, 2> compute_adjusted_ref(double s) const;
+  /*std::array<Spline1D, 2> compute_adjusted_ref(double s) const;*/
   /**********************************************************************
    * Function: MPCC::get_ref_from_s()
    * Description: Generates a reference trajectory from a given arc length
@@ -211,23 +204,6 @@ class MPCC : public MPCBase {
    * bool - true if successful, false otherwise
    **********************************************************************/
 
-  void apply_affine_transform(Eigen::VectorXd& state,
-                              const Eigen::Vector2d& rot_point,
-                              const Eigen::MatrixXd& m_affine);
-  /**********************************************************************
-   * Function: MPCC::apply_affine_transform()
-   * Description: Applies an affine transformation to state in place
-   * Parameters:
-   * @param state: const Eigen::VectorXd&
-   * @param rot_point: const Eigen::Vector2d&
-   * @param m_affine: const Eigen::MatrixXd&
-   * Returns:
-   * Eigen::VectorXd - Transformed state
-   * Notes:
-   * Applies affine transformation defined my m_affine to state,
-   * rotation occurs about rot_point
-   ***********************************************************************/
-
  private:
   static constexpr uint8_t kIndX        = 0;
   static constexpr uint8_t kIndY        = 1;
@@ -242,19 +218,10 @@ class MPCC : public MPCBase {
   static constexpr uint8_t kIndSDDot    = 2;
   static constexpr uint8_t kIndInputInc = 3;
 
-  std::array<double, 2> _cmd;
-
-  std::map<std::string, double> _params;
-
   Eigen::VectorXd _prev_x0;
   Eigen::VectorXd _prev_u0;
 
-  std::array<Spline1D, 2> _reference;
-  std::array<Eigen::VectorXd, 2> _tubes;
-
   Eigen::MatrixXd _dyna_obs;
-
-  int _ref_samples;
 
   double _ds;
 
@@ -270,7 +237,6 @@ class MPCC : public MPCBase {
   double _padding;
 
   double _s_dot;
-  double _ref_length;
 
   double _gamma;
   double _w_ql_lyap;
@@ -283,18 +249,13 @@ class MPCC : public MPCBase {
   double _w_qc;
   double _w_q_speed;
 
-  double _ref_len_sz;
-
   unsigned int iterations;
 
   bool _use_cbf;
   bool _use_eigen;
   bool _is_shift_warm;
-  bool _solve_success;
   bool _use_dyna_obs;
   bool _has_run;
-
-  double* _new_time_steps;
 
   unicycle_model_mpcc_sim_solver_capsule* _acados_sim_capsule;
   unicycle_model_mpcc_solver_capsule* _acados_ocp_capsule;

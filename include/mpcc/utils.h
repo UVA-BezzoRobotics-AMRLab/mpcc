@@ -1,3 +1,4 @@
+#pragma once
 #include <mpcc/types.h>
 #include <tf/tf.h>
 
@@ -331,14 +332,14 @@ inline bool get_tubes(int d, int N, double max_dist,
     **************************************/
 
   // setup_lp(d, N, traj_arc_len, 0, ds_above);
-  std::cout << "len_start is: " << len_start << std::endl;
-  std::cout << "horizon is: " << horizon << std::endl;
+  /*std::cout << "len_start is: " << len_start << std::endl;*/
+  /*std::cout << "horizon is: " << horizon << std::endl;*/
 
   setup_lp(d, N, len_start, horizon, min_dist_abv / 1.1, ds_above);
   // setup_lp(d, N, horizon, 0, ds_above);
   cpg_solve();
 
-  std::cout << "solved!" << std::endl;
+  /*std::cout << "solved!" << std::endl;*/
 
   std::string solved_str = "solved";
   // std::string status = CPG_Info.status;
@@ -351,9 +352,9 @@ inline bool get_tubes(int d, int N, double max_dist,
     return false;
   }
 
-  for (int i = 0; i < d; ++i)
-    std::cout << CPG_Result.prim->var2[i] << ", ";
-  std::cout << std::endl;
+  /*for (int i = 0; i < d; ++i)*/
+  /*  std::cout << CPG_Result.prim->var2[i] << ", ";*/
+  /*std::cout << std::endl;*/
 
   Eigen::VectorXd upper_coeffs;
   upper_coeffs.resize(d);
@@ -369,17 +370,17 @@ inline bool get_tubes(int d, int N, double max_dist,
   }
 
   // print out dist abv as a row vector
-  std::cout << "dist_above = [";
-  for (int i = 0; i < N; ++i)
-    std::cout << ds_above[i] << ", ";
-  std::cout << "];" << std::endl;
+  /*std::cout << "dist_above = [";*/
+  /*for (int i = 0; i < N; ++i)*/
+  /*  std::cout << ds_above[i] << ", ";*/
+  /*std::cout << "];" << std::endl;*/
 
   // cpg_set_solver_default_settings();
   /*************************************
     ********* Setup & Solve Down *********
     **************************************/
 
-  std::cout << "min_dist_blw is: " << min_dist_blw << std::endl;
+  /*std::cout << "min_dist_blw is: " << min_dist_blw << std::endl;*/
   setup_lp(d, N, len_start, horizon, min_dist_blw / 1.1, ds_below);
   // setup_lp(d, N, horizon, 0, ds_below);
   cpg_solve();
@@ -393,14 +394,14 @@ inline bool get_tubes(int d, int N, double max_dist,
     return false;
   }
 
-  for (int i = 0; i < d; ++i)
-    std::cout << CPG_Result.prim->var2[i] << ", ";
-  std::cout << std::endl;
+  /*for (int i = 0; i < d; ++i)*/
+  /*  std::cout << CPG_Result.prim->var2[i] << ", ";*/
+  /*std::cout << std::endl;*/
 
-  std::cout << "dist_below= [";
-  for (int i = 0; i < N; ++i)
-    std::cout << ds_below[i] << ", ";
-  std::cout << "];" << std::endl;
+  /*std::cout << "dist_below= [";*/
+  /*for (int i = 0; i < N; ++i)*/
+  /*  std::cout << ds_below[i] << ", ";*/
+  /*std::cout << "];" << std::endl;*/
 
   Eigen::VectorXd lower_coeffs;
   lower_coeffs.resize(d);

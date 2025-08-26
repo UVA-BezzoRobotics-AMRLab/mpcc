@@ -1,14 +1,14 @@
 <?xml version="1.0"?>
 
 <launch>
-	<arg name="odomTopic" default="/gmapping/odometry" />
+	<arg name="odomTopic" default="/uav1/estimation_manager/odom_main" />
 	<arg name="cmdTopic" default="/cmd_vel" />
-  <arg name="mpc_type" value="unicycle_model_mpcc" />
+  <arg name="mpc_type" value="double_integrator_mpcc" />
   <arg name="use_rl" default="false" />
   <arg name="db_filename" default="$(env HOME)/dbs/rl_learning.db" />
 
   <rosparam file="$(find mpcc)/params/$(arg mpc_type).yaml" command="load" ns="mpcc/" />
-  <rosparam file="$(find mpcc)/params/robo_params.yaml" command="load" ns="mpcc/" />
+  <rosparam file="$(find mpcc)/params/uav_params.yaml" command="load" ns="mpcc/" />
 
   <!-- For logging data when learning CBF adaptation -->
 	<group if="$(arg use_rl)">
@@ -30,9 +30,11 @@
 		<remap from="/cmd_vel" to="$(arg cmdTopic)" />
 	</node>
 
-	<rosparam file="$(find mpcc)/params/local_costmap_params.yaml" command="load" ns="local_costmap/local_costmap/" />
+	<rosparam file="$(find mpcc)/params/uav_local_costmap_params.yaml" command="load" ns="local_costmap/local_costmap/" />
 	<node name="local_costmap" pkg="mpcc" type="local_costmap" output="screen" />
 
   <include file="$(find mpcc)/launch/gmapping.launch" /> 
 
+
 </launch>
+

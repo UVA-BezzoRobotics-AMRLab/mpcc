@@ -1,9 +1,9 @@
 <?xml version="1.0"?>
 
 <launch>
-	<arg name="odomTopic" default="/gmapping/odometry" />
-	<arg name="cmdTopic" default="/cmd_vel" />
-  <arg name="mpc_type" value="unicycle_model_mpcc" />
+  <arg name="odomTopic" default="/gmapping/odometry" />
+	<arg name="cmdTopic" default="/mpc_vel" />
+  <arg name="mpc_type" value="double_integrator_mpcc" />
   <arg name="use_rl" default="false" />
   <arg name="db_filename" default="$(env HOME)/dbs/rl_learning.db" />
 
@@ -15,7 +15,7 @@
 		<node pkg="amrl_logging" type="sqlite_node" name="logging_node" output="screen">
 			<param name="db_filename" value="$(arg db_filename)"/>
 		</node>
-    <node name="model_server" pkg="mpcc" type="model_server.py" output="screen" />
+    <node name="model_server" pkg="mpcc" type="model_server_di.py" output="screen" />
 	</group>
 
 	<node name="mpcc" pkg="mpcc" type="mpcc_ros" output="screen">
@@ -24,7 +24,7 @@
 	<!-- <node name="jackal_mpc_track" pkg="cbf_tracking" type="jackal_mpc_tracking" 
 		launch-prefix="valgrind -s" output="screen"> -->
 		
-		<param name="mpc_type" value="$(arg mpc_type)" />
+		<!--<param name="mpc_type" value="$(arg mpc_type)" />-->
 
 		<remap from="/odometry/filtered" to="$(arg odomTopic)" />
 		<remap from="/cmd_vel" to="$(arg cmdTopic)" />
@@ -32,7 +32,10 @@
 
 	<rosparam file="$(find mpcc)/params/local_costmap_params.yaml" command="load" ns="local_costmap/local_costmap/" />
 	<node name="local_costmap" pkg="mpcc" type="local_costmap" output="screen" />
+	<node name="cmd_mapper" pkg="mpcc" type="di_to_uni_cmd_mapper.py" output="screen" />
 
   <include file="$(find mpcc)/launch/gmapping.launch" /> 
 
 </launch>
+
+

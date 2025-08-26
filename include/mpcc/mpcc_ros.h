@@ -226,6 +226,7 @@ class MPCCROS {
   Eigen::VectorXd _curr_rl_state;
 
   std::string _frame_id;
+  std::string _mpc_input_type;
   std::string _logging_table_name;
   std::string _logging_topic_name;
 

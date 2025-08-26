@@ -9,7 +9,7 @@ import rlkit.torch.pytorch_util as ptu
 
 from std_msgs.msg import Float32
 from rlkit.torch.networks import ConcatMlp
-from mpcc.srv import QuerySAC, QuerySACResponse
+from mpcc.srv import QuerySACDI, QuerySACDIResponse
 from rlkit.torch.sac.policies import TanhGaussianPolicy, MakeDeterministic
 
 policy = None
@@ -29,15 +29,16 @@ class ModelServer:
         self.is_eval = rospy.get_param("/train/is_eval", True)
 
         self.model_file = rospy.get_param("/train/model_file", "./sac_policy.pth")
+        self.dynamic_model = rospy.get_param("/train/dynamic_model", "unicycle")
 
-        self.theta_min = float(rospy.get_param("/train/theta_min", -np.pi))
-        self.theta_max = float(rospy.get_param("/train/theta_max", np.pi))
-        self.velocity_min = float(rospy.get_param("/train/velocity_min", -2.0))
-        self.velocity_max = float(rospy.get_param("/train/velocity_max", 2.0))
-        self.acc_min = float(rospy.get_param("/train/acc_min", -5.0))
-        self.acc_max = float(rospy.get_param("/train/acc_max", 5.0))
-        self.angvel_min = float(rospy.get_param("/train/angvel_min", -3.141))
-        self.angvel_max = float(rospy.get_param("/train/angvel_max", 3.141))
+        self.vx_min = float(rospy.get_param("/train/vx_min", -2.0))
+        self.vx_max = float(rospy.get_param("/train/vx_max", 2.0))
+        self.vy_min = float(rospy.get_param("/train/vy_min", -2.0))
+        self.vy_max = float(rospy.get_param("/train/vy_max", 2.0))
+        self.ax_min = float(rospy.get_param("/train/ax_min", -5.0))
+        self.ax_max = float(rospy.get_param("/train/ax_max", 5.0))
+        self.ay_min = float(rospy.get_param("/train/ay_min", -5.0))
+        self.ay_max = float(rospy.get_param("/train/ay_max", 5.0))
 
         self.dist_to_obs_min = float(rospy.get_param("/train/dist_to_obs_min", -0.2))
         self.dist_to_obs_max = float(rospy.get_param("/train/dist_to_obs_max", 100.0))
@@ -100,7 +101,7 @@ class ModelServer:
         # self.qf1.eval().to(ptu.device)
         # self.qf2.eval().to(ptu.device)
 
-        rospy.Service("query_sac", QuerySAC, self.query_sac)
+        rospy.Service("query_sac", QuerySACDI, self.query_sac)
 
     def spin(self):
         rospy.spin()
@@ -109,12 +110,13 @@ class ModelServer:
         return low + (high - low) * (action + 1) / 2
 
     def query_sac(self, req):
+        obs = None
         obs = np.array(
             [
-                self.normalize(req.theta, self.theta_min, self.theta_max),
-                self.normalize(req.vel, self.velocity_min, self.velocity_max),
-                self.normalize(req.acc, self.acc_min, self.acc_max),
-                self.normalize(req.ang_vel, self.angvel_min, self.angvel_max),
+                self.normalize(req.vx, self.vx_min, self.vx_max),
+                self.normalize(req.vy, self.vy_min, self.vy_max),
+                self.normalize(req.ax, self.ax_min, self.ax_max),
+                self.normalize(req.ay, self.ay_min, self.ay_max),
                 self.normalize(
                     req.obs_dist_abv, self.dist_to_obs_min, self.dist_to_obs_max
                 ),
@@ -149,7 +151,7 @@ class ModelServer:
         action1 = self.scale_action(action_abv, self.min_alpha_dot, self.max_alpha_dot)
         action2 = self.scale_action(action_blw, self.min_alpha_dot, self.max_alpha_dot)
 
-        resp = QuerySACResponse()
+        resp = QuerySACDIResponse()
         resp.alpha_dot = [action1, action2]
         resp.success = True
 
@@ -163,6 +165,7 @@ class ModelServer:
         return resp
 
     def normalize(self, value, min_val, max_val):
+        print("NORMALIZE", value, min_val, max_val)
         return (value - min_val) / (max_val - min_val)
 
 
