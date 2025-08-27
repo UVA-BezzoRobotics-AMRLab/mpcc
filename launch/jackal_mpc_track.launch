@@ -10,14 +10,14 @@
   <rosparam file="$(find mpcc)/params/$(arg mpc_type).yaml" command="load" ns="mpcc/" />
   <rosparam file="$(find mpcc)/params/robo_params.yaml" command="load" ns="mpcc/" />
 
-  <!-- For logging data when learning CBF adaptation -->
+  <!-- For logging data when learning CBF adaptation 
 	<group if="$(arg use_rl)">
 		<node pkg="amrl_logging" type="sqlite_node" name="logging_node" output="screen">
 			<param name="db_filename" value="$(arg db_filename)"/>
 		</node>
     <node name="model_server" pkg="mpcc" type="model_server.py" output="screen" />
 	</group>
-
+  -->
 	<node name="mpcc" pkg="mpcc" type="mpcc_ros" output="screen">
 	<!-- <node name="jackal_mpc_track" pkg="cbf_tracking" type="jackal_mpc_tracking" 
 		launch-prefix="lldb" output="screen"> -->

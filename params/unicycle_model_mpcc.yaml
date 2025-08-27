@@ -1,6 +1,6 @@
 # IPOPT Horizon MPC parameters
 mpc_input_type: "unicycle"
-frame_id: "map"
+frame_id: "odom"
 use_vicon: false
 mpc_steps: 10
 controller_frequency: 10

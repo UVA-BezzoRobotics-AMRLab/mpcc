@@ -165,7 +165,7 @@ MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~") {
   ROS_INFO("done loading params!");
 
   _mapSub  = nh.subscribe("/map", 1, &MPCCROS::mapcb, this);
-  _odomSub = nh.subscribe("/base_pose_ground_truth", 1, &MPCCROS::odomcb, this);
+  _odomSub = nh.subscribe("/ROSBOT8/odom", 1, &MPCCROS::odomcb, this);
   _trajSub =
       nh.subscribe("/TransferTrajectory", 1, &MPCCROS::trajectorycb, this);
   _obsSub = nh.subscribe("/obs_odom", 1, &MPCCROS::dynaobscb, this);
@@ -176,7 +176,7 @@ MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~") {
 
   _startPub       = nh.advertise<std_msgs::Float64>("/progress", 10);
   _pathPub        = nh.advertise<nav_msgs::Path>("/spline_path", 10);
-  _velPub         = nh.advertise<geometry_msgs::Twist>("/cmd_vel", 10);
+  _velPub         = nh.advertise<geometry_msgs::Twist>("/ROSBOT8/cmd_vel", 10);
   _trajPub        = nh.advertise<nav_msgs::Path>("/mpc_prediction", 10);
   _solveTimePub   = nh.advertise<std_msgs::Float64>("/mpc_solve_time", 0);
   _goalReachedPub = nh.advertise<std_msgs::Bool>("/mpc_goal_reached", 10);
@@ -497,7 +497,7 @@ void MPCCROS::trajectorycb(
     ys(i) = msg->points[i].positions[1];
     ss(i) = msg->points[i].time_from_start.toSec();
 
-    /*ROS_INFO("%.2f:\t(%.2f, %.2f)", ss(i), xs(i), ys(i));*/
+    ROS_INFO("%.2f:\t(%.2f, %.2f)", ss(i), xs(i), ys(i));
   }
 
   _ref_len      = ss(ss.size() - 1);
