@@ -80,7 +80,7 @@ RUN apt-get update && \
 WORKDIR /home/catkin_ws/src/mpcc/scripts/tube_gen
 
 # generate code to build tubes
-RUN . /home/catkin_ws/venv/bin/activate && python3 tube_lp_gen.py --yaml=/home/catkin_ws/src/mpcc/params/mpcc.yaml
+RUN . /home/catkin_ws/venv/bin/activate && python3 tube_lp_gen.py --yaml=/home/catkin_ws/src/mpcc/params/double_integrator_mpcc.yaml
 
 WORKDIR /home/catkin_ws
 
