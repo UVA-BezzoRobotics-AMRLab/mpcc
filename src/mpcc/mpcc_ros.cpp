@@ -165,9 +165,9 @@ MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~") {
   ROS_INFO("done loading params!");
 
   _mapSub  = nh.subscribe("/map", 1, &MPCCROS::mapcb, this);
-  _odomSub = nh.subscribe("/odometry/filtered", 1, &MPCCROS::odomcb, this);
+  _odomSub = nh.subscribe("/base_pose_ground_truth", 1, &MPCCROS::odomcb, this);
   _trajSub =
-      nh.subscribe("/reference_trajectory", 1, &MPCCROS::trajectorycb, this);
+      nh.subscribe("/TransferTrajectory", 1, &MPCCROS::trajectorycb, this);
   _obsSub = nh.subscribe("/obs_odom", 1, &MPCCROS::dynaobscb, this);
 
   _timer = nh.createTimer(ros::Duration(_dt), &MPCCROS::mpcc_ctrl_loop, this);
