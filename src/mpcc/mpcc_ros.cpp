@@ -377,6 +377,8 @@ void MPCCROS::visualizeTraj() {
     pt_a.y                     = py;
     pt_a.z                     = 1.0;
 
+    ROS_WARN("[visualizeTraj] %.2f: %.2f, %.2f", s,px,py);
+
     std_msgs::ColorRGBA color_msg;
     color_msg.r = 0;
     color_msg.g = 0.0;
@@ -548,6 +550,15 @@ void MPCCROS::trajectorycb(
 
   _ref[0] = splineX;
   _ref[1] = splineY;
+
+  for (double end = 0; end<_ref_len; end+=0.25){
+    double px  = splineX(end).coeff(0);
+    double py  = splineY(end).coeff(0);
+    double dx  = splineX.derivatives(end, 1).coeff(1);
+    double dy  = splineY.derivatives(end, 1).coeff(1);
+
+    ROS_WARN("(%.2f, %.2f)\t(%.2f, %.2f)", px, py, dx, dy);
+  }
 
   _mpc_core->set_trajectory(_ref, _ref_len);
 
