@@ -217,6 +217,7 @@ bool MPCCROS::toggleBackup(std_srvs::Empty::Request& req,
 
 void MPCCROS::visualizeTubes() {
   const Eigen::VectorXd& state = _mpc_core->get_state();
+  double max_view_horizon      = 2.0;
   double len_start             = state(4);
   double horizon = _mpc_ref_len_sz;  //2 * _max_linvel * _dt * _mpc_steps;
 
@@ -225,6 +226,8 @@ void MPCCROS::visualizeTubes() {
 
   if (len_start + horizon > _true_ref_len)
     horizon = _true_ref_len - len_start;
+
+  horizon = std::min(horizon, max_view_horizon);
 
   Eigen::VectorXd abv_coeffs = _tubes[0];
   Eigen::VectorXd blw_coeffs = _tubes[1];

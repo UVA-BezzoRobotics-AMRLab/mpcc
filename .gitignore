@@ -8,6 +8,7 @@ __pycache__
 .clang-format*
 
 .cache/
+.catkin_tools/
 c_generated_code/
 LP_codegen/
 build/

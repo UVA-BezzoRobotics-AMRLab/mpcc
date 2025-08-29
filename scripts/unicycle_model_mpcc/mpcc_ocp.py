@@ -17,7 +17,7 @@ from mpcc_model import (
 )
 from acados_template import AcadosOcp, AcadosOcpSolver, AcadosSimSolver
 
-max_s = 4
+max_s = 8
 
 
 def create_ocp():
