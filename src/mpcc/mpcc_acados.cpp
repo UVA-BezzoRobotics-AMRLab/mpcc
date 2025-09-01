@@ -614,6 +614,23 @@ std::array<double, 2> MPCC::solve(const Eigen::VectorXd& state,
   return _cmd;
 }
 
+const std::array<Eigen::VectorXd, 2> MPCC::get_state_limits() const {
+  Eigen::VectorXd xmin(kNX), xmax(kNX);
+  xmin << -_bound_value, -_bound_value, -M_PI, -_max_linvel, 0, -_max_linvel;
+  xmax << _bound_value, _bound_value, M_PI, _max_linvel, _ref_length,
+      _max_linvel;
+
+  return {xmin, xmax};
+}
+
+const std::array<Eigen::VectorXd, 2> MPCC::get_input_limits() const {
+  Eigen::VectorXd umin(kNU), umax(kNU);
+  umin << -_max_angvel, -_max_linacc, -_max_linacc;
+  umax << _max_angvel, _max_linacc, _max_linacc;
+
+  return {umin, umax};
+}
+
 Eigen::VectorXd MPCC::get_cbf_data(const Eigen::VectorXd& state,
                                    const Eigen::VectorXd& control,
                                    bool is_abv) const {

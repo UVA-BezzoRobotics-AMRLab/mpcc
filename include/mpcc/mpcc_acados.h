@@ -96,6 +96,12 @@ class MPCC : public MPCBase {
                                const Eigen::VectorXd& control,
                                bool is_abv) const override;
 
+  virtual const Eigen::VectorXd& get_state() const override { return _state; };
+  virtual const std::array<Eigen::VectorXd, 2> get_state_limits()
+      const override;
+  virtual const std::array<Eigen::VectorXd, 2> get_input_limits()
+      const override;
+
  public:
   // TOOD: make getter for these
   // Use one vector which stores a state struct...

@@ -37,6 +37,12 @@ find_package(Eigen3 REQUIRED COMPONENT system)
 
 message("ACADOS_INCLUDE_DIRS: ${ACADOS_INCLUDE_DIRS}")
 
+add_message_files(
+      DIRECTORY
+      FILES
+      RLState.msg
+)
+
 add_service_files(
   FILES
   QuerySAC.srv
@@ -137,6 +143,7 @@ target_link_libraries(mpcc_ros
   ${BLASFEO_LIBRARIES}
   cvxpy_lib
 )
+add_dependencies(mpcc_ros ${PROJECT_NAME}_generate_messages)
 target_compile_options(mpcc_ros PRIVATE -std=c++17 -O3)
 add_dependencies(mpcc_ros ${ACADOS_TARGETS})
 add_dependencies(mpcc_ros cvxpy_lib)

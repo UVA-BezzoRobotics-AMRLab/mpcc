@@ -201,6 +201,7 @@ MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~") {
 
   if (_is_logging || _is_eval)
     _logger = std::make_unique<logger::RLLogger>(nh, _min_alpha, _max_alpha,
+                                                 _max_tube_width / 2,
                                                  _is_logging, _mpc_input_type);
 }
 

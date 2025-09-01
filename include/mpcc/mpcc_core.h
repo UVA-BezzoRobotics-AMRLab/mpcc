@@ -70,6 +70,8 @@ class MPCCore {
   double get_s_from_odom() const;
   const bool get_solver_status() const;
   const Eigen::VectorXd& get_state() const;
+  const std::array<Eigen::VectorXd, 2> get_state_limits() const;
+  const std::array<Eigen::VectorXd, 2> get_input_limits() const;
   std::vector<Eigen::VectorXd> get_horizon() const;
   const std::array<double, 2> get_mpc_command() const;
   const std::map<std::string, double>& get_params() const;

@@ -1,17 +1,17 @@
 # Request
-float64 theta
-float64 vel
-float64 acc
-float64 ang_vel
-float64 obs_dist_abv
-float64 obs_dist_blw
-float64 heading_dist
-float64 progress
-float64 h_val_abv
-float64 h_val_blw
-float64 alpha_abv
-float64 alpha_blw
-bool solver_status
+# float64 theta
+# float64 vel
+# float64 acc
+# float64 ang_vel
+# float64 obs_dist_abv
+# float64 obs_dist_blw
+# float64 heading_dist
+# float64 progress
+# float64 h_val_abv
+# float64 h_val_blw
+# float64 alpha_abv
+# float64 alpha_blw
+RLState state
 ---
 # Response
 bool success

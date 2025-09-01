@@ -1,59 +1,39 @@
 #pragma once
 
+#include <mpcc/QuerySAC.h>
+#include <mpcc/QuerySACDI.h>
+#include <mpcc/RLState.h>
+#include <mpcc/mpcc_core.h>
+
 #include <amrl_logging/LoggingBufferCheck.h>
 #include <amrl_logging/LoggingData.h>
 #include <amrl_logging/LoggingDropTable.h>
 #include <amrl_logging/LoggingStart.h>
 #include <amrl_logging/LoggingStop.h>
-#include <mpcc/QuerySAC.h>
-#include <mpcc/QuerySACDI.h>
-#include <mpcc/mpcc_core.h>
 #include <ros/ros.h>
 #include <std_msgs/Bool.h>
-
+#include <Eigen/Core>
 #include <amrl_logging_util/util.hpp>
+
 #include <cstdint>
+#include <unordered_map>
 
 namespace logger {
 
-struct logger_state {
-  double theta;
-  double vel;
-  double acc;
-  double ang_vel;
-  double obs_dist_abv;
-  double obs_dist_blw;
-  double obs_heading;
-  double progress;
-  double h_val_abv;
-  double h_val_blw;
-  double alpha_val_abv;
-  double alpha_val_blw;
+struct RLTransition {
+  std::vector<double> state;
+  std::vector<double> next_state;
+  std::vector<double> action;
+  double reward;
+  bool done;
   bool solver_status;
 };
-typedef struct logger_state logger_state_t;
-
-struct logger_state_di {
-  double vx;
-  double vy;
-  double ax;
-  double ay;
-  double obs_dist_abv;
-  double obs_dist_blw;
-  double obs_heading;
-  double progress;
-  double h_val_abv;
-  double h_val_blw;
-  double alpha_val_abv;
-  double alpha_val_blw;
-  bool solver_status;
-};
-typedef struct logger_state_di logger_state_di_t;
+typedef struct RLTransition RLTransition_t;
 
 class RLLogger {
  public:
   RLLogger(ros::NodeHandle& nh, double min_alpha, double max_alpha,
-           bool is_logging, const std::string& mpc_type);
+           double max_obs_dist, bool is_logging, const std::string& mpc_type);
 
   ~RLLogger();
 
@@ -63,9 +43,11 @@ class RLLogger {
 
  private:
   void collision_cb(const std_msgs::Bool::ConstPtr& msg);
+  void fill_state(const MPCCore& mpc_core, mpcc::RLState& state);
+
+  std::string serialize_state(const mpcc::RLState& state);
 
   double compute_reward();
-  double compute_reward_di();
 
   ros::NodeHandle _nh;
 
@@ -78,11 +60,8 @@ class RLLogger {
 
   ros::ServiceClient _sac_srv;
 
-  logger_state_t _prev_rl_state;
-  logger_state_t _curr_rl_state;
-
-  logger_state_di_t _prev_rl_state_di;
-  logger_state_di_t _curr_rl_state_di;
+  mpcc::RLState _prev_rl_state;
+  mpcc::RLState _curr_rl_state;
 
   unsigned int _count;
 
@@ -92,6 +71,8 @@ class RLLogger {
 
   double _min_alpha;
   double _max_alpha;
+  double _max_obs_dist;
+
   double _alpha_dot_abv;
   double _alpha_dot_blw;
 
@@ -102,5 +83,16 @@ class RLLogger {
 
   uint8_t _exceeded_bounds;
 };
+
+double normalize(double val, double min, double max) {
+  if (fabs(min - max) < 1e-8) {
+    std::cerr << "[Logger] Warning: min and max are too close for proper "
+                 "normalization!"
+              << std::endl;
+    return 0.;
+  }
+
+  return (val - min) / (max - min);
+}
 
 }  // namespace logger

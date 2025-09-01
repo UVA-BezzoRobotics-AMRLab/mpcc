@@ -220,7 +220,7 @@ Eigen::VectorXd DIMPCC::get_cbf_data(const Eigen::VectorXd& state,
   if (fabs(vx) < 1e-3 && fabs(vy) < 1e-3)
     vx = 1e-3;
 
-  double vel = sqrt(vx*vx + vy*vy);
+  double vel = sqrt(vx * vx + vy * vy);
 
   double signed_d = (state(0) - xr) * obs_dirx + (state(1) - yr) * obs_diry;
   double p        = (obs_dirx * vx + obs_diry * vy) / vel + vel * .05;
@@ -607,4 +607,19 @@ void DIMPCC::process_solver_output(double s) {
     mpc_ay[i]      = utraj[kIndAy + i * kIndInputInc];
     mpc_s_ddots[i] = utraj[kIndSDDot + i * kIndInputInc];
   }
+}
+
+const std::array<Eigen::VectorXd, 2> DIMPCC::get_state_limits() const {
+  Eigen::VectorXd xmin(kNX), xmax(kNX);
+  xmin << -1e3, -1e3, -_max_linvel, -_max_linvel, 0, -_max_linvel;
+  xmax << 1e3, 1e3, _max_linvel, _max_linvel, _ref_length, _max_linvel;
+  return {xmin, xmax};
+}
+
+const std::array<Eigen::VectorXd, 2> DIMPCC::get_input_limits() const {
+  Eigen::VectorXd umin(kNU), umax(kNU);
+  umin << -_max_linacc, -_max_linacc, -_max_linacc;
+  umax << _max_linacc, _max_linacc, _max_linacc;
+
+  return {umin, umax};
 }

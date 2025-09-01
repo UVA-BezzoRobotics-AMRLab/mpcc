@@ -1,8 +1,8 @@
 # if bag param is true in gazebo_run, will dump bags to this location
-bag_dir: "/home/nick/catkin_ws/src/mpcc/bags"
-log_dir: "/home/nick/catkin_ws/src/mpcc/bags/results/sac_logs"
-db_file: "/home/nick/catkin_ws/src/mpcc/bags/results/rl_learning.db"
-model_file: "/home/nick/catkin_ws/src/mpcc/bags/results/sac_policy.pth"
+bag_dir: "/home/bezzo/catkin_ws/src/mpcc/bags"
+log_dir: "/home/bezzo/catkin_ws/src/mpcc/bags/results/sac_logs"
+db_file: "/home/bezzo/catkin_ws/src/mpcc/bags/results/rl_learning.db"
+model_file: "/home/bezzo/catkin_ws/src/mpcc/bags/results/sac_policy.pth"
 
 # training hyper params
 batch_size: 512

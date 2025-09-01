@@ -237,6 +237,14 @@ const Eigen::VectorXd& MPCCore::get_state() const {
   return _mpc->get_state();
 }
 
+const std::array<Eigen::VectorXd, 2> MPCCore::get_state_limits() const {
+  return _mpc->get_state_limits();
+}
+
+const std::array<Eigen::VectorXd, 2> MPCCore::get_input_limits() const {
+  return _mpc->get_input_limits();
+}
+
 std::vector<Eigen::VectorXd> MPCCore::get_horizon() const {
   std::vector<Eigen::VectorXd> ret;
   if (_mpc_input_type == "unicycle") {

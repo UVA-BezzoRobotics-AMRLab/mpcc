@@ -23,11 +23,15 @@ w_lyap_contour_e: 1
 clf_gamma: .5
 
 # CBF params
-use_cbf: false
+use_cbf: true
 cbf_alpha_abv: 100
 cbf_alpha_blw: 100
 cbf_colinear: .05
 cbf_padding: .05
+
+# rl training params
+min_alpha: 0.05
+max_alpha: 5.0
 
 prop_gain: 1.5
 prop_gain_thresh: .5

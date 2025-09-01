@@ -40,28 +40,28 @@ class MPCBase {
                                       bool is_reverse = false) = 0;
 
   virtual void set_odom(const Eigen::VectorXd& odom) = 0;
-  virtual void reset_horizon() = 0;
+  virtual void reset_horizon()                       = 0;
 
   void set_tubes(const std::array<Eigen::VectorXd, 2>& tubes) {
     _tubes = tubes;
   }
 
-  void set_reference(const std::array<Spline1D, 2>& reference,
-                           double arclen) {
+  void set_reference(const std::array<Spline1D, 2>& reference, double arclen) {
     _reference  = reference;
     _ref_length = arclen;
     return;
   }
 
-  virtual const Eigen::VectorXd& get_state() const { return _state; }
+  virtual const Eigen::VectorXd& get_state() const                      = 0;
+  virtual const std::array<Eigen::VectorXd, 2> get_state_limits() const = 0;
+  virtual const std::array<Eigen::VectorXd, 2> get_input_limits() const = 0;
+
   virtual std::array<double, 2> get_command() const { return _cmd; }
   virtual Eigen::VectorXd get_cbf_data(const Eigen::VectorXd& state,
-                                   const Eigen::VectorXd& control,
-                                   bool is_abv) const = 0;
+                                       const Eigen::VectorXd& control,
+                                       bool is_abv) const = 0;
 
-  const bool get_solver_status() const {
-    return _solve_success;
-  }
+  const bool get_solver_status() const { return _solve_success; }
 
   virtual std::array<Spline1D, 2> compute_adjusted_ref(double s) const {
     // get reference for next _ref_len_sz meters, indexing from s=0 onwards
@@ -98,7 +98,8 @@ class MPCBase {
     return {splineX, splineY};
   }
 
-  double limit(double prev_val, double input, double max_rate, double dt) const {
+  double limit(double prev_val, double input, double max_rate,
+               double dt) const {
     double ret = input;
     if (fabs(prev_val - input) / dt > max_rate) {
       if (input > prev_val)
