@@ -17,6 +17,7 @@
 
 #include <Eigen/Core>
 #include <algorithm>
+#include <unordered_map>
 
 #include "mpcc/utils.h"
 
@@ -68,6 +69,13 @@ MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~") {
   _nh.param("w_max", _max_angvel, 3.0);
   _nh.param("v_max", _max_linvel, 2.0);
   _nh.param("a_max", _max_linacc, 3.0);
+  _nh.param("min_alpha", _min_alpha, .1);
+  _nh.param("max_alpha", _max_alpha, 10.);
+  _nh.param("min_alpha_dot", _min_alpha_dot, -1.0);
+  _nh.param("max_alpha_dot", _max_alpha_dot, 1.0);
+  _nh.param("min_h_val", _min_h_val, -1e8);
+  _nh.param("max_h_val", _max_h_val, 1e8);
+
   _nh.param("anga_max", _max_anga, 2 * M_PI);
   _nh.param("bound_value", _bound_value, 1.0e19);
 
@@ -107,14 +115,6 @@ MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~") {
 
   _nh.param("/train/logging", _is_logging, false);
   _nh.param("/train/is_eval", _is_eval, false);
-  _nh.param("/train/min_alpha", _min_alpha, .1);
-  _nh.param("/train/max_alpha", _max_alpha, 10.);
-
-  // num coeffs is tube_W_ANGVELdegree + 1
-  _tube_degree += 1;
-
-  // tube width technically from traj to tube boundary
-  _max_tube_width /= 2;
 
   _dt = 1.0 / freq;
 
@@ -199,10 +199,28 @@ MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~") {
     ROS_WARN("******************");
   }
 
-  if (_is_logging || _is_eval)
-    _logger = std::make_unique<logger::RLLogger>(nh, _min_alpha, _max_alpha,
-                                                 _max_tube_width / 2,
-                                                 _is_logging, _mpc_input_type);
+  if (_use_cbf && (_is_logging || _is_eval)) {
+    std::unordered_map<std::string_view, double> logger_params;
+    logger_params["MIN_ALPHA"]     = _min_alpha;
+    logger_params["MAX_ALPHA"]     = _max_alpha;
+    logger_params["MIN_ALPHA_DOT"] = _min_alpha_dot;
+    logger_params["MAX_ALPHA_DOT"] = _max_alpha_dot;
+    logger_params["MIN_H_VAL"]     = _min_h_val;
+    logger_params["MAX_H_VAL"]     = _max_h_val;
+    logger_params["MAX_OBS_DIST"]  = _max_tube_width;
+
+    _logger = std::make_unique<logger::RLLogger>(nh, logger_params, _is_logging,
+                                                 _mpc_input_type);
+  } else if (!_use_cbf) {
+    _cbf_alpha_abv = 100.;
+    _cbf_alpha_blw = 100.;
+  }
+
+  // num coeffs is tube_W_ANGVELdegree + 1
+  _tube_degree += 1;
+
+  // tube width technically from traj to tube boundary
+  _max_tube_width /= 2;
 }
 
 MPCCROS::~MPCCROS() {

@@ -87,9 +87,9 @@ class ModelServer:
         return low + (high - low) * (action + 1) / 2
 
     def query_sac(self, req):
-        obs = np.column_stack(
-            [req.state.state, 1.0 if req.solver_status == True else 0.0]
-        )
+        req_state = list(req.state.state)
+        req_state.append(1.0 if req.state.solver_status == True else 0.0)
+        obs = np.array(req_state)
 
         obs = torch.FloatTensor(obs).to(ptu.device)
 

@@ -197,6 +197,11 @@ class MPCCROS {
 
   double _min_alpha;
   double _max_alpha;
+  double _min_alpha_dot;
+  double _max_alpha_dot;
+  double _min_h_val;
+  double _max_h_val;
+
   double _ref_len;
   double _prev_ref_len;
   double _true_ref_len;

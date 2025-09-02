@@ -24,14 +24,20 @@ clf_gamma: .5
 
 # CBF params
 use_cbf: true
-cbf_alpha_abv: 100
-cbf_alpha_blw: 100
+cbf_alpha_abv: 2.5
+cbf_alpha_blw: 2.5
 cbf_colinear: .05
 cbf_padding: .05
 
 # rl training params
-min_alpha: 0.05
+min_alpha: 0.025
 max_alpha: 5.0
+
+# cbf adaptation params
+min_alpha_dot: -.5
+max_alpha_dot: .5
+min_h_val: -10.
+max_h_val: 100.
 
 prop_gain: 1.5
 prop_gain_thresh: .5

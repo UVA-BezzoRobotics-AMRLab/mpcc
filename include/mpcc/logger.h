@@ -16,24 +16,19 @@
 #include <amrl_logging_util/util.hpp>
 
 #include <cstdint>
+#include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace logger {
 
-struct RLTransition {
-  std::vector<double> state;
-  std::vector<double> next_state;
-  std::vector<double> action;
-  double reward;
-  bool done;
-  bool solver_status;
-};
-typedef struct RLTransition RLTransition_t;
-
 class RLLogger {
  public:
-  RLLogger(ros::NodeHandle& nh, double min_alpha, double max_alpha,
-           double max_obs_dist, bool is_logging, const std::string& mpc_type);
+  RLLogger(ros::NodeHandle& nh,
+           const std::unordered_map<std::string_view, double>& params,
+           bool is_logging, const std::string& mpc_type);
+
+  void load_params(const std::unordered_map<std::string_view, double>& params);
 
   ~RLLogger();
 
@@ -71,6 +66,11 @@ class RLLogger {
 
   double _min_alpha;
   double _max_alpha;
+  double _min_alpha_dot;
+  double _max_alpha_dot;
+  double _min_h_val;
+  double _max_h_val;
+
   double _max_obs_dist;
 
   double _alpha_dot_abv;
@@ -82,17 +82,10 @@ class RLLogger {
   bool _is_first_iter;
 
   uint8_t _exceeded_bounds;
+
+  std::unordered_map<std::string_view, double> _params;
 };
 
-double normalize(double val, double min, double max) {
-  if (fabs(min - max) < 1e-8) {
-    std::cerr << "[Logger] Warning: min and max are too close for proper "
-                 "normalization!"
-              << std::endl;
-    return 0.;
-  }
-
-  return (val - min) / (max - min);
-}
+double normalize(double val, double min, double max);
 
 }  // namespace logger

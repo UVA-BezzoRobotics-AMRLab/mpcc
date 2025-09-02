@@ -2,6 +2,7 @@
 
 #include <array>
 #include <chrono>
+#include <csignal>
 #include <iostream>
 #include <mpcc/termcolor.hpp>
 #include <stdexcept>
@@ -662,17 +663,25 @@ Eigen::VectorXd MPCC::get_cbf_data(const Eigen::VectorXd& state,
   double obs_dirx = -yr_dot / den;
   double obs_diry = xr_dot / den;
 
-  double signed_d = (state(0) - xr) * obs_dirx + (state(1) - yr) * obs_diry;
+  /*std::cout << "[MPCC] obs_dir: " << obs_dirx << ", " << obs_diry << std::endl;*/
+  /*std::cout << "[MPCC] robot pos: " << _odom.head(2).transpose() << std::endl;*/
+  /*std::cout << "[MPCC] xr yr: " << xr << " " << yr << std::endl;*/
+  double signed_d = (_odom(0) - xr) * obs_dirx + (_odom(1) - yr) * obs_diry;
   double p =
-      obs_dirx * cos(state(2)) + obs_diry * sin(state(2)) + state(3) * .05;
+      obs_dirx * cos(_odom(2)) + obs_diry * sin(_odom(2)) + state(3) * .05;
 
   double h_val;
-  if (is_abv)
-    h_val = (tube_dist - signed_d - .1) * exp(-p);
-  else
-    h_val = (signed_d - tube_dist - .1) * exp(-p);
+  double dist;
+  if (is_abv) {
+    dist  = tube_dist - signed_d - .1;
+    h_val = dist * exp(-p);
+  } else {
+    dist  = signed_d - tube_dist - .1;
+    h_val = dist * exp(-p);
+  }
 
-  signed_d = is_abv ? signed_d : -signed_d;
+  /*std::cout << "[MPCC] dist is: " << dist << "\n";*/
+
   if (h_val > 100) {
     std::cout << termcolor::yellow << "ref length is " << _ref_length
               << std::endl;
@@ -683,5 +692,5 @@ Eigen::VectorXd MPCC::get_cbf_data(const Eigen::VectorXd& state,
     exit(-1);
   }
 
-  return Eigen::Vector3d(h_val, signed_d, atan2(obs_diry, obs_dirx));
+  return Eigen::Vector3d(h_val, dist, atan2(obs_diry, obs_dirx));
 }

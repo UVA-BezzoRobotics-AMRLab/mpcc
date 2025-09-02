@@ -8,12 +8,19 @@
 
 namespace logger {
 
-RLLogger::RLLogger(ros::NodeHandle& nh, double min_alpha, double max_alpha,
-                   double max_obs_dist, bool is_logging,
-                   const std::string& mpc_type) {
-  _nh         = nh;
-  _min_alpha  = min_alpha;
-  _max_alpha  = max_alpha;
+RLLogger::RLLogger(ros::NodeHandle& nh,
+                   const std::unordered_map<std::string_view, double>& params,
+                   bool is_logging, const std::string& mpc_type) {
+
+  _nh            = nh;
+  _min_alpha     = 0.01;
+  _max_alpha     = 10.0;
+  _min_alpha_dot = -1.0;
+  _max_alpha_dot = 1.0;
+  _max_obs_dist  = 1.0;
+
+  load_params(params);
+
   _is_logging = is_logging;
 
   _table_name = "replay_buffer";
@@ -41,12 +48,10 @@ RLLogger::RLLogger(ros::NodeHandle& nh, double min_alpha, double max_alpha,
   _alpha_dot_abv = 0.;
   _alpha_dot_blw = 0.;
 
-  _max_obs_dist = max_obs_dist;
-
   const std::vector<std::string> string_types = {"prev_state", "action",
                                                  "next_state", "is_done"};
 
-  std::vector<std::string> float_types = {"reward"};
+  std::vector<std::string> float_types = {"id", "reward"};
 
   if (_is_logging && !amrl::logging_setup(_nh, _table_name, _topic_name,
                                           string_types, {}, float_types)) {
@@ -57,6 +62,35 @@ RLLogger::RLLogger(ros::NodeHandle& nh, double min_alpha, double max_alpha,
 
 RLLogger::~RLLogger() {
   amrl::logging_finish(_nh, _table_name);
+}
+
+void RLLogger::load_params(
+    const std::unordered_map<std::string_view, double>& params) {
+  _min_alpha = params.find("MIN_ALPHA") != params.end() ? params.at("MIN_ALPHA")
+                                                        : _min_alpha;
+
+  _max_alpha = params.find("MAX_ALPHA") != params.end() ? params.at("MAX_ALPHA")
+                                                        : _max_alpha;
+
+  _min_alpha_dot = params.find("MIN_ALPHA_DOT") != params.end()
+                       ? params.at("MIN_ALPHA_DOT")
+                       : _min_alpha_dot;
+
+  _max_alpha_dot = params.find("MAX_ALPHA_DOT") != params.end()
+                       ? params.at("MAX_ALPHA_DOT")
+                       : _max_alpha_dot;
+
+  _min_h_val = params.find("MIN_H_VAL") != params.end() ? params.at("MIN_H_VAL")
+                                                        : _min_h_val;
+
+  _max_h_val = params.find("MAX_H_VAL") != params.end() ? params.at("MAX_H_VAL")
+                                                        : _max_h_val;
+
+  _max_obs_dist = params.find("MAX_OBS_DIST") != params.end()
+                      ? params.at("MAX_OBS_DIST")
+                      : _max_obs_dist;
+
+  _params = params;
 }
 
 void RLLogger::collision_cb(const std_msgs::Bool::ConstPtr& msg) {
@@ -79,6 +113,28 @@ bool RLLogger::request_alpha(MPCCore& mpc_core, double ref_len) {
     ROS_ERROR("SAC service failed");
     return false;
   }
+
+  // received action is between -1 and 1, scale to min/max alpha_dot
+  auto scale = [](double val, double min_val, double max_val) {
+    if (fabs(min_val - max_val) < 1e-8) {
+      std::cerr << "[Logger] Warning: min and max are too close for proper "
+                   "normalization!"
+                << std::endl;
+      return 0.;
+    }
+
+    if (val < min_val) {
+      std::cerr << "[Logger] Warning: value " << val << " is less than min "
+                << min_val << "!" << std::endl;
+      val = min_val;
+    }
+    return min_val + (val + 1) * 0.5 * (max_val - min_val);
+  };
+
+  _alpha_dot_abv =
+      scale(req.response.alpha_dot[0], _min_alpha_dot, _max_alpha_dot);
+  _alpha_dot_blw =
+      scale(req.response.alpha_dot[1], _min_alpha_dot, _max_alpha_dot);
 
   // integrate alpha_dot into CBF_ALPHA
   // clip alpha to ensure it's within bounds
@@ -132,11 +188,12 @@ void RLLogger::log_transition(const MPCCore& mpc_core, double len_start,
         _curr_rl_state.solver_status ? "true" : "false";
 
     std::vector<std::string> string_data = {
-        serialize_state(_prev_rl_state),
-        std::to_string(_alpha_dot_abv) + "," + std::to_string(_alpha_dot_blw),
-        serialize_state(_curr_rl_state), is_done_str};
+        serialize_state(_prev_rl_state),  // previous state
+        std::to_string(_alpha_dot_abv) + "," +
+            std::to_string(_alpha_dot_blw),             // action
+        serialize_state(_curr_rl_state), is_done_str};  // next_state, is_done
 
-    std::vector<double> numeric_data = {reward};
+    std::vector<double> numeric_data = {_count, reward};
 
     row.header.seq += _count++;
     row.header.stamp = ros::Time::now();
@@ -227,21 +284,44 @@ void RLLogger::fill_state(const MPCCore& mpc_core, mpcc::RLState& state) {
 
   // curr progress is already normalized, can't norm h value
   state.state[7]      = curr_progress;
-  state.state[8]      = cbf_data_abv[0];
-  state.state[9]      = cbf_data_blw[0];
-  state.state[10]     = alpha_abv;
-  state.state[11]     = alpha_blw;
+  state.state[8]      = normalize(cbf_data_abv[0], _min_h_val, _max_h_val);
+  state.state[9]      = normalize(cbf_data_blw[0], _min_h_val, _max_h_val);
+  state.state[10]     = normalize(alpha_abv, _min_alpha, _max_alpha);
+  state.state[11]     = normalize(alpha_blw, _min_alpha, _max_alpha);
   state.solver_status = solver_status;
+
+  /*ROS_INFO("obs abv and below are: %.2f\t%.2f", cbf_data_abv[1],*/
+  /*         cbf_data_blw[1]);*/
+  /*ROS_INFO("max obs dist: %.2f", _max_obs_dist);*/
+  /*for (int i = 0; i < state.state.size(); ++i) {*/
+  /*  ROS_INFO("State[%d]: %.3f", i, state.state[i]);*/
+  /*}*/
 }
 
 std::string RLLogger::serialize_state(const mpcc::RLState& state) {
-  uint32_t serial_size =
-      ros::serialization::serializationLength(_prev_rl_state);
+  uint32_t serial_size = ros::serialization::serializationLength(state);
   std::vector<uint8_t> buffer(serial_size);
   ros::serialization::OStream stream(buffer.data(), serial_size);
   ros::serialization::serialize(stream, state);
 
   return std::string(buffer.begin(), buffer.end());
+}
+
+double normalize(double val, double min, double max) {
+  if (fabs(min - max) < 1e-8) {
+    std::cerr << "[Logger] Warning: min and max are too close for proper "
+                 "normalization!"
+              << std::endl;
+    return 0.;
+  }
+
+  if (val < min) {
+    std::cerr << "[Logger] Warning: value " << val << " is less than min "
+              << min << "!" << std::endl;
+    val = min;
+  }
+
+  return (val - min) / (max - min);
 }
 
 }  // namespace logger

@@ -2,6 +2,7 @@ from logging import exception
 import os
 import sys
 import json
+import genpy
 import torch
 import yaml
 import random
@@ -12,7 +13,10 @@ import rlkit.torch.pytorch_util as ptu
 import numpy as np
 import gymnasium as gym
 import rospkg
+import roslib.message
 import rlkit.torch.pytorch_util as ptu
+
+from mpcc.msg import RLState
 
 from torch.utils.tensorboard import SummaryWriter
 
@@ -27,67 +31,16 @@ class CustomEnv(gym.Env):
         super(CustomEnv, self).__init__()
 
         self.state_dim = 11
-        self.theta_min = -np.pi
-        self.theta_max = np.pi
-        self.velocity_min = -2
-        self.velocity_max = 2
-        self.acc_min = -5
-        self.acc_max = 5
-        self.angvel_min = -np.pi
-        self.angvel_max = np.pi
-        self.distance_to_obstacle_min = 0
-        self.distance_to_obstacle_max = 100
-        self.heading_to_obstacle_min = -np.pi
-        self.heading_to_obstacle_max = np.pi
-        self.progress_min = 0.0
-        self.progress_max = 1.0
-        self.h_value_min = -1e5
-        self.h_value_max = 1e5
-        self.alpha_min = 0.1
-        self.alpha_max = 8
-
         self.action_dim = 2
-        # self.alpha_min = .1
-        # self.alpha_max = 8
-        self.alpha_dot_min = -2
-        self.alpha_dot_max = 2
 
     def set_obs_space(self):
 
         low = np.array(
-            [
-                self.theta_min,
-                self.velocity_min,
-                self.acc_min,
-                self.angvel_min,
-                self.distance_to_obstacle_min,
-                self.distance_to_obstacle_min,
-                self.heading_to_obstacle_min,
-                self.progress_min,
-                self.h_value_min,
-                self.h_value_min,
-                self.alpha_min,
-                self.alpha_min,
-                0,  # for solver status
-            ],
+            np.zeros(self.state_dim),
             dtype=np.float64,
         )
         high = np.array(
-            [
-                self.theta_max,
-                self.velocity_max,
-                self.acc_max,
-                self.angvel_max,
-                self.distance_to_obstacle_max,
-                self.distance_to_obstacle_max,
-                self.heading_to_obstacle_max,
-                self.progress_max,
-                self.h_value_max,
-                self.h_value_max,
-                self.alpha_max,
-                self.alpha_max,
-                1,  # for solver status
-            ],
+            np.ones(self.state_dim),
             dtype=np.float64,
         )
 
@@ -98,8 +51,8 @@ class CustomEnv(gym.Env):
     def set_action_space(self):
         # define action space
         self.action_space = gym.spaces.Box(
-            low=np.array([self.alpha_dot_min]),
-            high=np.array([self.alpha_dot_max]),
+            low=np.array(-1.0),
+            high=np.array(1.0),
             dtype=np.float64,
         )
 
@@ -128,9 +81,6 @@ class TrainManager:
         self.hidden_dim = yaml_data["hidden_dims"]
 
         self.buffer_size = yaml_data["buffer_size"]
-
-        self.min_alpha_dot = float(yaml_data["min_alpha_dot"])
-        self.max_alpha_dot = float(yaml_data["max_alpha_dot"])
 
         # Define networks
         self.qf1 = ConcatMlp(
@@ -186,30 +136,17 @@ class TrainManager:
             print("Error connecting to database: ", str(e))
             sys.exit(-1)
 
-    # set action between -1 and 1
-    def unscale_action(self, action, low, high):
-        return 2 * (action - low) / (high - low) - 1
-
-    def normalize(self, value, min_value, max_value):
-        return (value - min_value) / (max_value - min_value)
+    def deserialize_state(self, serialized_str, msg_type):
+        raw = bytearray(serialized_str.encode("latin-1"))
+        msg = msg_type()
+        msg.deserialize(raw)
+        return msg
 
     def load_from_db(self):
 
         cur = self.conn.cursor()
         random_sample = None
         try:
-            # query_random_from_recent = f"""
-            # WITH recent_entries AS (
-            #     SELECT * FROM replay_buffer
-            #     ORDER BY id DESC
-            #     LIMIT {self.buffer_size}
-            # )
-            # SELECT * FROM recent_entries
-            # ORDER BY RANDOM()
-            # LIMIT {self.batch_size}
-            # """
-            # cur.execute(query_random_from_recent)
-            # Retrieve the newest 50,000 entries
 
             query_limit_recent = f"""
             SELECT * FROM replay_buffer
@@ -244,133 +181,14 @@ class TrainManager:
         dones = []
 
         for row in rows:
-            state = [
-                self.normalize(
-                    float(row[label_to_index["prev_theta"]]),
-                    self.env.theta_min,
-                    self.env.theta_max,
-                ),
-                self.normalize(
-                    float(row[label_to_index["prev_vel"]]),
-                    self.env.velocity_min,
-                    self.env.velocity_max,
-                ),
-                self.normalize(
-                    float(row[label_to_index["prev_acc"]]),
-                    self.env.acc_min,
-                    self.env.acc_max,
-                ),
-                self.normalize(
-                    float(row[label_to_index["prev_angvel"]]),
-                    self.env.angvel_min,
-                    self.env.angvel_max,
-                ),
-                self.normalize(
-                    float(row[label_to_index["prev_obs_dist_abv"]]),
-                    self.env.distance_to_obstacle_min,
-                    self.env.distance_to_obstacle_max,
-                ),
-                self.normalize(
-                    float(row[label_to_index["prev_obs_dist_blw"]]),
-                    self.env.distance_to_obstacle_min,
-                    self.env.distance_to_obstacle_max,
-                ),
-                self.normalize(
-                    float(row[label_to_index["prev_obs_heading"]]),
-                    self.env.heading_to_obstacle_min,
-                    self.env.heading_to_obstacle_max,
-                ),
-                self.normalize(
-                    float(row[label_to_index["prev_progress"]]),
-                    self.env.progress_min,
-                    self.env.progress_max,
-                ),
-                float(row[label_to_index["prev_h_abv"]]),
-                float(row[label_to_index["prev_h_blw"]]),
-                self.normalize(
-                    float(row[label_to_index["prev_alpha_abv"]]),
-                    self.env.alpha_min,
-                    self.env.alpha_max,
-                ),
-                self.normalize(
-                    float(row[label_to_index["prev_alpha_blw"]]),
-                    self.env.alpha_min,
-                    self.env.alpha_max,
-                ),
-                1.0 if row[label_to_index["prev_solver_status"]] == "true" else 0.0,
-            ]
-            action = [
-                self.unscale_action(
-                    float(row[label_to_index["alpha_dot_abv"]]),
-                    self.min_alpha_dot,
-                    self.max_alpha_dot,
-                ),
-                self.unscale_action(
-                    float(row[label_to_index["alpha_dot_blw"]]),
-                    self.min_alpha_dot,
-                    self.max_alpha_dot,
-                ),
-            ]
+            prev_state = deserialize_state(row[label_to_index["prev_state"]], RLState)
+            next_state = deserialize_state(row[label_to_index["next_state"]], RLState)
+            action = row[label_to_index["action"]].split(",")
+            action = [float(a) for a in action]
             reward = float(row[label_to_index["reward"]])
-            next_state = [
-                self.normalize(
-                    float(row[label_to_index["curr_theta"]]),
-                    self.env.theta_min,
-                    self.env.theta_max,
-                ),
-                self.normalize(
-                    float(row[label_to_index["curr_vel"]]),
-                    self.env.velocity_min,
-                    self.env.velocity_max,
-                ),
-                self.normalize(
-                    float(row[label_to_index["curr_acc"]]),
-                    self.env.acc_min,
-                    self.env.acc_max,
-                ),
-                self.normalize(
-                    float(row[label_to_index["curr_angvel"]]),
-                    self.env.angvel_min,
-                    self.env.angvel_max,
-                ),
-                self.normalize(
-                    float(row[label_to_index["curr_obs_dist_abv"]]),
-                    self.env.distance_to_obstacle_min,
-                    self.env.distance_to_obstacle_max,
-                ),
-                self.normalize(
-                    float(row[label_to_index["curr_obs_dist_blw"]]),
-                    self.env.distance_to_obstacle_min,
-                    self.env.distance_to_obstacle_max,
-                ),
-                self.normalize(
-                    float(row[label_to_index["curr_obs_heading"]]),
-                    self.env.heading_to_obstacle_min,
-                    self.env.heading_to_obstacle_max,
-                ),
-                self.normalize(
-                    float(row[label_to_index["curr_progress"]]),
-                    self.env.progress_min,
-                    self.env.progress_max,
-                ),
-                float(row[label_to_index["curr_h_abv"]]),
-                float(row[label_to_index["curr_h_blw"]]),
-                self.normalize(
-                    float(row[label_to_index["curr_alpha_abv"]]),
-                    self.env.alpha_min,
-                    self.env.alpha_max,
-                ),
-                self.normalize(
-                    float(row[label_to_index["curr_alpha_blw"]]),
-                    self.env.alpha_min,
-                    self.env.alpha_max,
-                ),
-                1.0 if row[label_to_index["curr_solver_status"]] == "true" else 0.0,
-            ]
+            done = bool(row[label_to_index["done"]])
 
-            done = True if row[label_to_index["is_done"]] == "true" else False
-
-            states.append(state)
+            states.append(prev_state)
             actions.append(action)
             rewards.append(reward)
             next_states.append(next_state)
