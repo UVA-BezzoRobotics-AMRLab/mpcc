@@ -27,7 +27,32 @@ class MPCCROS {
   ~MPCCROS();
 
  private:
-  void publishMPCTrajectory();
+  
+	/*
+	 *
+	 *	AR VARIABLES
+	 *
+	 */
+
+    	ros::Subscriber _viconSub;
+	bool _executeTraj = false;
+	
+  	ros::ServiceServer _execute_traj_srv;
+
+	/*
+	 *
+	 *	AR FUNCTIONS
+	 *
+	 *
+	 */ 
+	bool executeTrajectorySrv(std_srvs::Empty::Request& req,
+                           std_srvs::Empty::Response& res);
+	
+  	void viconcb(const geometry_msgs::TransformStamped::ConstPtr& msg);
+
+
+
+	void publishMPCTrajectory();
   /**********************************************************************
      * Function: MPCCROS::publishMPCTrajectory()
      * Description: Publishes the MPC prediction horizon
@@ -78,6 +103,7 @@ class MPCCROS {
      * Callbacks for CBF alpha parameter, map, goal (not implemented
      * currently), odometry, and trajectory
      **********************************************************************/
+  
   void odomcb(const nav_msgs::Odometry::ConstPtr& msg);
   void dynaobscb(const nav_msgs::Odometry::ConstPtr& msg);
   void mapcb(const nav_msgs::OccupancyGrid::ConstPtr& msg);
@@ -132,6 +158,7 @@ class MPCCROS {
      * one is currently implemented (the MPCC). Will eventually add more.
      **********************************************************************/
   std::unique_ptr<logger::RLLogger> _logger;
+
 
   ros::Subscriber _trajSub;
   ros::Subscriber _trajNoResetSub;

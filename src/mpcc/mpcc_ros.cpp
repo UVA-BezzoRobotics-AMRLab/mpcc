@@ -165,7 +165,8 @@ MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~") {
   ROS_INFO("done loading params!");
 
   _mapSub  = nh.subscribe("/map", 1, &MPCCROS::mapcb, this);
-  _odomSub = nh.subscribe("/ROSBOT8/odom", 1, &MPCCROS::odomcb, this);
+  //_odomSub = nh.subscribe("/ROSBOT8/odom", 1, &MPCCROS::odomcb, this);
+  _viconSub = nh.subscribe("/vicon/rosbot_8_AR/rosbot_8_AR",1,&MPCCROS::viconcb,this);
   _trajSub =
       nh.subscribe("/TransferTrajectory", 1, &MPCCROS::trajectorycb, this);
   _obsSub = nh.subscribe("/obs_odom", 1, &MPCCROS::dynaobscb, this);
@@ -192,6 +193,9 @@ MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~") {
 
   _backup_srv =
       nh.advertiseService("/mpc_backup", &MPCCROS::toggleBackup, this);
+  _execute_traj_srv =
+      nh.advertiseService("/executeTrajectory", &MPCCROS::executeTrajectorySrv, this);
+
 
   if (_is_logging) {
     ROS_WARN("******************");
@@ -588,13 +592,59 @@ double MPCCROS::get_s_from_state(const std::array<Spline1D, 2>& ref,
   return s;
 }
 
+
+
+/*
+ *
+ *
+ * AR FUNCTIONS
+ *
+ *
+ */
+
+bool MPCCROS::executeTrajectorySrv(std_srvs::Empty::Request& req, std_srvs::Empty::Response& res){
+				_executeTraj = !_executeTraj;
+				ROS_ERROR("EXECUTE TRAJ FUNCTION CALLED");
+				return true;
+}
+
+void MPCCROS::viconcb(const geometry_msgs::TransformStamped::ConstPtr& msg){
+
+
+	tf::Quaternion q(msg->transform.rotation.x, msg->transform.rotation.y, msg->transform.rotation.z, msg->transform.rotation.w);
+	tf::Matrix3x3 m(q);
+	
+	
+	double roll,pitch,yaw;
+	m.getRPY(roll,pitch,yaw);
+	
+	_odom = Eigen::VectorXd(3);
+	
+	_odom(0) = msg->transform.translation.x;
+	_odom(1) = msg->transform.translation.y;
+	_odom(2) = yaw;
+
+	_mpc_core->set_odom(_odom);
+	if(!_is_init) {
+		_is_init = true;
+		ROS_INFO("Tracker Initialized with VICON system");
+	}
+}
+
+
 void MPCCROS::mpcc_ctrl_loop(const ros::TimerEvent& event) {
   if (!_is_init || _estop)
     return;
 
-  if (_trajectory.points.size() == 0)
+  if (!_executeTraj){
+    ROS_ERROR("EXECUTE TRAJECTORY NOT CALLED");
     return;
+  }	
 
+  if (_trajectory.points.size() == 0){
+    _executeTraj = !_executeTraj;
+    return;
+  }
   double len_start     = get_s_from_state(_ref, _true_ref_len);
   double corrected_len = len_start;
 
@@ -632,7 +682,9 @@ void MPCCROS::mpcc_ctrl_loop(const ros::TimerEvent& event) {
   if (len_start > _true_ref_len - 5e-1) {
     ROS_INFO("Reached end of traj %.2f / %.2f", len_start, _true_ref_len);
     _vel_msg.angular.z = 0;
-    if (_mpc_input_type == "unicycle")
+		_executeTraj = !_executeTraj;
+    ROS_ERROR("Set executeTraj var to %b", _executeTraj);
+		if (_mpc_input_type == "unicycle")
       _vel_msg.linear.x = 0;
     else if (_mpc_input_type == "double_integrator") {
       _vel_msg.linear.x = 0;
@@ -701,8 +753,9 @@ void MPCCROS::mpcc_ctrl_loop(const ros::TimerEvent& event) {
     return;
   }
 
-  std::array<double, 2> input = _mpc_core->solve(state);
 
+  std::array<double, 2> input = _mpc_core->solve(state);
+  
   if (_mpc_input_type == "unicycle") {
     _vel_msg.linear.x  = input[0];
     _vel_msg.angular.z = input[1];
