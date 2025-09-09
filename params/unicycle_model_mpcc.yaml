@@ -1,6 +1,6 @@
 # IPOPT Horizon MPC parameters
 mpc_input_type: "unicycle"
-frame_id: "odom"
+frame_id: "vicon/world"
 use_vicon: false
 mpc_steps: 10
 controller_frequency: 10
@@ -29,7 +29,7 @@ cbf_alpha_blw: 100
 cbf_colinear: .05
 cbf_padding: .05
 
-prop_gain: 1.5
+prop_gain: 3 #1.5
 prop_gain_thresh: .5
 # prop_gain_thresh: .349
 

@@ -78,7 +78,7 @@ MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~") {
 
   // Teleop params
   _nh.param("teleop", _teleop, false);
-  _nh.param<std::string>("frame_id", _frame_id, "odom");
+  _nh.param<std::string>("frame_id", _frame_id, "vicon/world");
 
   // clf params
   _nh.param("w_lyap_lag_e", _w_ql_lyap, 1.0);
@@ -168,7 +168,7 @@ MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~") {
   //_odomSub = nh.subscribe("/ROSBOT8/odom", 1, &MPCCROS::odomcb, this);
   _viconSub = nh.subscribe("/vicon/rosbot_8_AR/rosbot_8_AR",1,&MPCCROS::viconcb,this);
   _trajSub =
-      nh.subscribe("/TransferTrajectory", 1, &MPCCROS::trajectorycb, this);
+      nh.subscribe("/server/TransferTrajectory", 1, &MPCCROS::trajectorycb, this);
   _obsSub = nh.subscribe("/obs_odom", 1, &MPCCROS::dynaobscb, this);
 
   _timer = nh.createTimer(ros::Duration(_dt), &MPCCROS::mpcc_ctrl_loop, this);
@@ -624,6 +624,7 @@ void MPCCROS::viconcb(const geometry_msgs::TransformStamped::ConstPtr& msg){
 	_odom(1) = msg->transform.translation.y;
 	_odom(2) = yaw;
 
+        ROS_INFO("Position: %.2f, %.2f", _odom(0), _odom(1));
 	_mpc_core->set_odom(_odom);
 	if(!_is_init) {
 		_is_init = true;
