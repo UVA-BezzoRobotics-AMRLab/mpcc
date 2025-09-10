@@ -604,7 +604,7 @@ double MPCCROS::get_s_from_state(const std::array<Spline1D, 2>& ref,
 
 bool MPCCROS::executeTrajectorySrv(std_srvs::Empty::Request& req, std_srvs::Empty::Response& res){
 				_executeTraj = !_executeTraj;
-				ROS_ERROR("EXECUTE TRAJ FUNCTION CALLED");
+	//			ROS_ERROR("EXECUTE TRAJ FUNCTION CALLED");
 				return true;
 }
 
@@ -624,7 +624,7 @@ void MPCCROS::viconcb(const geometry_msgs::TransformStamped::ConstPtr& msg){
 	_odom(1) = msg->transform.translation.y;
 	_odom(2) = yaw;
 
-        ROS_INFO("Position: %.2f, %.2f", _odom(0), _odom(1));
+        //ROS_INFO("Position: %.2f, %.2f", _odom(0), _odom(1));
 	_mpc_core->set_odom(_odom);
 	if(!_is_init) {
 		_is_init = true;
