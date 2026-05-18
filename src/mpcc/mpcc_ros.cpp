@@ -14,10 +14,9 @@
 #include <std_msgs/Float64.h>
 #include <tf/tf.h>
 #include <visualization_msgs/MarkerArray.h>
-
+#include <std_srvs/SetBool.h>
 #include <Eigen/Core>
 #include <algorithm>
-
 #include "mpcc/utils.h"
 
 MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~") {
@@ -175,6 +174,7 @@ MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~") {
   // _velPubTimer = nh.createTimer(ros::Duration(1./_vel_pub_freq),
   // &MPCCROS::publishVel, this);
 
+  _odomPub	  = nh.advertise<nav_msgs::Odometry>("/mpc_odom", 10);
   _startPub       = nh.advertise<std_msgs::Float64>("/progress", 10);
   _pathPub        = nh.advertise<nav_msgs::Path>("/spline_path", 10);
   _velPub         = nh.advertise<geometry_msgs::Twist>("/ROSBOT8/cmd_vel", 10);
@@ -196,7 +196,8 @@ MPCCROS::MPCCROS(ros::NodeHandle& nh) : _nh("~") {
   _execute_traj_srv =
       nh.advertiseService("/executeTrajectory", &MPCCROS::executeTrajectorySrv, this);
 
-
+  //_finished_traj_srv = nh.serviceClient<mpcc::finishedtraj>("/finished_traj");
+	
   if (_is_logging) {
     ROS_WARN("******************");
     ROS_WARN("LOGGING IS ENABLED");
@@ -630,15 +631,70 @@ void MPCCROS::viconcb(const geometry_msgs::TransformStamped::ConstPtr& msg){
 		_is_init = true;
 		ROS_INFO("Tracker Initialized with VICON system");
 	}
+
+	nav_msgs::Odometry o_msg;
+	o_msg.header.stamp = ros::Time::now();
+	o_msg.header.frame_id = _frame_id;
+	o_msg.pose.pose.position.x = msg->transform.translation.x;
+	o_msg.pose.pose.position.y = msg->transform.translation.y;
+	o_msg.pose.pose.orientation = msg->transform.rotation;
+
+	_odomPub.publish(o_msg);
 }
 
+/*
+void MPCCROS::SendDataToDiffusion(){
+
+  //Get trajectory data in form of joint traj
+
+
+  trajectory_mgs::JointTrajectory jt_traj;
+  
+  for (double end = 0; end<_ref_len; end+=0.25){
+    double px  = splineX(end).coeff(0);
+    double py  = splineY(end).coeff(0);
+    double dx  = splineX.derivatives(end, 1).coeff(1);
+    double dy  = splineY.derivatives(end, 1).coeff(1);
+  
+       
+    trajectory_mgs::JointTrajectoryPooint jt_pt;
+
+    jt_pt.positions.push_back(px);
+    jt_pt.positions.push_back(py);
+
+
+    jt_pt.accelerations.push_back(dx);
+    jt_pt.accelerations.push_back(dy);
+
+    jt_traj.points.push_back(jt_pt);
+
+    ROS_WARN("Sending point: (%.2f, %.2f)\t(%.2f, %.2f) to guidAR", px, py, dx, dy);
+  }
+
+  MPCC::finishedtraj msg;
+
+  msg.traj = jt_traj;
+
+
+  if(_finished_traj_srv.call(msg)){
+    
+    ROS_INFO("successfully called service %s", "/finished_traj");
+    return;
+  } else{
+
+    ROS_INFO("failed to call service %s", "/finished_traj");
+    return;
+  }
+ 
+}
+*/
 
 void MPCCROS::mpcc_ctrl_loop(const ros::TimerEvent& event) {
   if (!_is_init || _estop)
     return;
 
   if (!_executeTraj){
-    ROS_ERROR("EXECUTE TRAJECTORY NOT CALLED");
+    //ROS_ERROR("EXECUTE TRAJECTORY NOT CALLED");
     return;
   }	
 
@@ -685,15 +741,27 @@ void MPCCROS::mpcc_ctrl_loop(const ros::TimerEvent& event) {
     _vel_msg.angular.z = 0;
 		_executeTraj = !_executeTraj;
     ROS_ERROR("Set executeTraj var to %b", _executeTraj);
-		if (_mpc_input_type == "unicycle")
-      _vel_msg.linear.x = 0;
+	if (_mpc_input_type == "unicycle")
+	      _vel_msg.linear.x = 0;
     else if (_mpc_input_type == "double_integrator") {
       _vel_msg.linear.x = 0;
       _vel_msg.linear.y = 0;
     }
+    
+    //tell guidAR we finished
+		//std_srvs::SetBool msg;
+		//msg.request.data = true;
+		//_finished_traj_srv.call(msg);
 
-    _trajectory.points.clear();
 
+    //MPCCROS::SendDataToDiffusion();
+		//if (msg.response.success){
+   // 	_trajectory.points.clear();
+		//} else {
+		//	ROS_ERROR("Bool message to guidAR server is false, \n Message from server: %s", msg.response.message);
+		//	ros::shutdown();
+		//}
+ 
     return;
   }
 

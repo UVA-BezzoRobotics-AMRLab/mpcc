@@ -41,6 +41,7 @@ add_service_files(
   FILES
   QuerySAC.srv
   QuerySACDI.srv
+  finishedTraj.srv
 )
 
 generate_messages(

@@ -36,7 +36,7 @@ class MPCCROS {
 
     	ros::Subscriber _viconSub;
 	bool _executeTraj = false;
-	
+	ros::ServiceClient _finished_traj_srv; 
   	ros::ServiceServer _execute_traj_srv;
 
 	/*
